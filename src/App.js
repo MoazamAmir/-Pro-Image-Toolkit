@@ -19,6 +19,12 @@ const App = () => {
   const [customFileName, setCustomFileName] = useState('');
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [ffmpegLoading, setFfmpegLoading] = useState(false);
+  // Watermark customization states
+  const [watermarkText, setWatermarkText] = useState('Pro Image Toolkit');
+  const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');
+  const [watermarkFontSize, setWatermarkFontSize] = useState(30);
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.5);
+  const [watermarkColor, setWatermarkColor] = useState('#FFFFFF');
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
   const toolDropdownRef = useRef(null);
@@ -97,8 +103,16 @@ const App = () => {
     'Advanced': [
       { name: 'Image Rotate 90°', from: 'image', to: 'rotate', accept: 'image/*' },
       { name: 'Image Flip', from: 'image', to: 'flip', accept: 'image/*' },
-      { name: 'Remove Background', from: 'image', to: 'nobg', accept: 'image/*' },
+      { name: 'Image Mirror', from: 'image', to: 'mirror', accept: 'image/*' },
+      // { name: 'Remove Background', from: 'image', to: 'nobg', accept: 'image/*' },
+      { name: 'Image Crop', from: 'image', to: 'crop', accept: 'image/*' },
+      { name: 'Brightness/Contrast', from: 'image', to: 'brightness', accept: 'image/*' },
+      { name: 'Blur Effect', from: 'image', to: 'blur', accept: 'image/*' },
+      { name: 'Sharpen Effect', from: 'image', to: 'sharpen', accept: 'image/*' },
+      { name: 'Add Watermark', from: 'image', to: 'watermark', accept: 'image/*' },
+      { name: 'PNG to ICO', from: 'png', to: 'ico', accept: 'image/png' },
       { name: 'HTML to PDF', from: 'html', to: 'pdf', accept: '.html' },
+      { name: 'PDF to Images', from: 'pdf', to: 'images', accept: 'application/pdf' },
     ],
   };
 
@@ -843,12 +857,432 @@ const App = () => {
     });
   };
 
+  // GIF & Animation Tools
+  const convertVideoToGIF = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.' + file.name.split('.').pop();
+    const outputName = 'output.gif';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      // Generate palette for better quality
+      await ffmpeg.exec(['-i', inputName, '-vf', 'fps=10,scale=480:-1:flags=lanczos,palettegen', 'palette.png']);
+      // Convert to GIF using palette
+      await ffmpeg.exec(['-i', inputName, '-i', 'palette.png', '-filter_complex', 'fps=10,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'image/gif' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile('palette.png');
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'converted.gif', blob, type: 'image/gif' };
+    } catch (error) {
+      throw new Error('Video to GIF conversion failed: ' + error.message);
+    }
+  };
+
+  const convertImagesToGIF = async (files) => {
+    return new Promise((resolve, reject) => {
+      try {
+        // Dynamically import gif.js worker
+        const GIF = window.GIF || require('gif.js');
+        const gif = new GIF({
+          workers: 2,
+          quality: 10,
+          width: 480,
+          height: 360,
+          workerScript: '/node_modules/gif.js/dist/gif.worker.js'
+        });
+
+        let processedCount = 0;
+        files.forEach((file, index) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new window.Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = 480;
+              canvas.height = 360;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, 480, 360);
+              gif.addFrame(canvas, { delay: 500 }); // 500ms delay between frames
+              processedCount++;
+              if (processedCount === files.length) {
+                gif.on('finished', (blob) => {
+                  resolve({ url: URL.createObjectURL(blob), name: 'animation.gif', blob, type: 'image/gif' });
+                });
+                gif.render();
+              }
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      } catch (error) {
+        reject(new Error('Images to GIF conversion failed: ' + error.message));
+      }
+    });
+  };
+
+  const convertGIFToVideo = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.gif';
+    const outputName = 'output.mp4';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      await ffmpeg.exec(['-i', inputName, '-movflags', 'faststart', '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'video/mp4' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'converted.mp4', blob, type: 'video/mp4' };
+    } catch (error) {
+      throw new Error('GIF to Video conversion failed: ' + error.message);
+    }
+  };
+
+  const convertGIFToPNG = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'frame.png', blob, type: 'image/png', note: 'First frame extracted from GIF' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Advanced Tools
+  const mirrorImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.translate(0, canvas.height);
+          ctx.scale(1, -1);
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'mirrored.png', blob, type: 'image/png' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const cropImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          // Crop to center square
+          const size = Math.min(img.width, img.height);
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          const x = (img.width - size) / 2;
+          const y = (img.height - size) / 2;
+          ctx.drawImage(img, x, y, size, size, 0, 0, size, size);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'cropped.png', blob, type: 'image/png', note: 'Cropped to center square' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const adjustBrightness = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          const brightness = 30; // Increase brightness
+          const contrast = 1.2; // Increase contrast
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = ((data[i] - 128) * contrast + 128) + brightness;
+            data[i + 1] = ((data[i + 1] - 128) * contrast + 128) + brightness;
+            data[i + 2] = ((data[i + 2] - 128) * contrast + 128) + brightness;
+          }
+          ctx.putImageData(imageData, 0, 0);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'adjusted.png', blob, type: 'image/png', note: 'Brightness +30, Contrast +20%' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const blurImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.filter = 'blur(5px)';
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'blurred.png', blob, type: 'image/png' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const sharpenImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          const weights = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+          const side = Math.round(Math.sqrt(weights.length));
+          const halfSide = Math.floor(side / 2);
+          const w = canvas.width;
+          const h = canvas.height;
+          const output = ctx.createImageData(w, h);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const dstOff = (y * w + x) * 4;
+              let r = 0, g = 0, b = 0;
+              for (let cy = 0; cy < side; cy++) {
+                for (let cx = 0; cx < side; cx++) {
+                  const scy = y + cy - halfSide;
+                  const scx = x + cx - halfSide;
+                  if (scy >= 0 && scy < h && scx >= 0 && scx < w) {
+                    const srcOff = (scy * w + scx) * 4;
+                    const wt = weights[cy * side + cx];
+                    r += data[srcOff] * wt;
+                    g += data[srcOff + 1] * wt;
+                    b += data[srcOff + 2] * wt;
+                  }
+                }
+              }
+              output.data[dstOff] = r;
+              output.data[dstOff + 1] = g;
+              output.data[dstOff + 2] = b;
+              output.data[dstOff + 3] = data[dstOff + 3];
+            }
+          }
+          ctx.putImageData(output, 0, 0);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'sharpened.png', blob, type: 'image/png' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const addWatermark = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+
+          // Use customizable watermark settings
+          const fontSize = watermarkFontSize || Math.max(20, img.width / 20);
+          ctx.font = `bold ${fontSize}px Arial`;
+
+          // Convert hex color to rgba with opacity
+          const hexToRgba = (hex, alpha) => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+          };
+
+          ctx.fillStyle = hexToRgba(watermarkColor, watermarkOpacity);
+
+          // Set position based on user selection
+          const padding = 20;
+          let x, y;
+          switch (watermarkPosition) {
+            case 'top-left':
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'top';
+              x = padding;
+              y = padding;
+              break;
+            case 'top-right':
+              ctx.textAlign = 'right';
+              ctx.textBaseline = 'top';
+              x = img.width - padding;
+              y = padding;
+              break;
+            case 'bottom-left':
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'bottom';
+              x = padding;
+              y = img.height - padding;
+              break;
+            case 'bottom-right':
+              ctx.textAlign = 'right';
+              ctx.textBaseline = 'bottom';
+              x = img.width - padding;
+              y = img.height - padding;
+              break;
+            case 'center':
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              x = img.width / 2;
+              y = img.height / 2;
+              break;
+            default:
+              ctx.textAlign = 'right';
+              ctx.textBaseline = 'bottom';
+              x = img.width - padding;
+              y = img.height - padding;
+          }
+
+          ctx.fillText(watermarkText || 'Pro Image Toolkit', x, y);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'watermarked.png', blob, type: 'image/png' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const convertPNGToICO = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 32;
+          canvas.height = 32;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, 32, 32);
+          canvas.toBlob((blob) => {
+            resolve({ url: URL.createObjectURL(blob), name: 'favicon.ico', blob, type: 'image/x-icon', note: 'Resized to 32x32 for favicon' });
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const convertHTMLToPDF = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const htmlContent = e.target.result;
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+          // Parse HTML and extract text (basic implementation)
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(htmlContent, 'text/html');
+          const text = doc.body.textContent || doc.body.innerText || '';
+
+          const splitText = pdf.splitTextToSize(text, 180);
+          pdf.setFontSize(12);
+          pdf.text(splitText, 10, 10);
+
+          const pdfBlob = pdf.output('blob');
+          resolve({ url: URL.createObjectURL(pdfBlob), name: 'converted.pdf', blob: pdfBlob, type: 'application/pdf', note: 'HTML text converted to PDF' });
+        } catch (error) {
+          reject(new Error('HTML to PDF failed: ' + error.message));
+        }
+      };
+      reader.onerror = () => reject(new Error('File read failed'));
+      reader.readAsText(file);
+    });
+  };
+
+  const convertPDFToImages = async (file) => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // This is a placeholder - full PDF parsing requires pdfjs-dist
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2 });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        canvas.toBlob((blob) => {
+          resolve({ url: URL.createObjectURL(blob), name: 'page-1.png', blob, type: 'image/png', note: 'First page extracted from PDF' });
+        }, 'image/png');
+      } catch (error) {
+        reject(new Error('PDF to Images failed: ' + error.message));
+      }
+    });
+  };
+
+
   const handleConvert = async () => {
     if (!selectedFile || !activeConverter) return;
     setIsConverting(true);
     try {
       let result;
       const to = activeConverter.to;
+      const from = activeConverter.from;
+
       if (to === 'pdf') {
         if (Array.isArray(selectedFile)) {
           result = await convertMultipleImagesToPDF(selectedFile);
@@ -858,12 +1292,19 @@ const App = () => {
             result = await convertTextToPDF(selectedFile);
           } else if (fileType === 'image/svg+xml') {
             result = await convertSVGToPDF(selectedFile);
+          } else if (from === 'html') {
+            result = await convertHTMLToPDF(selectedFile);
           } else {
             result = await convertToPDF(selectedFile);
           }
         }
       } else if (['jpg', 'jpeg', 'png', 'webp'].includes(to)) {
-        result = await convertImage(selectedFile, to);
+        // Check if it's GIF to PNG conversion
+        if (from === 'gif' && to === 'png') {
+          result = await convertGIFToPNG(selectedFile);
+        } else {
+          result = await convertImage(selectedFile, to);
+        }
       } else if (to === 'svg') {
         result = await convertToSVG(selectedFile);
       } else if (to === 'bmp') {
@@ -872,10 +1313,17 @@ const App = () => {
         // Check if converting from video or audio
         if (selectedFile.type.startsWith('video/')) {
           result = await extractAudioFromVideo(selectedFile);
-        } else if (activeConverter.from === 'wav') {
+        } else if (from === 'wav') {
           result = await convertWAVToMP3(selectedFile);
         } else {
           result = await extractAudioFromVideo(selectedFile);
+        }
+      } else if (to === 'mp4') {
+        // GIF to Video conversion
+        if (from === 'gif') {
+          result = await convertGIFToVideo(selectedFile);
+        } else {
+          result = await convertImage(selectedFile, 'png');
         }
       } else if (to === 'wav') {
         result = await convertMP3ToWAV(selectedFile);
@@ -886,19 +1334,43 @@ const App = () => {
       } else if (to === 'base64') {
         result = await imageToBase64(selectedFile);
       } else if (to === 'gif') {
-        result = await createGifFromImages(Array.isArray(selectedFile) ? selectedFile : [selectedFile]);
+        // Check if it's from video or images
+        if (from === 'video' || selectedFile.type.startsWith('video/')) {
+          result = await convertVideoToGIF(selectedFile);
+        } else if (Array.isArray(selectedFile)) {
+          result = await convertImagesToGIF(selectedFile);
+        } else {
+          result = await createGifFromImages([selectedFile]);
+        }
       } else if (to === 'grayscale') {
         result = await applyGrayscale(selectedFile);
       } else if (to === 'rotate') {
         result = await rotateImage(selectedFile);
       } else if (to === 'flip') {
         result = await flipImage(selectedFile);
+      } else if (to === 'mirror') {
+        result = await mirrorImage(selectedFile);
       } else if (to === 'compress') {
         result = await compressImage(selectedFile);
       } else if (to === 'nobg') {
         result = await removeBackground(selectedFile);
       } else if (to === 'resize') {
         result = await resizeImage(selectedFile, resizeWidth, resizeHeight);
+      } else if (to === 'crop') {
+        result = await cropImage(selectedFile);
+      } else if (to === 'brightness') {
+        result = await adjustBrightness(selectedFile);
+      } else if (to === 'blur') {
+        result = await blurImage(selectedFile);
+      } else if (to === 'sharpen') {
+        result = await sharpenImage(selectedFile);
+      } else if (to === 'watermark') {
+        result = await addWatermark(selectedFile);
+      } else if (to === 'ico') {
+        result = await convertPNGToICO(selectedFile);
+      } else if (to === 'images') {
+        // PDF to Images
+        result = await convertPDFToImages(selectedFile);
       } else {
         result = await convertImage(selectedFile, 'png');
       }
@@ -944,7 +1416,7 @@ const App = () => {
             Pro Image <span className="gradient-text">Toolkit</span>
           </h1>
           <p className={`text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3 font-medium`}>Convert files instantly online</p>
-          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-12 text-lg`}>50+ tools • No uploads • No registration</p>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-12 text-lg`}>34+ tools • No uploads • No registration</p>
           <div className="max-w-3xl mx-auto">
             <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-300 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-500'} rounded-2xl p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
               <Zap className={`w-24 h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-6 animate-float`} />
@@ -976,6 +1448,126 @@ const App = () => {
         <h1 className={`text-5xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-3 tracking-tight`}>{activeConverter.name}</h1>
         <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8 text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
         <div className="max-w-2xl mx-auto">
+          {/* Watermark Customization Controls - Only show for watermark tool */}
+          {to === 'watermark' && !selectedFile && !convertedFile && (
+            <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-2xl p-6 mb-6 shadow-premium`}>
+              <h3 className={`font-bold text-xl mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                <Settings className="w-5 h-5 mr-2" />
+                Customize Watermark
+              </h3>
+
+              {/* Watermark Text */}
+              <div className="mb-4">
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Watermark Text
+                </label>
+                <input
+                  type="text"
+                  value={watermarkText}
+                  onChange={(e) => setWatermarkText(e.target.value)}
+                  placeholder="Enter watermark text"
+                  className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500' : 'border-gray-300 focus:border-purple-500'} focus:outline-none transition-all font-medium`}
+                />
+              </div>
+
+              {/* Position Selector */}
+              <div className="mb-4">
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Position
+                </label>
+                <select
+                  value={watermarkPosition}
+                  onChange={(e) => setWatermarkPosition(e.target.value)}
+                  className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500' : 'border-gray-300 focus:border-purple-500'} focus:outline-none transition-all font-medium`}
+                >
+                  <option value="top-left">Top Left</option>
+                  <option value="top-right">Top Right</option>
+                  <option value="bottom-left">Bottom Left</option>
+                  <option value="bottom-right">Bottom Right</option>
+                  <option value="center">Center</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                {/* Font Size */}
+                <div>
+                  <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    Font Size: {watermarkFontSize}px
+                  </label>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    value={watermarkFontSize}
+                    onChange={(e) => setWatermarkFontSize(parseInt(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Opacity */}
+                <div>
+                  <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    Opacity: {Math.round(watermarkOpacity * 100)}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={watermarkOpacity}
+                    onChange={(e) => setWatermarkOpacity(parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Color Picker */}
+              <div className="mb-4">
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Color
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={watermarkColor}
+                    onChange={(e) => setWatermarkColor(e.target.value)}
+                    className="h-12 w-20 rounded-lg cursor-pointer border-2 border-gray-300"
+                  />
+                  <input
+                    type="text"
+                    value={watermarkColor}
+                    onChange={(e) => setWatermarkColor(e.target.value)}
+                    className={`flex-1 p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-mono`}
+                  />
+                </div>
+              </div>
+
+              {/* Preview Text */}
+              <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-lg p-4 border-2 ${darkMode ? 'border-gray-600' : 'border-purple-200'}`}>
+                <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</p>
+                <div className="relative bg-gray-900 rounded-lg h-32 flex items-center justify-center overflow-hidden">
+                  <span
+                    style={{
+                      fontSize: `${watermarkFontSize * 0.5}px`,
+                      color: watermarkColor,
+                      opacity: watermarkOpacity,
+                      fontWeight: 'bold',
+                      position: 'absolute',
+                      ...(watermarkPosition === 'top-left' && { top: '10px', left: '10px' }),
+                      ...(watermarkPosition === 'top-right' && { top: '10px', right: '10px' }),
+                      ...(watermarkPosition === 'bottom-left' && { bottom: '10px', left: '10px' }),
+                      ...(watermarkPosition === 'bottom-right' && { bottom: '10px', right: '10px' }),
+                      ...(watermarkPosition === 'center' && { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' })
+                    }}
+                  >
+                    {watermarkText || 'Your Watermark'}
+                  </span>
+                  <span className="text-gray-500 text-sm">Sample Image</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!selectedFile && !convertedFile && (
             <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-600'} rounded-2xl p-16 cursor-pointer transition-all duration-500 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
               <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" accept={activeConverter.accept} multiple={activeConverter.multiple} />

@@ -49,7 +49,7 @@ const App = () => {
   const [customFileName, setCustomFileName] = useState('');
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [ffmpegLoading, setFfmpegLoading] = useState(false);
-
+  const [isDragging, setIsDragging] = useState(false);
   // Watermark
   const [watermarkText, setWatermarkText] = useState('Pro Image Toolkit');
   const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');

@@ -39,6 +39,18 @@ const ConverterUI = ({
     watermarkColor,
     setWatermarkColor,
 }) => {
+    // Theme classes based on darkMode
+    const theme = {
+        border: darkMode ? 'border-purple-500/50' : 'border-purple-400',
+        bgSecondary: darkMode
+            ? 'bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900'
+            : 'bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50',
+        textPrimary: darkMode ? 'text-white' : 'text-gray-900',
+        textSecondary: darkMode ? 'text-gray-300' : 'text-gray-600',
+        textTertiary: darkMode ? 'text-gray-400' : 'text-gray-500',
+        accent: darkMode ? 'text-purple-400' : 'text-purple-500',
+    };
+
     if (!activeConverter) {
         return (
             <div className="text-center py-10 sm:py-16 md:py-20 animate-fadeIn">
@@ -48,8 +60,14 @@ const ConverterUI = ({
                 <p className={`text-lg sm:text-xl md:text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2 sm:mb-3 font-medium px-4`}>Convert files instantly online</p>
                 <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-8 sm:mb-12 text-sm sm:text-base md:text-lg px-4`}>34+ tools • No uploads • No registration</p>
                 <div className="max-w-3xl mx-auto px-4">
-                    <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-300 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-500'} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
-                        <Zap className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-4 sm:mb-6 animate-float`} />
+                    <div
+                        className={`${theme.border} ${theme.bgSecondary} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                    >
+                        <Zap className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${theme.accent} mx-auto mb-4 sm:mb-6 animate-float`} />
                         <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-3 sm:mb-4 text-base sm:text-lg md:text-xl font-bold`}>Select a converter from the menu</p>
                         <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert images, videos, PDFs, audio and more in your browser</p>
                     </div>
@@ -141,14 +159,46 @@ const ConverterUI = ({
                     </div>
                 )}
 
+                {/* 👇 نیا اپلوڈ ایریا یہاں شامل کیا گیا ہے */}
                 {!selectedFile && !convertedFile && (
-                    <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-600'} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 cursor-pointer transition-all duration-500 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
-                        <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" accept={activeConverter.accept} multiple={activeConverter.multiple} />
-                        <Upload className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-4 sm:mb-6 animate-float`} />
-                        <button className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} text-white px-6 sm:px-8 md:px-12 py-3 sm:py-4 md:py-5 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg inline-flex items-center shadow-premium transition-all duration-300 hover:scale-105`}>
-                            <Upload className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3" />Choose File
-                        </button>
-                        <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-4 sm:mt-5 font-medium`}>or drag and drop</p>
+                    <div className="max-w-3xl mx-auto mb-20">
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            onDragEnter={handleDragEnter}
+                            className={`
+                relative group cursor-pointer
+                rounded-3xl border-4 border-dashed p-12 text-center transition-all duration-300
+                ${darkMode
+                                    ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-indigo-400'
+                                    : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-indigo-500'}
+                hover:shadow-xl hover:scale-[1.02]
+              `}
+                        >
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileSelect}
+                                accept={activeConverter.accept}
+                                multiple={activeConverter?.multiple}
+                                className="hidden"
+                            />
+                            <div className="flex flex-col items-center space-y-6">
+                                <div className={`p-6 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-indigo-50'} group-hover:scale-110 transition-transform duration-300`}>
+                                    <Upload className={`w-12 h-12 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
+                                </div>
+                                <div>
+                                    <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Upload {activeConverter.name.includes('Image') ? 'Image' : 'File'}</h3>
+                                    <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Drag & drop or click to browse</p>
+                                </div>
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {activeConverter.accept === 'image/*' ? 'Supports JPG, PNG, WEBP' : 'Supported formats'}
+                                    {activeConverter.multiple ? ' • Multiple files' : ''} • Max 10MB
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -184,7 +234,11 @@ const ConverterUI = ({
                             <svg className={`w-10 h-10 mx-7 ${darkMode ? 'text-purple-400' : 'text-purple-500'} animate-pulse-soft`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                             <span className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gradient-to-r from-purple-500 to-blue-600'} text-white px-7 py-3 rounded-full text-sm font-bold shadow-lg`}>{activeConverter.to.toUpperCase()}</span>
                         </div>
-                        <button onClick={handleConvert} disabled={isConverting || ffmpegLoading} className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}>
+                        <button
+                            onClick={handleConvert}
+                            disabled={isConverting || ffmpegLoading}
+                            className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}
+                        >
                             {ffmpegLoading ? '⏳ Loading Converter...' : isConverting ? '⚙️ Converting...' : '🚀 Convert Now'}
                         </button>
                     </div>

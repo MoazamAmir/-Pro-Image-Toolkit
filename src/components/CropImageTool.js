@@ -1,13 +1,5 @@
-import React, { useState, useRef, useEffect, } from 'react';
-import { Upload, } from 'lucide-react';
-import {
-    Shield,
-    Scissors,
-    Ruler,
-    ImageIcon,
-    Globe,
-    Heart,
-} from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, Shield, Scissors, Ruler, ImageIcon, Globe, Heart, Download, RefreshCw, X } from 'lucide-react';
 
 export default function CropImageTool({ isDarkMode }) {
     const [selectedImage, setSelectedImage] = useState(null);
@@ -27,29 +19,27 @@ export default function CropImageTool({ isDarkMode }) {
     const imageRef = useRef(null);
     const containerRef = useRef(null);
 
-    // ✅ Theme-aware classes (no hardcoded dark:)
-    const bgPrimary = isDarkMode ? 'bg-[#111727]' : 'bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100';
-    const bgCard = isDarkMode ? 'bg-[#1a2332]' : 'bg-white';
-    const textPrimary = isDarkMode ? 'text-white' : 'text-gray-900';
-    const textSecondary = isDarkMode ? 'text-gray-300' : 'text-gray-700';
-    const textTertiary = isDarkMode ? 'text-gray-400' : 'text-gray-500';
-    const borderColor = isDarkMode ? 'border-gray-700' : 'border-gray-200';
-    const inputBg = isDarkMode ? 'bg-[#1f2937]' : 'bg-white';
-    const buttonBg = isDarkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800';
-    const adBg = isDarkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-100 border-blue-200';
-    const adText = isDarkMode ? 'text-blue-300' : 'text-blue-800';
-    const adSubText = isDarkMode ? 'text-blue-400' : 'text-blue-600';
+    // Theme-aware classes
+    const theme = {
+        bgPrimary: isDarkMode ? 'bg-gray-900' : 'bg-gray-50',
+        bgSecondary: isDarkMode ? 'bg-gray-800' : 'bg-white',
+        textPrimary: isDarkMode ? 'text-white' : 'text-gray-900',
+        textSecondary: isDarkMode ? 'text-gray-300' : 'text-gray-600',
+        textTertiary: isDarkMode ? 'text-gray-400' : 'text-gray-500',
+        border: isDarkMode ? 'border-gray-700' : 'border-gray-200',
+        inputBg: isDarkMode ? 'bg-gray-700' : 'bg-gray-50',
+        accent: 'text-indigo-600',
+        accentBg: 'bg-indigo-600',
+        accentHover: 'hover:bg-indigo-700',
+        buttonSecondary: isDarkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200',
+    };
 
     const handleDrop = (e) => {
         e.preventDefault();
         setIsDragging(false);
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                setSelectedImage(event.target.result);
-            };
-            reader.readAsDataURL(file);
+            processFile(file);
         }
     };
 
@@ -60,10 +50,32 @@ export default function CropImageTool({ isDarkMode }) {
 
     const handleDragLeave = () => setIsDragging(false);
 
+    const processFile = (file) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            setSelectedImage(event.target.result);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleImageSelect = (e) => {
+        const file = e.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            processFile(file);
+        }
+    };
+
     useEffect(() => {
         if (selectedImage && imageRef.current) {
             const img = imageRef.current;
             setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+            // Reset crop to center initially
+            setCropSettings({
+                width: Math.min(200, img.naturalWidth),
+                height: Math.min(200, img.naturalHeight),
+                positionX: (img.naturalWidth - Math.min(200, img.naturalWidth)) / 2,
+                positionY: (img.naturalHeight - Math.min(200, img.naturalHeight)) / 2,
+            });
         }
     }, [selectedImage]);
 
@@ -73,6 +85,7 @@ export default function CropImageTool({ isDarkMode }) {
                 '1:1 Square': 1,
                 '4:3': 4 / 3,
                 '16:9': 16 / 9,
+                '2:3': 2 / 3,
             };
             const ratio = ratios[aspectRatio];
             if (ratio) {
@@ -84,24 +97,15 @@ export default function CropImageTool({ isDarkMode }) {
         }
     }, [aspectRatio, cropSettings.width]);
 
-    const handleImageSelect = (e) => {
-        const file = e.target.files[0];
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                setSelectedImage(event.target.result);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
     const handleReset = () => {
+        if (!imageDimensions.width) return;
         setCropSettings({
-            width: 200,
-            height: 200,
-            positionX: 50,
-            positionY: 50,
+            width: Math.min(200, imageDimensions.width),
+            height: Math.min(200, imageDimensions.height),
+            positionX: (imageDimensions.width - Math.min(200, imageDimensions.width)) / 2,
+            positionY: (imageDimensions.height - Math.min(200, imageDimensions.height)) / 2,
         });
+        setAspectRatio('FreeForm');
     };
 
     const getScale = () => {
@@ -153,6 +157,7 @@ export default function CropImageTool({ isDarkMode }) {
 
     const handleMouseDown = (e, handle = null) => {
         e.preventDefault();
+        e.stopPropagation(); // Prevent event bubbling
         if (handle) {
             setIsResizing(true);
             setResizeHandle(handle);
@@ -171,7 +176,7 @@ export default function CropImageTool({ isDarkMode }) {
 
     useEffect(() => {
         const handleMouseMove = (e) => {
-            if (!imageRef.current) return;
+            if (!imageRef.current || (!isDragging && !isResizing)) return;
 
             const scale = getScale();
             const deltaX = (e.clientX - dragStart.x) * scale;
@@ -204,11 +209,12 @@ export default function CropImageTool({ isDarkMode }) {
                 }
 
                 if (aspectRatio !== 'FreeForm' && aspectRatio !== 'Custom') {
-                    const ratios = { '1:1 Square': 1, '4:3': 4 / 3, '16:9': 16 / 9 };
+                    const ratios = { '1:1 Square': 1, '4:3': 4 / 3, '16:9': 16 / 9, '2:3': 2 / 3 };
                     const ratio = ratios[aspectRatio];
                     if (ratio) newHeight = newWidth / ratio;
                 }
 
+                // Boundary checks
                 newX = Math.max(0, Math.min(newX, imageDimensions.width - newWidth));
                 newY = Math.max(0, Math.min(newY, imageDimensions.height - newHeight));
                 newWidth = Math.min(newWidth, imageDimensions.width - newX);
@@ -240,243 +246,175 @@ export default function CropImageTool({ isDarkMode }) {
     }, [isDragging, isResizing, dragStart, resizeHandle, imageDimensions, cropSettings.width, cropSettings.height, aspectRatio]);
 
     const features = [
-        { icon: <Scissors className="w-10 h-10 text-white mb-4" />, title: 'Quick and Easy to Use', description: 'Crop images easily by drawing a crop rectangle...' },
-        { icon: <Ruler className="w-10 h-10 text-white mb-4" />, title: 'Crop Image to Any Size', description: 'Crop your image to an exact pixel size...' },
-        { icon: <ImageIcon className="w-10 h-10 text-white mb-4" />, title: 'Crop to Any Aspect Ratio', description: 'Choose from many different crop aspect ratios...' },
-        { icon: <Shield className="w-10 h-10 text-white mb-4" />, title: 'Privacy Protected', description: 'We crop image files right on the browser...' },
-        { icon: <Globe className="w-10 h-10 text-white mb-4" />, title: 'Online Tool', description: 'This image cropper works on any device...' },
-        { icon: <Heart className="w-10 h-10 text-white mb-4" />, title: '100% Free', description: 'This photo cropper is entirely free...' },
+        { icon: <Scissors className="w-6 h-6" />, title: 'Easy Cropping', description: 'Intuitive drag & drop interface.' },
+        { icon: <Ruler className="w-6 h-6" />, title: 'Precise Control', description: 'Pixel-perfect dimensions.' },
+        { icon: <ImageIcon className="w-6 h-6" />, title: 'Aspect Ratios', description: 'Preset common ratios.' },
+        { icon: <Shield className="w-6 h-6" />, title: 'Privacy First', description: 'Processing happens locally.' },
+        { icon: <Globe className="w-6 h-6" />, title: 'Universal', description: 'Works on all devices.' },
+        { icon: <Heart className="w-6 h-6" />, title: '100% Free', description: 'No hidden costs.' },
     ];
 
     // =============== LANDING PAGE ===============
     if (!selectedImage) {
         return (
-            <div className={`${bgPrimary} min-h-screen overflow-x-hidden`}>
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-                    <div className="text-center mb-8">
-                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent text-center">Crop Image</h1>
-                        <p className={`text-lg ${textTertiary}`}>Quickly crop image files online for free!</p>
-                    </div>
-
-                    {/* Ad Banner */}
-                    <div className="text-center mt-5">
-                        <div className={`rounded-lg p-4 sm:p-6 flex flex-col items-center justify-center min-h-[90px] mx-auto w-full max-w-[728px] shadow-md border ${adBg}`}>
-                            <p className={`text-sm sm:text-base font-semibold ${adText}`}>Advertisement Space 728x90</p>
-                            <p className={`text-xs sm:text-sm mt-1 ${adSubText}`}>Your Banner Ad Here</p>
-                        </div>
+            <div className={`min-h-screen ${theme.bgPrimary} transition-colors duration-300`}>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                    {/* Hero Section */}
+                    <div className="text-center mb-16 space-y-4">
+                        <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient-x">
+                            Crop Image Online
+                        </h1>
+                        <p className={`text-lg md:text-xl ${theme.textSecondary} max-w-2xl mx-auto`}>
+                            The simplest way to crop your images. Fast, free, and secure.
+                        </p>
                     </div>
 
                     {/* Upload Area */}
-                    <div className="max-w-4xl mx-auto mt-10">
-                        <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-1 rounded-lg mb-6">
-                            <div className={`${bgCard} rounded-lg p-12 text-center`}>
-                                <div
-                                    onClick={() => fileInputRef.current.click()}
-                                    onDragOver={handleDragOver}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={handleDrop}
-                                    className={`border-4 border-dashed rounded-lg p-16 transition-all duration-300 cursor-pointer ${isDragging
-                                        ? isDarkMode
-                                            ? 'border-blue-400 bg-blue-900/20'
-                                            : 'border-blue-500 bg-blue-50'
-                                        : isDarkMode
-                                            ? 'border-white/20'
-                                            : 'border-white/30'
-                                        }`}
-                                >
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        onChange={handleImageSelect}
-                                        accept="image/*"
-                                        className="hidden"
-                                    />
-                                    <Upload className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-500'}`} />
-                                    <h3 className={`text-2xl font-semibold ${textPrimary} mb-2`}>
-                                        Upload or Drop Image
+                    <div className="max-w-3xl mx-auto mb-20">
+                        <div
+                            onClick={() => fileInputRef.current.click()}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`
+                                relative group cursor-pointer
+                                rounded-3xl border-4 border-dashed p-12 text-center transition-all duration-300
+                                ${isDragging
+                                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 scale-[1.02]'
+                                    : `${theme.border} ${theme.bgSecondary} hover:border-indigo-400 hover:shadow-xl`
+                                }
+                            `}
+                        >
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleImageSelect}
+                                accept="image/*"
+                                className="hidden"
+                            />
+                            <div className="flex flex-col items-center space-y-6">
+                                <div className={`p-6 rounded-full ${isDarkMode ? 'bg-gray-700' : 'bg-indigo-50'} group-hover:scale-110 transition-transform duration-300`}>
+                                    <Upload className={`w-12 h-12 ${theme.accent}`} />
+                                </div>
+                                <div>
+                                    <h3 className={`text-2xl font-bold ${theme.textPrimary} mb-2`}>
+                                        Upload Image
                                     </h3>
-                                    <p className={`mt-6 ${isDarkMode ? 'text-white/80' : 'text-gray-800'} text-lg`}>
-                                        Drag & drop an image here, or click to browse
-                                    </p>
-                                    <p className={`mt-3 ${textTertiary} text-sm`}>
-                                        Max file size: 10 MB. <span className="underline cursor-pointer">Sign up</span> for more.
+                                    <p className={`${theme.textSecondary}`}>
+                                        Drag & drop or click to browse
                                     </p>
                                 </div>
-
-                            </div>
-                        </div>
-
-                        <div className="mt-16 max-w-6xl mx-auto">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {features.map((item, index) => (
-                                    <div
-                                        key={index}
-                                        className={`p-6 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 border ${borderColor} ${bgCard}`}
-                                    >
-                                        <div className="flex flex-col items-center">
-                                            <div className={textPrimary}>
-                                                {React.cloneElement(item.icon, { className: `w-10 h-10 mb-4 ${textPrimary}` })}
-                                            </div>
-                                            <h3 className={`text-lg font-semibold mb-2 ${textPrimary}`}>{item.title}</h3>
-                                            <p className={`text-sm leading-relaxed ${textTertiary}`}>{item.description}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className={`mt-8 sm:mt-12 ${bgCard} rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-8 transition-opacity duration-700 opacity-100 `}>
-                            <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
-                                <span className="text-2xl sm:text-3xl">❓</span>
-                                How to Crop Images?
-                            </h2>
-                            <div className="space-y-3 sm:space-y-4">
-                                <div className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg sm:rounded-xl hover-lift">
-                                    <span className="flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold text-sm sm:text-base">1</span>
-                                    <div>
-                                        <p className="text-gray-700 text-sm sm:text-base">Click the <span className="font-bold text-indigo-600">"Add More Files"</span> button and select from Device, Dropbox, Google Drive, OneDrive, or URL.</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg sm:rounded-xl hover-lift">
-                                    <span className="flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold text-sm sm:text-base">2</span>
-                                    <div>
-                                        <p className="text-gray-700 text-sm sm:text-base">Select a target image format from the <span className="font-bold text-purple-600">"Output"</span> drop-down list.</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg sm:rounded-xl hover-lift">
-                                    <span className="flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold text-sm sm:text-base">3</span>
-                                    <div>
-                                        <p className="text-gray-700 text-sm sm:text-base">Click on the <span className="font-bold text-green-600">"Convert"</span> button to start the conversion.</p>
-                                    </div>
-                                </div>
+                                <p className={`text-sm ${theme.textTertiary}`}>
+                                    Supports JPG, PNG, WEBP • Max 10MB
+                                </p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Sidebar Ads */}
-                    <div className="hidden lg:block absolute left-4 top-[390px]">
-                        <div className={`rounded-lg p-4 w-[110px] h-[500px] shadow-md border ${adBg}`}>
-                            <p className={`text-xs mt-2 rotate-90 whitespace-nowrap ${adSubText}`}>Left Skyscraper Banner</p>
-                        </div>
-                    </div>
-                    <div className="hidden lg:block absolute right-4 top-[390px]">
-                        <div className={`rounded-lg p-4 w-[110px] h-[500px] shadow-md border ${adBg}`}>
-                            <p className={`text-xs mt-2 rotate-90 whitespace-nowrap ${adSubText}`}>Right Skyscraper Banner</p>
-                        </div>
-                    </div>
-
-
-                    <div className="max-w-6xl mx-auto mt-20 px-6 pb-16">
-                        <h2 className={`text-3xl font-bold ${textPrimary} text-center mb-12`}>
-                            Crop Images Free with Our Online Photo Cropper
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {[
-                                { icon: <Globe className="w-12 h-12 text-blue-400 mb-4" />, title: 'Customizable Cropping...', desc: 'Choose from predefined aspect ratios...' },
-                                { icon: <Shield className="w-12 h-12 text-blue-400 mb-4" />, title: 'Secure and Reliable...', desc: 'Our commitment extends beyond...' },
-                                { icon: <Ruler className="w-12 h-12 text-blue-400 mb-4" />, title: 'Precise Cropping...', desc: 'Adjust your photos with precision...' },
-                                { icon: <ImageIcon className="w-12 h-12 text-blue-400 mb-4" />, title: 'Versatile Format Support...', desc: 'Our image cropper handles various file types...' }
-                            ].map((item, i) => (
-                                <div key={i} className={`${bgCard} border ${borderColor} rounded-xl p-8 hover:border-gray-600 transition-colors`}>
-                                    <div className="flex flex-col items-center text-center">
-                                        {item.icon}
-                                        <h3 className={`text-xl font-bold ${textPrimary} mb-3`}>{item.title}</h3>
-                                        <p className={`leading-relaxed ${textTertiary}`}>{item.desc}</p>
-                                    </div>
+                    {/* Features Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-20">
+                        {features.map((item, index) => (
+                            <div
+                                key={index}
+                                className={`
+                                    p-6 rounded-2xl ${theme.bgSecondary} border ${theme.border}
+                                    hover:shadow-lg hover:-translate-y-1 transition-all duration-300
+                                `}
+                            >
+                                <div className={`w-12 h-12 rounded-xl ${theme.accentBg} flex items-center justify-center text-white mb-4 shadow-lg shadow-indigo-500/30`}>
+                                    {item.icon}
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Feature Images */}
-                    <div className="max-w-6xl mx-auto mt-40 flex flex-col md:flex-row items-center gap-10 px-6">
-                        <div className="flex-1 flex justify-center">
-                            <img src="/assets/Crop-Image-Feature.png" alt="Interactive Cropping Interface" className="rounded-xl shadow-lg w-full max-w-md" />
-                        </div>
-                        <div className="flex-1 text-center md:text-left">
-                            <h2 className={`text-3xl font-bold ${textPrimary} mb-4`}>Interactive Cropping Interface</h2>
-                            <p className={`leading-relaxed ${textTertiary}`}>
-                                With our cropping tool, you can see your photo changes instantly...
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="max-w-6xl mx-auto mt-40 flex flex-col md:flex-row items-center gap-10 px-6 pb-20">
-                        <div className="flex-1 text-center md:text-left order-2 md:order-1">
-                            <h2 className={`text-3xl font-bold ${textPrimary} mb-4`}>
-                                Perfect Your Images with Custom Ratios...
-                            </h2>
-                            <p className={`leading-relaxed ${textTertiary}`}>
-                                Choose from a wide selection of predefined ratios...
-                            </p>
-                        </div>
-                        <div className="flex-1 flex justify-center order-1 md:order-2">
-                            <img src="/assets/Crop-Image-Feature-2.png" alt="Custom Ratios" className="rounded-xl shadow-lg w-full max-w-md" />
-                        </div>
+                                <h3 className={`text-lg font-bold ${theme.textPrimary} mb-2`}>{item.title}</h3>
+                                <p className={`text-sm ${theme.textSecondary}`}>{item.description}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
-
             </div>
         );
     }
 
     // =============== CROPPING EDITOR ===============
     return (
-        <div className={`min-h-screen ${bgPrimary}`}>
+        <div className={`min-h-screen flex flex-col lg:flex-row ${theme.bgPrimary} overflow-hidden`}>
 
-            <div className="flex h-[calc(100vh-73px)]">
-                <div className={`${isDarkMode ? 'bg-[#1a2332]' : 'bg-gray-50'} w-80 border-r ${borderColor} p-6 overflow-y-auto`}>
-                    <div className="mb-6">
-                        <h2 className={`font-bold text-xl ${textPrimary} mb-1`}>Crop Rectangle</h2>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label className={`block text-xs mb-2 font-medium ${textTertiary}`}>Width (px)</label>
-                            <input
-                                type="number"
-                                value={cropSettings.width}
-                                onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    setCropSettings({ ...cropSettings, width: Math.min(val, imageDimensions.width) });
-                                }}
-                                className={`w-full px-3 py-2.5 rounded border ${borderColor} focus:border-blue-500 focus:outline-none ${inputBg} ${textPrimary}`}
-                            />
-                        </div>
-                        <div>
-                            <label className={`block text-xs mb-2 font-medium ${textTertiary}`}>Height (px)</label>
-                            <input
-                                type="number"
-                                value={cropSettings.height}
-                                onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    setCropSettings({ ...cropSettings, height: Math.min(val, imageDimensions.height) });
-                                }}
-                                className={`w-full px-3 py-2.5 rounded border ${borderColor} focus:border-blue-500 focus:outline-none ${inputBg} ${textPrimary}`}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="mb-6">
-                        <label className={`block text-xs mb-2 font-medium ${textTertiary}`}>Aspect Ratio</label>
-                        <select
-                            value={aspectRatio}
-                            onChange={(e) => setAspectRatio(e.target.value)}
-                            className={`w-full px-3 py-2.5 rounded border ${borderColor} focus:border-blue-500 focus:outline-none ${inputBg} ${textPrimary}`}
+            {/* Sidebar Controls */}
+            <div className={`
+                w-full lg:w-96 flex-shrink-0 
+                ${theme.bgSecondary} border-b lg:border-b-0 lg:border-r ${theme.border}
+                flex flex-col h-[40vh] lg:h-[calc(100vh-64px)] overflow-y-auto z-20 shadow-xl
+            `}>
+                <div className="p-6 space-y-8">
+                    <div className="flex items-center justify-between">
+                        <h2 className={`text-xl font-bold ${theme.textPrimary}`}>Crop Settings</h2>
+                        <button
+                            onClick={() => setSelectedImage(null)}
+                            className={`p-2 rounded-lg ${theme.buttonSecondary} transition-colors`}
+                            title="Close"
                         >
-                            <option>FreeForm</option>
-                            <option>1:1 Square</option>
-                            <option>4:3</option>
-                            <option>16:9</option>
-                            <option>Custom</option>
-                        </select>
+                            <X className="w-5 h-5" />
+                        </button>
                     </div>
 
-                    <div className="mb-6">
-                        <h3 className={`font-bold text-lg ${textPrimary} mb-4`}>Crop Position</h3>
+                    {/* Dimensions */}
+                    <div className="space-y-4">
+                        <label className={`text-sm font-semibold ${theme.textSecondary} uppercase tracking-wider`}>Dimensions</label>
                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className={`block text-xs mb-2 font-medium ${textTertiary}`}>Position X (px)</label>
+                            <div className="relative">
+                                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${theme.textTertiary}`}>W</span>
+                                <input
+                                    type="number"
+                                    value={cropSettings.width}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        setCropSettings({ ...cropSettings, width: Math.min(val, imageDimensions.width) });
+                                    }}
+                                    className={`w-full pl-8 pr-3 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.textPrimary} focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all`}
+                                />
+                            </div>
+                            <div className="relative">
+                                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${theme.textTertiary}`}>H</span>
+                                <input
+                                    type="number"
+                                    value={cropSettings.height}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        setCropSettings({ ...cropSettings, height: Math.min(val, imageDimensions.height) });
+                                    }}
+                                    className={`w-full pl-8 pr-3 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.textPrimary} focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all`}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Aspect Ratio */}
+                    <div className="space-y-4">
+                        <label className={`text-sm font-semibold ${theme.textSecondary} uppercase tracking-wider`}>Aspect Ratio</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {['FreeForm', '1:1 Square', '4:3', '16:9', '2:3'].map((ratio) => (
+                                <button
+                                    key={ratio}
+                                    onClick={() => setAspectRatio(ratio)}
+                                    className={`
+                                        px-2 py-2 text-xs font-medium rounded-lg border transition-all
+                                        ${aspectRatio === ratio
+                                            ? `${theme.accentBg} text-white border-transparent shadow-md`
+                                            : `${theme.bgPrimary} ${theme.textSecondary} ${theme.border} hover:border-indigo-300`
+                                        }
+                                    `}
+                                >
+                                    {ratio.replace('Square', '')}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Position */}
+                    <div className="space-y-4">
+                        <label className={`text-sm font-semibold ${theme.textSecondary} uppercase tracking-wider`}>Position</label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="relative">
+                                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${theme.textTertiary}`}>X</span>
                                 <input
                                     type="number"
                                     value={cropSettings.positionX}
@@ -487,11 +425,11 @@ export default function CropImageTool({ isDarkMode }) {
                                             positionX: Math.max(0, Math.min(val, imageDimensions.width - cropSettings.width)),
                                         });
                                     }}
-                                    className={`w-full px-3 py-2.5 rounded border ${borderColor} focus:border-blue-500 focus:outline-none ${inputBg} ${textPrimary}`}
+                                    className={`w-full pl-8 pr-3 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.textPrimary} focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all`}
                                 />
                             </div>
-                            <div>
-                                <label className={`block text-xs mb-2 font-medium ${textTertiary}`}>Position Y (px)</label>
+                            <div className="relative">
+                                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${theme.textTertiary}`}>Y</span>
                                 <input
                                     type="number"
                                     value={cropSettings.positionY}
@@ -502,72 +440,110 @@ export default function CropImageTool({ isDarkMode }) {
                                             positionY: Math.max(0, Math.min(val, imageDimensions.height - cropSettings.height)),
                                         });
                                     }}
-                                    className={`w-full px-3 py-2.5 rounded border ${borderColor} focus:border-blue-500 focus:outline-none ${inputBg} ${textPrimary}`}
+                                    className={`w-full pl-8 pr-3 py-2 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.textPrimary} focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all`}
                                 />
                             </div>
                         </div>
                     </div>
 
-                    <div className={`mb-4 p-3 rounded ${bgCard}`}>
-                        <div className={`text-xs ${textTertiary} mb-1`}>Original Image</div>
-                        <div className={`text-sm ${textPrimary}`}>{imageDimensions.width} × {imageDimensions.height} px</div>
+                    {/* Actions */}
+                    <div className="pt-4 space-y-3">
+                        <button
+                            onClick={handleReset}
+                            className={`w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 ${theme.buttonSecondary} transition-all`}
+                        >
+                            <RefreshCw className="w-4 h-4" /> Reset
+                        </button>
+                        <button
+                            onClick={handleCropApply}
+                            className={`w-full py-3 rounded-xl font-bold text-white shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 ${theme.accentBg} ${theme.accentHover} transition-all transform active:scale-[0.98]`}
+                        >
+                            <Download className="w-5 h-5" /> Crop & Download
+                        </button>
                     </div>
-
-                    <button
-                        onClick={handleReset}
-                        className={`w-full py-3 rounded-lg mb-3 font-medium ${buttonBg} hover:opacity-90`}
-                    >
-                        Reset
-                    </button>
-
-                    <button
-                        onClick={handleCropApply}
-                        className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
-                    >
-                        Crop & Download →
-                    </button>
                 </div>
+            </div>
 
-                <div className={`${bgPrimary} flex-1 p-8 overflow-auto flex flex-col items-center justify-center`}>
+            {/* Main Canvas Area */}
+            <div className={`flex-1 relative overflow-hidden flex items-center justify-center p-4 lg:p-8 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-100'}`}>
 
+                {/* Background Pattern */}
+                <div className="absolute inset-0 opacity-5 pointer-events-none"
+                    style={{
+                        backgroundImage: `radial-gradient(${isDarkMode ? '#ffffff' : '#000000'} 1px, transparent 1px)`,
+                        backgroundSize: '20px 20px'
+                    }}
+                />
 
-                    {/* Image Preview */}
-                    <div ref={containerRef} className="relative inline-block" style={{ userSelect: 'none' }}>
-                        <img
-                            ref={imageRef}
-                            src={selectedImage}
-                            alt="Preview"
-                            className="max-w-full max-h-[calc(100vh-200px)] block"
-                            draggable={false}
-                        />
-                        {imageRef.current && (
+                <div ref={containerRef} className="relative shadow-2xl rounded-lg overflow-hidden" style={{ userSelect: 'none', maxHeight: '85vh', maxWidth: '100%' }}>
+                    <img
+                        ref={imageRef}
+                        src={selectedImage}
+                        alt="Preview"
+                        className="max-w-full max-h-[80vh] object-contain block"
+                        draggable={false}
+                    />
+
+                    {/* Overlay & Crop Box */}
+                    {imageRef.current && (
+                        <>
+                            {/* Dark Overlay outside crop area - simulated with 4 divs */}
+                            {/* This is complex to do perfectly with just divs over an image that scales. 
+                                Instead, we'll just rely on the crop box border and maybe a dimming effect if possible, 
+                                but standard CSS crop tools often just use a border. 
+                                Let's stick to the border for simplicity and performance, but make it pop.
+                            */}
+
                             <div
-                                className="absolute border-2 border-blue-500 cursor-move"
+                                className="absolute cursor-move group"
                                 style={{
                                     left: `${cropSettings.positionX / getScale()}px`,
                                     top: `${cropSettings.positionY / getScale()}px`,
                                     width: `${cropSettings.width / getScale()}px`,
                                     height: `${cropSettings.height / getScale()}px`,
-                                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
+                                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.6)', // The dimming overlay
+                                    border: '2px solid white',
+                                    outline: '1px solid rgba(0,0,0,0.2)'
                                 }}
                                 onMouseDown={(e) => handleMouseDown(e)}
                             >
+                                {/* Grid Lines (Rule of Thirds) */}
+                                <div className="absolute inset-0 flex flex-col pointer-events-none opacity-0 group-hover:opacity-50 transition-opacity">
+                                    <div className="flex-1 border-b border-white/30"></div>
+                                    <div className="flex-1 border-b border-white/30"></div>
+                                    <div className="flex-1"></div>
+                                </div>
+                                <div className="absolute inset-0 flex pointer-events-none opacity-0 group-hover:opacity-50 transition-opacity">
+                                    <div className="flex-1 border-r border-white/30"></div>
+                                    <div className="flex-1 border-r border-white/30"></div>
+                                    <div className="flex-1"></div>
+                                </div>
+
+                                {/* Resize Handles */}
                                 {['nw', 'ne', 'sw', 'se', 'n', 's', 'w', 'e'].map((dir) => {
-                                    const positions = {
+                                    const style = {
                                         nw: { left: '-6px', top: '-6px', cursor: 'nw-resize' },
                                         ne: { right: '-6px', top: '-6px', cursor: 'ne-resize' },
                                         sw: { left: '-6px', bottom: '-6px', cursor: 'sw-resize' },
                                         se: { right: '-6px', bottom: '-6px', cursor: 'se-resize' },
-                                        n: { left: '50%', top: '-6px', transform: 'translateX(-50%)', cursor: 'n-resize' },
-                                        s: { left: '50%', bottom: '-6px', transform: 'translateX(-50%)', cursor: 's-resize' },
-                                        w: { left: '-6px', top: '50%', transform: 'translateY(-50%)', cursor: 'w-resize' },
-                                        e: { right: '-6px', top: '50%', transform: 'translateY(-50%)', cursor: 'e-resize' },
+                                        n: { left: '50%', top: '-6px', transform: 'translateX(-50%)', cursor: 'n-resize', width: '20px', height: '6px', borderRadius: '4px' },
+                                        s: { left: '50%', bottom: '-6px', transform: 'translateX(-50%)', cursor: 's-resize', width: '20px', height: '6px', borderRadius: '4px' },
+                                        w: { left: '-6px', top: '50%', transform: 'translateY(-50%)', cursor: 'w-resize', width: '6px', height: '20px', borderRadius: '4px' },
+                                        e: { right: '-6px', top: '50%', transform: 'translateY(-50%)', cursor: 'e-resize', width: '6px', height: '20px', borderRadius: '4px' },
                                     }[dir];
+
+                                    const isCorner = dir.length === 2;
+
                                     return (
                                         <div
                                             key={dir}
-                                            className="absolute w-2 h-2 bg-blue-500 border border-white"
-                                            style={positions}
+                                            className={`absolute bg-indigo-500 border-2 border-white shadow-sm transition-transform hover:scale-125 z-10`}
+                                            style={{
+                                                width: isCorner ? '12px' : undefined,
+                                                height: isCorner ? '12px' : undefined,
+                                                borderRadius: isCorner ? '50%' : undefined,
+                                                ...style
+                                            }}
                                             onMouseDown={(e) => {
                                                 e.stopPropagation();
                                                 handleMouseDown(e, dir);
@@ -576,8 +552,8 @@ export default function CropImageTool({ isDarkMode }) {
                                     );
                                 })}
                             </div>
-                        )}
-                    </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

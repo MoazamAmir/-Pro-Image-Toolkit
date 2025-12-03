@@ -125,24 +125,25 @@ const App = () => {
 
   const Header = () => (
     <header className={`${darkMode ? 'bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900' : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600'} shadow-2xl sticky top-0 z-50 transition-all duration-500 backdrop-blur-sm`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-14 sm:h-16">
           <div className="flex items-center cursor-pointer group" onClick={() => { setActiveConverter(null); setSelectedFile(null); setConvertedFile(null); }}>
             <div className="relative">
-              <Zap className="w-8 h-8 text-yellow-400 mr-3 group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 animate-glow" />
+              <Zap className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-400 mr-2 sm:mr-3 group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 animate-glow" />
               <div className="absolute inset-0 bg-yellow-400 blur-2xl opacity-30 group-hover:opacity-60 transition-opacity duration-300 animate-pulse-soft"></div>
             </div>
-            <span className="text-xl font-bold text-white group-hover:text-yellow-300 transition-all duration-300 tracking-tight">Pro Image Toolkit</span>
+            <span className="text-base sm:text-xl font-bold text-white group-hover:text-yellow-300 transition-all duration-300 tracking-tight">Pro Image Toolkit</span>
           </div>
-          <nav className="flex space-x-8">
+          <nav className="flex space-x-2 sm:space-x-8">
             <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} ref={dropdownRef}>
-              <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-300' : 'text-white hover:text-yellow-200'} px-4 py-2 text-sm font-semibold flex items-center transition-all duration-300 rounded-lg hover:bg-white/10`}>
-                Convert Tools
-                <svg className={`ml-2 w-4 h-4 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-300' : 'text-white hover:text-yellow-200'} px-2 sm:px-4 py-2 text-xs sm:text-sm font-semibold flex items-center transition-all duration-300 rounded-lg hover:bg-white/10`}>
+                <span className="hidden sm:inline">Convert Tools</span>
+                <span className="sm:hidden">Tools</span>
+                <svg className={`ml-1 sm:ml-2 w-3 h-3 sm:w-4 sm:h-4 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
               {showDropdown && (
                 <div
-                  className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-3 ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-xl shadow-premium-lg rounded-2xl border-2 z-50 w-[1200px] animate-slideDown`}
+                  className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-2 sm:mt-3 ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-xl shadow-premium-lg rounded-xl sm:rounded-2xl border-2 z-50 w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px] max-h-[80vh] overflow-y-auto animate-slideDown`}
                   style={{
                     animation: 'slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
@@ -159,17 +160,17 @@ const App = () => {
                       }
                     }
                   `}</style>
-                  <div className="p-8">
-                    <div className="grid grid-cols-5 gap-8">
+                  <div className="p-4 sm:p-6 md:p-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 md:gap-8">
                       {Object.entries(converters).map(([category, items]) => (
-                        <div key={category} className="space-y-3">
-                          <div className="flex items-center mb-4 pb-3 border-b-2 border-gradient-to-r from-purple-500 to-blue-500">
-                            {category === 'Video & Audio' && <Film className={`w-5 h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />}
-                            {category === 'Image' && <Image className={`w-5 h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
-                            {category === 'PDF & Documents' && <FileText className={`w-5 h-5 mr-2 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />}
-                            {category === 'GIF & Animation' && <Grid3x3 className={`w-5 h-5 mr-2 ${darkMode ? 'text-pink-400' : 'text-pink-600'}`} />}
-                            {category === 'Advanced' && <Settings className={`w-5 h-5 mr-2 ${darkMode ? 'text-violet-400' : 'text-violet-600'}`} />}
-                            <h3 className={`font-bold text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{category}</h3>
+                        <div key={category} className="space-y-2 sm:space-y-3">
+                          <div className="flex items-center mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2 border-gradient-to-r from-purple-500 to-blue-500">
+                            {category === 'Video & Audio' && <Film className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />}
+                            {category === 'Image' && <Image className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
+                            {category === 'PDF & Documents' && <FileText className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />}
+                            {category === 'GIF & Animation' && <Grid3x3 className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-pink-400' : 'text-pink-600'}`} />}
+                            {category === 'Advanced' && <Settings className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-violet-400' : 'text-violet-600'}`} />}
+                            <h3 className={`font-bold text-xs sm:text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{category}</h3>
                           </div>
                           <ul className="space-y-2">
                             {items.map((item) => (
@@ -182,7 +183,7 @@ const App = () => {
                                     setConvertedFile(null);
                                     setPreviewUrl(null);
                                   }}
-                                  className={`text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600' : 'text-gray-700 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50'} w-full text-left py-2.5 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg font-medium hover-lift`}
+                                  className={`text-xs sm:text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600' : 'text-gray-700 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50'} w-full text-left py-2 sm:py-2.5 px-2 sm:px-3 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg font-medium hover-lift`}
                                 >
                                   {item.name}
                                 </button>
@@ -197,14 +198,14 @@ const App = () => {
               )}
             </div>
           </nav>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className={`p-2.5 rounded-xl ${darkMode ? 'bg-gray-700/50 hover:bg-gray-600/50' : 'bg-white/20 hover:bg-white/30'} transition-all duration-300 hover:scale-110 transform backdrop-blur-sm`}
+              className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl ${darkMode ? 'bg-gray-700/50 hover:bg-gray-600/50' : 'bg-white/20 hover:bg-white/30'} transition-all duration-300 hover:scale-110 transform backdrop-blur-sm`}
             >
-              {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-white" />}
+              {darkMode ? <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
             </button>
-            <span className={`text-xs font-bold ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white' : 'bg-white/20 text-white'} px-4 py-1.5 rounded-full backdrop-blur-sm`}>⚡ Fast & Free</span>
+            <span className={`hidden sm:inline text-xs font-bold ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white' : 'bg-white/20 text-white'} px-3 sm:px-4 py-1 sm:py-1.5 rounded-full backdrop-blur-sm`}>⚡ Fast & Free</span>
           </div>
         </div>
       </div>
@@ -1411,17 +1412,17 @@ const App = () => {
   const ConverterUI = () => {
     if (!activeConverter) {
       return (
-        <div className="text-center py-20 animate-fadeIn">
-          <h1 className={`text-6xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-3 tracking-tight`}>
+        <div className="text-center py-10 sm:py-16 md:py-20 animate-fadeIn">
+          <h1 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 sm:mb-3 tracking-tight px-4`}>
             Pro Image <span className="gradient-text">Toolkit</span>
           </h1>
-          <p className={`text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3 font-medium`}>Convert files instantly online</p>
-          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-12 text-lg`}>34+ tools • No uploads • No registration</p>
-          <div className="max-w-3xl mx-auto">
-            <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-300 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-500'} rounded-2xl p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
-              <Zap className={`w-24 h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-6 animate-float`} />
-              <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-4 text-xl font-bold`}>Select a converter from the menu</p>
-              <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert images, videos, PDFs, audio and more in your browser</p>
+          <p className={`text-lg sm:text-xl md:text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2 sm:mb-3 font-medium px-4`}>Convert files instantly online</p>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-8 sm:mb-12 text-sm sm:text-base md:text-lg px-4`}>34+ tools • No uploads • No registration</p>
+          <div className="max-w-3xl mx-auto px-4">
+            <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-300 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-500'} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+              <Zap className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-4 sm:mb-6 animate-float`} />
+              <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-3 sm:mb-4 text-base sm:text-lg md:text-xl font-bold`}>Select a converter from the menu</p>
+              <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert images, videos, PDFs, audio and more in your browser</p>
             </div>
           </div>
           {/* <div className="grid grid-cols-5 gap-6 max-w-5xl mx-auto mt-20">
@@ -1444,15 +1445,15 @@ const App = () => {
 
     const to = activeConverter.to;
     return (
-      <div className="text-center py-10 animate-fadeIn">
-        <h1 className={`text-5xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-3 tracking-tight`}>{activeConverter.name}</h1>
-        <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8 text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
+      <div className="text-center py-6 sm:py-8 md:py-10 animate-fadeIn px-4">
+        <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 sm:mb-3 tracking-tight`}>{activeConverter.name}</h1>
+        <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-6 sm:mb-8 text-base sm:text-lg md:text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
         <div className="max-w-2xl mx-auto">
           {/* Watermark Customization Controls - Only show for watermark tool */}
           {to === 'watermark' && !selectedFile && !convertedFile && (
-            <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-2xl p-6 mb-6 shadow-premium`}>
-              <h3 className={`font-bold text-xl mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
-                <Settings className="w-5 h-5 mr-2" />
+            <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
+              <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                 Customize Watermark
               </h3>
 
@@ -1488,7 +1489,7 @@ const App = () => {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 {/* Font Size */}
                 <div>
                   <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
@@ -1569,13 +1570,13 @@ const App = () => {
           )}
 
           {!selectedFile && !convertedFile && (
-            <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-600'} rounded-2xl p-16 cursor-pointer transition-all duration-500 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+            <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-600'} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 cursor-pointer transition-all duration-500 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
               <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" accept={activeConverter.accept} multiple={activeConverter.multiple} />
-              <Upload className={`w-24 h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-6 animate-float`} />
-              <button className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} text-white px-12 py-5 rounded-xl font-bold text-lg inline-flex items-center shadow-premium transition-all duration-300 hover:scale-105`}>
-                <Upload className="w-6 h-6 mr-3" />Choose File
+              <Upload className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-4 sm:mb-6 animate-float`} />
+              <button className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} text-white px-6 sm:px-8 md:px-12 py-3 sm:py-4 md:py-5 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg inline-flex items-center shadow-premium transition-all duration-300 hover:scale-105`}>
+                <Upload className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3" />Choose File
               </button>
-              <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-5 font-medium`}>or drag and drop</p>
+              <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-4 sm:mt-5 font-medium`}>or drag and drop</p>
             </div>
           )}
           {to === 'resize' && !convertedFile && (
@@ -1609,7 +1610,7 @@ const App = () => {
                 <svg className={`w-10 h-10 mx-7 ${darkMode ? 'text-purple-400' : 'text-purple-500'} animate-pulse-soft`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                 <span className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gradient-to-r from-purple-500 to-blue-600'} text-white px-7 py-3 rounded-full text-sm font-bold shadow-lg`}>{activeConverter.to.toUpperCase()}</span>
               </div>
-              <button onClick={handleConvert} disabled={isConverting || ffmpegLoading} className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-5 rounded-xl font-bold text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}>
+              <button onClick={handleConvert} disabled={isConverting || ffmpegLoading} className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}>
                 {ffmpegLoading ? '⏳ Loading Converter...' : isConverting ? '⚙️ Converting...' : '🚀 Convert Now'}
               </button>
             </div>
@@ -1660,11 +1661,11 @@ const App = () => {
                 </p>
               </div>
 
-              <div className="flex gap-4">
-                <button onClick={handleDownload} className={`flex-1 ${darkMode ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700' : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'} text-white px-6 py-5 rounded-xl font-bold text-xl flex items-center justify-center shadow-premium transition-all duration-300 hover:scale-105 transform`}>
-                  <Download className="w-7 h-7 mr-3" />Download
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <button onClick={handleDownload} className={`flex-1 ${darkMode ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700' : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'} text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl flex items-center justify-center shadow-premium transition-all duration-300 hover:scale-105 transform`}>
+                  <Download className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 mr-2 sm:mr-3" />Download
                 </button>
-                <button onClick={() => { setSelectedFile(null); setConvertedFile(null); setPreviewUrl(null); setCustomFileName(''); }} className={`flex-1 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} px-6 py-5 rounded-xl font-bold text-xl transition-all duration-300 hover:scale-105 transform`}>
+                <button onClick={() => { setSelectedFile(null); setConvertedFile(null); setPreviewUrl(null); setCustomFileName(''); }} className={`flex-1 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 hover:scale-105 transform`}>
                   ↻ Convert Another
                 </button>
               </div>
@@ -1678,20 +1679,20 @@ const App = () => {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-purple-50 to-blue-50'} flex flex-col transition-all duration-500`}>
       <Header />
-      <main className="flex-grow max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+      <main className="flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full">
         <ConverterUI />
       </main>
-      <footer className={`${darkMode ? 'bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 border-t border-purple-500/20' : 'bg-gradient-to-r from-gray-900 via-purple-900 to-indigo-900'} text-white mt-20 transition-all duration-500 shadow-2xl`}>
-        <div className="max-w-6xl mx-auto px-4 py-12 text-center">
-          <div className="mb-4">
-            <Zap className="w-10 h-10 text-yellow-400 mx-auto mb-3 animate-glow" />
+      <footer className={`${darkMode ? 'bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 border-t border-purple-500/20' : 'bg-gradient-to-r from-gray-900 via-purple-900 to-indigo-900'} text-white mt-12 sm:mt-16 md:mt-20 transition-all duration-500 shadow-2xl`}>
+        <div className="max-w-6xl mx-auto px-4 py-8 sm:py-10 md:py-12 text-center">
+          <div className="mb-3 sm:mb-4">
+            <Zap className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400 mx-auto mb-2 sm:mb-3 animate-glow" />
           </div>
-          <p className="mb-2 font-bold text-lg">© 2025 Pro Image Toolkit • Fast • Free • No Uploads Required</p>
-          <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-300'}`}>All conversions happen locally in your browser</p>
-          <div className="mt-6 flex justify-center gap-3">
-            <span className="px-4 py-2 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm">🔒 Secure</span>
-            <span className="px-4 py-2 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm">⚡ Instant</span>
-            <span className="px-4 py-2 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm">🌐 Offline</span>
+          <p className="mb-2 font-bold text-sm sm:text-base md:text-lg px-4">© 2025 Pro Image Toolkit • Fast • Free • No Uploads Required</p>
+          <p className={`text-xs sm:text-sm md:text-base ${darkMode ? 'text-gray-400' : 'text-gray-300'} px-4`}>All conversions happen locally in your browser</p>
+          <div className="mt-4 sm:mt-6 flex flex-wrap justify-center gap-2 sm:gap-3 px-4">
+            <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white/10 rounded-full text-xs sm:text-sm font-medium backdrop-blur-sm">🔒 Secure</span>
+            <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white/10 rounded-full text-xs sm:text-sm font-medium backdrop-blur-sm">⚡ Instant</span>
+            <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white/10 rounded-full text-xs sm:text-sm font-medium backdrop-blur-sm">🌐 Offline</span>
           </div>
         </div>
       </footer>

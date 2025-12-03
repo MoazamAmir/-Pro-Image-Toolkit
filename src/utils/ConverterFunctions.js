@@ -236,7 +236,7 @@ export const cropImage = (file) => {
     });
 };
 
-export const adjustBrightness = (file) => {
+export const adjustBrightness = (file, brightnessValue = 100, contrastValue = 100) => {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -249,8 +249,13 @@ export const adjustBrightness = (file) => {
                 ctx.drawImage(img, 0, 0);
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
-                const brightness = 30;
-                const contrast = 1.2;
+
+                // Convert percentage values to actual values
+                // Brightness: 0-200 mapped to -128 to +128
+                const brightness = (brightnessValue - 100) * 1.28;
+                // Contrast: 0-200 mapped to 0 to 2
+                const contrast = contrastValue / 100;
+
                 for (let i = 0; i < data.length; i += 4) {
                     data[i] = Math.min(255, Math.max(0, ((data[i] - 128) * contrast + 128) + brightness));
                     data[i + 1] = Math.min(255, Math.max(0, ((data[i + 1] - 128) * contrast + 128) + brightness));
@@ -258,7 +263,15 @@ export const adjustBrightness = (file) => {
                 }
                 ctx.putImageData(imageData, 0, 0);
                 canvas.toBlob((blob) => {
-                    resolve({ url: URL.createObjectURL(blob), name: 'adjusted.png', blob, type: 'image/png', note: 'Brightness +30, Contrast +20%' });
+                    const brightnessLabel = brightnessValue > 100 ? `+${brightnessValue - 100}` : brightnessValue < 100 ? `${brightnessValue - 100}` : '0';
+                    const contrastLabel = contrastValue > 100 ? `+${contrastValue - 100}` : contrastValue < 100 ? `${contrastValue - 100}` : '0';
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: 'adjusted.png',
+                        blob,
+                        type: 'image/png',
+                        note: `Brightness ${brightnessLabel}%, Contrast ${contrastLabel}%`
+                    });
                 }, 'image/png');
             };
             img.src = e.target.result;

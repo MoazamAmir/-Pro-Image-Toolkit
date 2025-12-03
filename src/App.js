@@ -57,6 +57,10 @@ const App = () => {
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.5);
   const [watermarkColor, setWatermarkColor] = useState('#FFFFFF');
 
+  // Brightness/Contrast
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
@@ -246,7 +250,7 @@ const App = () => {
       else if (to === 'compress') result = await compressImage(selectedFile);
       else if (to === 'resize') result = await resizeImage(selectedFile, resizeWidth, resizeHeight);
       else if (to === 'crop') result = await cropImage(selectedFile);
-      else if (to === 'brightness') result = await adjustBrightness(selectedFile);
+      else if (to === 'brightness') result = await adjustBrightness(selectedFile, brightness, contrast);
       else if (to === 'blur') result = await blurImage(selectedFile);
       else if (to === 'sharpen') result = await sharpenImage(selectedFile);
       else if (to === 'watermark') {
@@ -408,6 +412,10 @@ const App = () => {
           setWatermarkOpacity={setWatermarkOpacity}
           watermarkColor={watermarkColor}
           setWatermarkColor={setWatermarkColor}
+          brightness={brightness}
+          setBrightness={setBrightness}
+          contrast={contrast}
+          setContrast={setContrast}
         />
       </main>
       <Footer darkMode={darkMode} />

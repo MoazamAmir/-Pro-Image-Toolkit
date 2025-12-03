@@ -1,5 +1,5 @@
 // src/components/ConverterUI.js
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Upload, FileText, X, Download, CheckCircle, Settings, Zap, Edit2 } from 'lucide-react';
 import CropImageTool from './CropImageTool';
 
@@ -38,7 +38,49 @@ const ConverterUI = ({
     setWatermarkOpacity,
     watermarkColor,
     setWatermarkColor,
+    brightness,
+    setBrightness,
+    contrast,
+    setContrast,
 }) => {
+    // State for live preview
+
+    const to = activeConverter?.to;
+    // State for live preview
+    const [livePreview, setLivePreview] = useState(null);
+
+    // Apply brightness/contrast to create live preview
+    useEffect(() => {
+        if (to === 'brightness' && previewUrl && selectedFile) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                // Convert percentage values
+                const brightnessVal = (brightness - 100) * 1.28;
+                const contrastVal = contrast / 100;
+
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = Math.min(255, Math.max(0, ((data[i] - 128) * contrastVal + 128) + brightnessVal));
+                    data[i + 1] = Math.min(255, Math.max(0, ((data[i + 1] - 128) * contrastVal + 128) + brightnessVal));
+                    data[i + 2] = Math.min(255, Math.max(0, ((data[i + 2] - 128) * contrastVal + 128) + brightnessVal));
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+                setLivePreview(canvas.toDataURL('image/png'));
+            };
+            img.src = previewUrl;
+        }
+    }, [brightness, contrast, previewUrl, selectedFile, to]);
+
     // Theme classes based on darkMode
     const theme = {
         border: darkMode ? 'border-purple-500/50' : 'border-purple-400',
@@ -80,13 +122,52 @@ const ConverterUI = ({
         return <CropImageTool isDarkMode={darkMode} />;
     }
 
-    const to = activeConverter.to;
+    // const to = activeConverter.to;
 
     return (
         <div className="text-center py-6 sm:py-8 md:py-10 animate-fadeIn px-4">
             <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 sm:mb-3 tracking-tight`}>{activeConverter.name}</h1>
             <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-6 sm:mb-8 text-base sm:text-lg md:text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
             <div className="max-w-2xl mx-auto">
+                {to === 'brightness' && selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
+                        <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                            Adjust Brightness & Contrast
+                        </h3>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Brightness: {brightness}%</label>
+                            <input
+                                type="range"
+                                min="0"
+                                max="200"
+                                value={brightness}
+                                onChange={(e) => setBrightness(parseInt(e.target.value))}
+                                className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Contrast: {contrast}%</label>
+                            <input
+                                type="range"
+                                min="0"
+                                max="200"
+                                value={contrast}
+                                onChange={(e) => setContrast(parseInt(e.target.value))}
+                                className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                            />
+                        </div>
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => { setBrightness(100); setContrast(100); }}
+                                className={`px-4 py-2 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} transition-all`}
+                            >
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {to === 'watermark' && !selectedFile && !convertedFile && (
                     <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
                         <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
@@ -159,7 +240,6 @@ const ConverterUI = ({
                     </div>
                 )}
 
-                {/* 👇 نیا اپلوڈ ایریا یہاں شامل کیا گیا ہے */}
                 {!selectedFile && !convertedFile && (
                     <div className="max-w-3xl mx-auto mb-20">
                         <div
@@ -226,7 +306,20 @@ const ConverterUI = ({
                             </div>
                             <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className={`${darkMode ? 'text-gray-400 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'} transition-all p-2 rounded-lg`}><X className="w-6 h-6" /></button>
                         </div>
-                        {previewUrl && selectedFile?.type?.startsWith('image/') && <img src={previewUrl} alt="Preview" className="max-h-72 mx-auto rounded-xl mb-6 border-2 shadow-lg" />}
+                        {previewUrl && selectedFile?.type?.startsWith('image/') && (
+                            <div className="relative mb-6">
+                                <img
+                                    src={to === 'brightness' && livePreview ? livePreview : previewUrl}
+                                    alt="Preview"
+                                    className="max-h-72 mx-auto rounded-xl border-2 shadow-lg transition-all duration-200"
+                                />
+                                {to === 'brightness' && livePreview && (
+                                    <div className={`absolute top-2 left-2 ${darkMode ? 'bg-black/70' : 'bg-white/70'} backdrop-blur-sm px-3 py-1 rounded-lg text-xs font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Live Preview
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {previewUrl && selectedFile?.type?.startsWith('video/') && <video src={previewUrl} controls className="max-h-72 mx-auto rounded-xl mb-6 w-full shadow-lg" />}
                         {previewUrl && selectedFile?.type?.startsWith('audio/') && <audio src={previewUrl} controls className="mx-auto mb-6 w-full" />}
                         <div className="flex items-center justify-center mb-8">
@@ -239,7 +332,7 @@ const ConverterUI = ({
                             disabled={isConverting || ffmpegLoading}
                             className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}
                         >
-                            {ffmpegLoading ? '⏳ Loading Converter...' : isConverting ? '⚙️ Converting...' : '🚀 Convert Now'}
+                            {ffmpegLoading ? 'Loading Converter...' : isConverting ? 'Converting...' : 'Convert Now'}
                         </button>
                     </div>
                 )}
@@ -289,7 +382,7 @@ const ConverterUI = ({
                                 <Download className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 mr-2 sm:mr-3" />Download
                             </button>
                             <button onClick={() => { setSelectedFile(null); setConvertedFile(null); setPreviewUrl(null); setCustomFileName(''); }} className={`flex-1 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 hover:scale-105 transform`}>
-                                ↻ Convert Another
+                                Convert Another
                             </button>
                         </div>
                     </div>

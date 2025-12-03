@@ -1,0 +1,248 @@
+// src/components/ConverterUI.js
+import React from 'react';
+import { Upload, FileText, X, Download, CheckCircle, Settings, Zap, Edit2 } from 'lucide-react';
+import CropImageTool from './CropImageTool';
+
+const ConverterUI = ({
+    activeConverter,
+    selectedFile,
+    convertedFile,
+    isConverting,
+    previewUrl,
+    darkMode,
+    resizeWidth,
+    resizeHeight,
+    setResizeWidth,
+    setResizeHeight,
+    fileInputRef,
+    handleFileSelect,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handleConvert,
+    handleDownload,
+    setSelectedFile,
+    setPreviewUrl,
+    setConvertedFile,
+    customFileName,
+    setCustomFileName,
+    ffmpegLoading,
+    watermarkText,
+    setWatermarkText,
+    watermarkPosition,
+    setWatermarkPosition,
+    watermarkFontSize,
+    setWatermarkFontSize,
+    watermarkOpacity,
+    setWatermarkOpacity,
+    watermarkColor,
+    setWatermarkColor,
+}) => {
+    if (!activeConverter) {
+        return (
+            <div className="text-center py-10 sm:py-16 md:py-20 animate-fadeIn">
+                <h1 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 sm:mb-3 tracking-tight px-4`}>
+                    Pro Image <span className="gradient-text">Toolkit</span>
+                </h1>
+                <p className={`text-lg sm:text-xl md:text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2 sm:mb-3 font-medium px-4`}>Convert files instantly online</p>
+                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-8 sm:mb-12 text-sm sm:text-base md:text-lg px-4`}>34+ tools • No uploads • No registration</p>
+                <div className="max-w-3xl mx-auto px-4">
+                    <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-300 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-500'} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+                        <Zap className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-4 sm:mb-6 animate-float`} />
+                        <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-3 sm:mb-4 text-base sm:text-lg md:text-xl font-bold`}>Select a converter from the menu</p>
+                        <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert images, videos, PDFs, audio and more in your browser</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (activeConverter.to === 'crop') {
+        return <CropImageTool isDarkMode={darkMode} />;
+    }
+
+    const to = activeConverter.to;
+
+    return (
+        <div className="text-center py-6 sm:py-8 md:py-10 animate-fadeIn px-4">
+            <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 sm:mb-3 tracking-tight`}>{activeConverter.name}</h1>
+            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-6 sm:mb-8 text-base sm:text-lg md:text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
+            <div className="max-w-2xl mx-auto">
+                {to === 'watermark' && !selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
+                        <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                            Customize Watermark
+                        </h3>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Watermark Text</label>
+                            <input
+                                type="text"
+                                value={watermarkText}
+                                onChange={(e) => setWatermarkText(e.target.value)}
+                                placeholder="Enter watermark text"
+                                className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500' : 'border-gray-300 focus:border-purple-500'} focus:outline-none transition-all font-medium`}
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Position</label>
+                            <select
+                                value={watermarkPosition}
+                                onChange={(e) => setWatermarkPosition(e.target.value)}
+                                className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500' : 'border-gray-300 focus:border-purple-500'} focus:outline-none transition-all font-medium`}
+                            >
+                                <option value="top-left">Top Left</option>
+                                <option value="top-right">Top Right</option>
+                                <option value="bottom-left">Bottom Left</option>
+                                <option value="bottom-right">Bottom Right</option>
+                                <option value="center">Center</option>
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Font Size: {watermarkFontSize}px</label>
+                                <input type="range" min="10" max="100" value={watermarkFontSize} onChange={(e) => setWatermarkFontSize(parseInt(e.target.value))} className="w-full" />
+                            </div>
+                            <div>
+                                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Opacity: {Math.round(watermarkOpacity * 100)}%</label>
+                                <input type="range" min="0" max="1" step="0.1" value={watermarkOpacity} onChange={(e) => setWatermarkOpacity(parseFloat(e.target.value))} className="w-full" />
+                            </div>
+                        </div>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Color</label>
+                            <div className="flex items-center gap-3">
+                                <input type="color" value={watermarkColor} onChange={(e) => setWatermarkColor(e.target.value)} className="h-12 w-20 rounded-lg cursor-pointer border-2 border-gray-300" />
+                                <input type="text" value={watermarkColor} onChange={(e) => setWatermarkColor(e.target.value)} className={`flex-1 p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-mono`} />
+                            </div>
+                        </div>
+                        <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-lg p-4 border-2 ${darkMode ? 'border-gray-600' : 'border-purple-200'}`}>
+                            <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</p>
+                            <div className="relative bg-gray-900 rounded-lg h-32 flex items-center justify-center overflow-hidden">
+                                <span
+                                    style={{
+                                        fontSize: `${watermarkFontSize * 0.5}px`,
+                                        color: watermarkColor,
+                                        opacity: watermarkOpacity,
+                                        fontWeight: 'bold',
+                                        position: 'absolute',
+                                        ...(watermarkPosition === 'top-left' && { top: '10px', left: '10px' }),
+                                        ...(watermarkPosition === 'top-right' && { top: '10px', right: '10px' }),
+                                        ...(watermarkPosition === 'bottom-left' && { bottom: '10px', left: '10px' }),
+                                        ...(watermarkPosition === 'bottom-right' && { bottom: '10px', right: '10px' }),
+                                        ...(watermarkPosition === 'center' && { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' })
+                                    }}
+                                >
+                                    {watermarkText || 'Your Watermark'}
+                                </span>
+                                <span className="text-gray-500 text-sm">Sample Image</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {!selectedFile && !convertedFile && (
+                    <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-600'} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 cursor-pointer transition-all duration-500 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+                        <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" accept={activeConverter.accept} multiple={activeConverter.multiple} />
+                        <Upload className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-4 sm:mb-6 animate-float`} />
+                        <button className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} text-white px-6 sm:px-8 md:px-12 py-3 sm:py-4 md:py-5 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg inline-flex items-center shadow-premium transition-all duration-300 hover:scale-105`}>
+                            <Upload className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3" />Choose File
+                        </button>
+                        <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-4 sm:mt-5 font-medium`}>or drag and drop</p>
+                    </div>
+                )}
+
+                {to === 'resize' && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'} rounded-xl p-6 mb-6 shadow-lg border`}>
+                        <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Image Dimensions</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="number" value={resizeWidth} onChange={(e) => setResizeWidth(parseInt(e.target.value))} placeholder="Width" className={`${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border'} rounded-lg p-3 font-semibold`} />
+                            <input type="number" value={resizeHeight} onChange={(e) => setResizeHeight(parseInt(e.target.value))} placeholder="Height" className={`${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border'} rounded-lg p-3 font-semibold`} />
+                        </div>
+                    </div>
+                )}
+
+                {selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-2xl p-8 shadow-premium animate-scaleIn`}>
+                        <div className={`flex items-center justify-between mb-6 p-5 ${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-xl`}>
+                            <div className="flex items-center">
+                                <div className={`w-16 h-16 ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'} rounded-xl flex items-center justify-center mr-4 shadow-lg`}>
+                                    <FileText className={`w-9 h-9 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
+                                </div>
+                                <div className="text-left">
+                                    <p className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{Array.isArray(selectedFile) ? `${selectedFile.length} files` : selectedFile.name}</p>
+                                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'} font-medium`}>{Array.isArray(selectedFile) ? '' : (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className={`${darkMode ? 'text-gray-400 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'} transition-all p-2 rounded-lg`}><X className="w-6 h-6" /></button>
+                        </div>
+                        {previewUrl && selectedFile?.type?.startsWith('image/') && <img src={previewUrl} alt="Preview" className="max-h-72 mx-auto rounded-xl mb-6 border-2 shadow-lg" />}
+                        {previewUrl && selectedFile?.type?.startsWith('video/') && <video src={previewUrl} controls className="max-h-72 mx-auto rounded-xl mb-6 w-full shadow-lg" />}
+                        {previewUrl && selectedFile?.type?.startsWith('audio/') && <audio src={previewUrl} controls className="mx-auto mb-6 w-full" />}
+                        <div className="flex items-center justify-center mb-8">
+                            <span className={`${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'} px-7 py-3 rounded-full text-sm font-bold shadow-md`}>{activeConverter.from.toUpperCase()}</span>
+                            <svg className={`w-10 h-10 mx-7 ${darkMode ? 'text-purple-400' : 'text-purple-500'} animate-pulse-soft`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                            <span className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gradient-to-r from-purple-500 to-blue-600'} text-white px-7 py-3 rounded-full text-sm font-bold shadow-lg`}>{activeConverter.to.toUpperCase()}</span>
+                        </div>
+                        <button onClick={handleConvert} disabled={isConverting || ffmpegLoading} className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}>
+                            {ffmpegLoading ? '⏳ Loading Converter...' : isConverting ? '⚙️ Converting...' : '🚀 Convert Now'}
+                        </button>
+                    </div>
+                )}
+
+                {convertedFile && (
+                    <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-green-500/30' : 'bg-white border-green-200'} border-2 rounded-2xl p-10 shadow-premium-lg animate-scaleIn`}>
+                        <div className={`w-24 h-24 ${darkMode ? 'bg-gradient-to-br from-green-900 to-green-800' : 'bg-gradient-to-br from-green-100 to-emerald-100'} rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg animate-scaleIn`}>
+                            <CheckCircle className={`w-14 h-14 ${darkMode ? 'text-green-400' : 'text-green-500'} animate-pulse-soft`} />
+                        </div>
+                        <h3 className={`text-3xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 tracking-tight`}>✅ Conversion Complete!</h3>
+                        <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8 text-lg`}>Your file is ready to download</p>
+                        {convertedFile.type?.startsWith('image/') && <img src={convertedFile.url} alt="Result" className="max-h-80 mx-auto rounded-xl mb-6 border-2 shadow-premium" />}
+                        {convertedFile.preview && <img src={convertedFile.preview} alt="Preview" className="max-h-80 mx-auto rounded-xl mb-6 border-2 shadow-premium" />}
+                        {convertedFile.type?.startsWith('audio/') && <audio src={convertedFile.url} controls className="mx-auto mb-6 w-full" />}
+                        {convertedFile.base64 && <textarea readOnly value={convertedFile.base64} className={`w-full h-32 text-xs p-4 border-2 rounded-xl mb-6 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-50 border-gray-200'} font-mono`} />}
+                        {convertedFile.originalSize && convertedFile.compressedSize && (
+                            <div className={`${darkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-500'} border-l-4 p-5 mb-6 rounded-lg`}>
+                                <p className={`text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-semibold`}>📊 Compression: <span className="font-bold text-blue-500">{((1 - convertedFile.compressedSize / convertedFile.originalSize) * 100).toFixed(1)}%</span> smaller</p>
+                            </div>
+                        )}
+                        {convertedFile.note && <p className={`text-base mb-6 p-4 rounded-xl border-2 ${darkMode ? 'text-amber-400 bg-amber-900/30 border-amber-700' : 'text-amber-700 bg-amber-50 border-amber-200'} font-medium`}>ℹ️ {convertedFile.note}</p>}
+                        <div className={`mb-7 p-6 rounded-xl ${darkMode ? 'bg-gray-700/50 border-2 border-gray-600' : 'bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200'} shadow-lg`}>
+                            <div className="flex items-center mb-3">
+                                <Edit2 className={`w-5 h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
+                                <label className={`text-sm font-bold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Customize File Name</label>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    value={customFileName}
+                                    onChange={(e) => setCustomFileName(e.target.value)}
+                                    placeholder={`Enter filename (without extension)`}
+                                    className={`w-full p-4 rounded-xl border-2 ${darkMode
+                                        ? 'bg-gray-800 text-white border-gray-600 focus:border-purple-500 placeholder-gray-500'
+                                        : 'bg-white border-purple-300 focus:border-purple-500 placeholder-gray-400'
+                                        } focus:outline-none font-medium text-base shadow-inner`}
+                                    autoComplete="off"
+                                />
+                                <span className={`absolute right-4 top-1/2 -translate-y-1/2 text-base font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    .{convertedFile.name.split('.').pop()}
+                                </span>
+                            </div>
+                            <p className={`text-sm mt-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'} font-medium`}>💡 File extension will be added automatically</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                            <button onClick={handleDownload} className={`flex-1 ${darkMode ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700' : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'} text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl flex items-center justify-center shadow-premium transition-all duration-300 hover:scale-105 transform`}>
+                                <Download className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 mr-2 sm:mr-3" />Download
+                            </button>
+                            <button onClick={() => { setSelectedFile(null); setConvertedFile(null); setPreviewUrl(null); setCustomFileName(''); }} className={`flex-1 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all duration-300 hover:scale-105 transform`}>
+                                ↻ Convert Another
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default ConverterUI;

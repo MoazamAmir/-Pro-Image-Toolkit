@@ -1650,7 +1650,29 @@ const App = () => {
                     className={`w-full p-4 rounded-xl border-2 ${darkMode
                       ? 'bg-gray-800 text-white border-gray-600 focus:border-purple-500 placeholder-gray-500'
                       : 'bg-white border-purple-300 focus:border-purple-500 placeholder-gray-400'
-                      } focus:outline-none transition-all font-medium text-base shadow-inner`}
+                      } focus:outline-none font-medium text-base shadow-inner`}
+                    autoComplete="off"
+                    style={{ transition: 'none' }}
+                    onFocus={(e) => {
+                      const scrollY = window.scrollY;
+                      const scrollX = window.scrollX;
+                      setTimeout(() => {
+                        window.scrollTo(scrollX, scrollY);
+                      }, 0);
+                    }}
+                    onBlur={(e) => {
+                      const scrollY = window.scrollY;
+                      const scrollX = window.scrollX;
+                      window.scrollTo(scrollX, scrollY);
+                    }}
+                    onInput={(e) => {
+                      const scrollY = window.scrollY;
+                      const scrollX = window.scrollX;
+                      window.scrollTo(scrollX, scrollY);
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                    }}
                   />
                   <span className={`absolute right-4 top-1/2 -translate-y-1/2 text-base font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     .{convertedFile.name.split('.').pop()}

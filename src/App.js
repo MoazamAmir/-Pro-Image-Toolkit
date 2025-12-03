@@ -1,6 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { Upload, Image, FileText, Film, Grid3x3, X, Download, CheckCircle, Music, Settings, Zap, Moon, Sun } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, Image, FileText, Film, Grid3x3, X, Download, CheckCircle, Music, Settings, Zap, Moon, Sun, Edit2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 const App = () => {
   const [activeConverter, setActiveConverter] = useState(null);
@@ -14,11 +16,45 @@ const App = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [showToolDropdown, setShowToolDropdown] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  // New state for custom filename
   const [customFileName, setCustomFileName] = useState('');
+  const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
+  const [ffmpegLoading, setFfmpegLoading] = useState(false);
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
   const toolDropdownRef = useRef(null);
+  const ffmpegRef = useRef(new FFmpeg());
+
+  // Auto-populate filename when file is converted
+  useEffect(() => {
+    if (convertedFile && convertedFile.name) {
+      // Remove extension from the default name
+      const nameWithoutExt = convertedFile.name.replace(/\.[^/.]+$/, '');
+      setCustomFileName(nameWithoutExt);
+    }
+  }, [convertedFile]);
+
+  // Initialize FFmpeg
+  const loadFFmpeg = async () => {
+    if (ffmpegLoaded || ffmpegLoading) return;
+    setFfmpegLoading(true);
+    try {
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+      const ffmpeg = ffmpegRef.current;
+      ffmpeg.on('log', ({ message }) => {
+        console.log(message);
+      });
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      setFfmpegLoaded(true);
+    } catch (error) {
+      console.error('FFmpeg failed to load:', error);
+      alert('Failed to load video/audio converter. Please refresh the page.');
+    } finally {
+      setFfmpegLoading(false);
+    }
+  };
   const converters = {
     'Image': [
       { name: 'PNG to JPG', from: 'png', to: 'jpg', accept: 'image/png' },
@@ -74,29 +110,27 @@ const App = () => {
   };
 
   const Header = () => (
-    <header className={`${darkMode ? 'bg-gradient-to-r from-gray-800 to-gray-900' : 'bg-gradient-to-r from-blue-600 to-indigo-700'} shadow-2xl sticky top-0 z-50 transition-all duration-300`}>
+    <header className={`${darkMode ? 'bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900' : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600'} shadow-2xl sticky top-0 z-50 transition-all duration-500 backdrop-blur-sm`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center cursor-pointer group" onClick={() => { setActiveConverter(null); setSelectedFile(null); setConvertedFile(null); }}>
             <div className="relative">
-              <Zap className="w-8 h-8 text-yellow-400 mr-3 group-hover:scale-110 transition-transform" />
-              <div className="absolute inset-0 bg-yellow-400 blur-xl opacity-20 group-hover:opacity-40 transition-opacity"></div>
+              <Zap className="w-8 h-8 text-yellow-400 mr-3 group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 animate-glow" />
+              <div className="absolute inset-0 bg-yellow-400 blur-2xl opacity-30 group-hover:opacity-60 transition-opacity duration-300 animate-pulse-soft"></div>
             </div>
-            <span className="text-xl font-bold text-white group-hover:text-yellow-300 transition-colors">Pro Image Toolkit</span>
+            <span className="text-xl font-bold text-white group-hover:text-yellow-300 transition-all duration-300 tracking-tight">Pro Image Toolkit</span>
           </div>
           <nav className="flex space-x-8">
             <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} ref={dropdownRef}>
-              <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-400' : 'text-white hover:text-yellow-300'} px-3 py-2 text-sm font-semibold flex items-center transition-colors`}>
+              <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-300' : 'text-white hover:text-yellow-200'} px-4 py-2 text-sm font-semibold flex items-center transition-all duration-300 rounded-lg hover:bg-white/10`}>
                 Convert Tools
-                <svg className={`ml-2 w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+                <svg className={`ml-2 w-4 h-4 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
               {showDropdown && (
                 <div
-                  className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-2xl rounded-2xl border-2 z-50 w-[1200px] animate-fadeIn`}
+                  className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-3 ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-xl shadow-premium-lg rounded-2xl border-2 z-50 w-[1200px] animate-slideDown`}
                   style={{
-                    animation: 'slideDown 0.3s ease-out',
+                    animation: 'slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 >
                   <style>{`
@@ -115,13 +149,13 @@ const App = () => {
                     <div className="grid grid-cols-5 gap-8">
                       {Object.entries(converters).map(([category, items]) => (
                         <div key={category} className="space-y-3">
-                          <div className="flex items-center mb-4 pb-3 border-b-2 border-blue-500">
-                            {category === 'Video & Audio' && <Film className={`w-5 h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
+                          <div className="flex items-center mb-4 pb-3 border-b-2 border-gradient-to-r from-purple-500 to-blue-500">
+                            {category === 'Video & Audio' && <Film className={`w-5 h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />}
                             {category === 'Image' && <Image className={`w-5 h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
-                            {category === 'PDF & Documents' && <FileText className={`w-5 h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
-                            {category === 'GIF & Animation' && <Grid3x3 className={`w-5 h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
-                            {category === 'Advanced' && <Settings className={`w-5 h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
-                            <h3 className={`font-bold text-sm ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{category}</h3>
+                            {category === 'PDF & Documents' && <FileText className={`w-5 h-5 mr-2 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />}
+                            {category === 'GIF & Animation' && <Grid3x3 className={`w-5 h-5 mr-2 ${darkMode ? 'text-pink-400' : 'text-pink-600'}`} />}
+                            {category === 'Advanced' && <Settings className={`w-5 h-5 mr-2 ${darkMode ? 'text-violet-400' : 'text-violet-600'}`} />}
+                            <h3 className={`font-bold text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{category}</h3>
                           </div>
                           <ul className="space-y-2">
                             {items.map((item) => (
@@ -134,7 +168,7 @@ const App = () => {
                                     setConvertedFile(null);
                                     setPreviewUrl(null);
                                   }}
-                                  className={`text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-blue-600 hover:to-blue-700' : 'text-gray-700 hover:text-blue-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50'} w-full text-left py-2.5 px-3 rounded-lg transition-all duration-200 transform hover:scale-105 hover:shadow-md font-medium`}
+                                  className={`text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600' : 'text-gray-700 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50'} w-full text-left py-2.5 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg font-medium hover-lift`}
                                 >
                                   {item.name}
                                 </button>
@@ -152,11 +186,11 @@ const App = () => {
           <div className="flex items-center space-x-4">
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-blue-700 hover:bg-blue-800'} transition-colors`}
+              className={`p-2.5 rounded-xl ${darkMode ? 'bg-gray-700/50 hover:bg-gray-600/50' : 'bg-white/20 hover:bg-white/30'} transition-all duration-300 hover:scale-110 transform backdrop-blur-sm`}
             >
               {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-white" />}
             </button>
-            <span className={`text-xs font-semibold ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-blue-700 text-white'} px-3 py-1 rounded-full`}>⚡ Fast & Free</span>
+            <span className={`text-xs font-bold ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white' : 'bg-white/20 text-white'} px-4 py-1.5 rounded-full backdrop-blur-sm`}>⚡ Fast & Free</span>
           </div>
         </div>
       </div>
@@ -475,6 +509,86 @@ const App = () => {
     });
   };
 
+  const convertSVGToPDF = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const svgText = e.target.result;
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+        const svgElement = svgDoc.documentElement;
+
+        // Get SVG dimensions
+        let width = parseFloat(svgElement.getAttribute('width')) || 800;
+        let height = parseFloat(svgElement.getAttribute('height')) || 600;
+
+        // Handle viewBox if width/height not specified
+        if (!svgElement.getAttribute('width') && svgElement.getAttribute('viewBox')) {
+          const viewBox = svgElement.getAttribute('viewBox').split(' ');
+          width = parseFloat(viewBox[2]);
+          height = parseFloat(viewBox[3]);
+        }
+
+        // Create a canvas to render the SVG
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        // Create an image from the SVG
+        const img = new window.Image();
+        img.onload = () => {
+          try {
+            // Fill white background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Create PDF
+            const pdf = new jsPDF({
+              orientation: width > height ? 'landscape' : 'portrait',
+              unit: 'px',
+              format: 'a4'
+            });
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const ratio = Math.min(pdfWidth / width, pdfHeight / height);
+            const imgX = (pdfWidth - width * ratio) / 2;
+            const imgY = (pdfHeight - height * ratio) / 2;
+
+            canvas.toBlob((blob) => {
+              const imgURL = URL.createObjectURL(blob);
+              const finalImg = new window.Image();
+              finalImg.onload = () => {
+                pdf.addImage(imgURL, 'PNG', imgX, imgY, width * ratio, height * ratio, undefined, 'FAST');
+                const pdfBlob = pdf.output('blob');
+                resolve({
+                  url: URL.createObjectURL(pdfBlob),
+                  name: 'converted.pdf',
+                  blob: pdfBlob,
+                  type: 'application/pdf',
+                  preview: imgURL
+                });
+              };
+              finalImg.src = imgURL;
+            }, 'image/png');
+          } catch (error) {
+            reject(new Error('SVG to PDF conversion failed: ' + error.message));
+          }
+        };
+        img.onerror = () => reject(new Error('SVG rendering failed'));
+
+        // Convert SVG to data URL
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        img.src = url;
+      };
+      reader.onerror = () => reject(new Error('File read failed'));
+      reader.readAsText(file);
+    });
+  };
+
   const convertMultipleImagesToPDF = async (files) => {
     return new Promise((resolve, reject) => {
       try {
@@ -549,26 +663,100 @@ const App = () => {
     });
   };
 
-  const extractAudioFromVideo = (file) => {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      video.src = URL.createObjectURL(file);
-      video.onloadedmetadata = () => {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const duration = Math.min(video.duration, 300);
-        const sampleRate = audioContext.sampleRate;
-        const numSamples = Math.floor(duration * sampleRate);
-        const buffer = audioContext.createBuffer(2, numSamples, sampleRate);
-        for (let channel = 0; channel < 2; channel++) {
-          const channelData = buffer.getChannelData(channel);
-          for (let i = 0; i < numSamples; i++) {
-            channelData[i] = Math.random() * 0.2 - 0.1;
-          }
-        }
-        const wavBlob = bufferToWave(buffer, numSamples);
-        resolve({ url: URL.createObjectURL(wavBlob), name: 'audio.mp3', blob: wavBlob, type: 'audio/mpeg', note: 'Audio extracted from video' });
-      };
-    });
+  // Real FFmpeg-based conversions
+  const convertMP4ToMP3 = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.mp4';
+    const outputName = 'output.mp3';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      await ffmpeg.exec(['-i', inputName, '-vn', '-ar', '44100', '-ac', '2', '-b:a', '192k', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'audio/mp3' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'converted.mp3', blob, type: 'audio/mp3' };
+    } catch (error) {
+      throw new Error('MP4 to MP3 conversion failed: ' + error.message);
+    }
+  };
+
+  const convertVideoToWebM = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.' + file.name.split('.').pop();
+    const outputName = 'output.webm';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      await ffmpeg.exec(['-i', inputName, '-c:v', 'libvpx', '-b:v', '1M', '-c:a', 'libvorbis', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'video/webm' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'converted.webm', blob, type: 'video/webm' };
+    } catch (error) {
+      throw new Error('Video to WebM conversion failed: ' + error.message);
+    }
+  };
+
+  const convertMP3ToWAV = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.mp3';
+    const outputName = 'output.wav';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      await ffmpeg.exec(['-i', inputName, '-acodec', 'pcm_s16le', '-ar', '44100', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'audio/wav' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'converted.wav', blob, type: 'audio/wav' };
+    } catch (error) {
+      throw new Error('MP3 to WAV conversion failed: ' + error.message);
+    }
+  };
+
+  const convertWAVToMP3 = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.wav';
+    const outputName = 'output.mp3';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      await ffmpeg.exec(['-i', inputName, '-vn', '-ar', '44100', '-ac', '2', '-b:a', '192k', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'audio/mp3' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'converted.mp3', blob, type: 'audio/mp3' };
+    } catch (error) {
+      throw new Error('WAV to MP3 conversion failed: ' + error.message);
+    }
+  };
+
+  const extractAudioFromVideo = async (file) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+    const inputName = 'input.' + file.name.split('.').pop();
+    const outputName = 'output.mp3';
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      await ffmpeg.exec(['-i', inputName, '-vn', '-ar', '44100', '-ac', '2', '-b:a', '192k', outputName]);
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'audio/mp3' });
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+      return { url: URL.createObjectURL(blob), name: 'audio.mp3', blob, type: 'audio/mp3' };
+    } catch (error) {
+      throw new Error('Audio extraction failed: ' + error.message);
+    }
   };
 
   const bufferToWave = (buffer, len) => {
@@ -668,6 +856,8 @@ const App = () => {
           const fileType = selectedFile.type;
           if (fileType === 'text/plain') {
             result = await convertTextToPDF(selectedFile);
+          } else if (fileType === 'image/svg+xml') {
+            result = await convertSVGToPDF(selectedFile);
           } else {
             result = await convertToPDF(selectedFile);
           }
@@ -679,9 +869,18 @@ const App = () => {
       } else if (to === 'bmp') {
         result = await convertToBMP(selectedFile);
       } else if (to === 'mp3') {
-        result = await extractAudioFromVideo(selectedFile);
+        // Check if converting from video or audio
+        if (selectedFile.type.startsWith('video/')) {
+          result = await extractAudioFromVideo(selectedFile);
+        } else if (activeConverter.from === 'wav') {
+          result = await convertWAVToMP3(selectedFile);
+        } else {
+          result = await extractAudioFromVideo(selectedFile);
+        }
       } else if (to === 'wav') {
-        result = await extractAudioFromVideo(selectedFile);
+        result = await convertMP3ToWAV(selectedFile);
+      } else if (to === 'webm') {
+        result = await convertVideoToWebM(selectedFile);
       } else if (to === 'thumbnail') {
         result = await extractThumbnail(selectedFile);
       } else if (to === 'base64') {
@@ -716,8 +915,23 @@ const App = () => {
     if (!convertedFile) return;
     const a = document.createElement('a');
     a.href = convertedFile.url;
+
+    // Get the file extension from the converted file
+    const extension = convertedFile.name.split('.').pop();
+
     // Use custom filename if provided, otherwise use the default name
-    const finalFileName = customFileName.trim() || convertedFile.name;
+    let finalFileName = customFileName.trim();
+
+    if (finalFileName) {
+      // Check if the custom filename already has an extension
+      const hasExtension = finalFileName.includes('.');
+      if (!hasExtension) {
+        finalFileName = `${finalFileName}.${extension}`;
+      }
+    } else {
+      finalFileName = convertedFile.name;
+    }
+
     a.download = finalFileName;
     a.click();
   };
@@ -725,49 +939,51 @@ const App = () => {
   const ConverterUI = () => {
     if (!activeConverter) {
       return (
-        <div className="text-center py-20">
-          <h1 className={`text-5xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Pro Image Toolkit</h1>
-          <p className={`text-xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4`}>Convert files instantly online</p>
-          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-10`}>50+ tools • No uploads • No registration</p>
+        <div className="text-center py-20 animate-fadeIn">
+          <h1 className={`text-6xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-3 tracking-tight`}>
+            Pro Image <span className="gradient-text">Toolkit</span>
+          </h1>
+          <p className={`text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3 font-medium`}>Convert files instantly online</p>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-12 text-lg`}>50+ tools • No uploads • No registration</p>
           <div className="max-w-3xl mx-auto">
-            <div className={`border-3 border-dashed ${darkMode ? 'border-blue-500 bg-gradient-to-br from-gray-800 to-gray-900 hover:border-blue-400' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-500'} rounded-xl p-16 transition-all cursor-pointer shadow-lg`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
-              <Zap className={`w-20 h-20 ${darkMode ? 'text-blue-400' : 'text-blue-500'} mx-auto mb-6 animate-pulse`} />
-              <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-4 text-lg font-semibold`}>Select a converter from the menu</p>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert images, videos, PDFs, audio and more in your browser</p>
+            <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-300 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-500'} rounded-2xl p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+              <Zap className={`w-24 h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-6 animate-float`} />
+              <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-4 text-xl font-bold`}>Select a converter from the menu</p>
+              <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert images, videos, PDFs, audio and more in your browser</p>
             </div>
           </div>
-          <div className="grid grid-cols-5 gap-4 max-w-5xl mx-auto mt-16">
+          {/* <div className="grid grid-cols-5 gap-6 max-w-5xl mx-auto mt-20">
             {[
-              { i: Image, t: 'Images', c: '🖼️' },
-              { i: FileText, t: 'PDF', c: '📄' },
-              { i: Film, t: 'Video', c: '🎬' },
-              { i: Music, t: 'Audio', c: '🎵' },
-              { i: Grid3x3, t: 'GIF', c: '✨' }
-            ].map(({ i: Icon, t, c }) => (
-              <div key={t} className={`p-6 ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-blue-500' : 'bg-white hover:border-blue-300'} rounded-lg shadow-md border hover:shadow-lg transition-all`}>
-                <span className="text-4xl mb-2 block">{c}</span>
-                <p className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{t}</p>
+              { i: Image, t: 'Images', c: '🖼️', color: 'blue' },
+              { i: FileText, t: 'PDF', c: '📄', color: 'indigo' },
+              { i: Film, t: 'Video', c: '🎬', color: 'purple' },
+              { i: Music, t: 'Audio', c: '🎵', color: 'pink' },
+              { i: Grid3x3, t: 'GIF', c: '✨', color: 'violet' }
+            ].map(({ i: Icon, t, c, color }) => (
+              <div key={t} className={`p-8 ${darkMode ? `bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 hover:border-${color}-500` : `bg-white hover:border-${color}-400`} rounded-2xl shadow-lg border-2 border-transparent hover:shadow-2xl transition-all duration-300 hover-lift cursor-pointer group`}>
+                <span className="text-5xl mb-4 block group-hover:scale-110 transition-transform duration-300">{c}</span>
+                <p className={`text-base font-bold ${darkMode ? 'text-gray-200' : 'text-gray-700'} group-hover:text-${color}-500 transition-colors`}>{t}</p>
               </div>
             ))}
-          </div>
+          </div> */}
         </div>
       );
     }
 
     const to = activeConverter.to;
     return (
-      <div className="text-center py-10">
-        <h1 className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>{activeConverter.name}</h1>
-        <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8 text-lg`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
+      <div className="text-center py-10 animate-fadeIn">
+        <h1 className={`text-5xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-3 tracking-tight`}>{activeConverter.name}</h1>
+        <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8 text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p>
         <div className="max-w-2xl mx-auto">
           {!selectedFile && !convertedFile && (
-            <div className={`border-3 border-dashed ${darkMode ? 'border-blue-500 bg-gradient-to-br from-gray-800 to-gray-900 hover:border-blue-400' : 'border-blue-400 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-600'} rounded-xl p-12 cursor-pointer transition-all shadow-lg`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+            <div className={`border-3 border-dashed ${darkMode ? 'border-purple-500/50 bg-gradient-to-br from-gray-800 via-purple-900/20 to-gray-900 hover:border-purple-400' : 'border-purple-400 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 hover:border-purple-600'} rounded-2xl p-16 cursor-pointer transition-all duration-500 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`} onClick={() => fileInputRef.current?.click()} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
               <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" accept={activeConverter.accept} multiple={activeConverter.multiple} />
-              <Upload className={`w-20 h-20 ${darkMode ? 'text-blue-400' : 'text-blue-500'} mx-auto mb-6`} />
-              <button className={`${darkMode ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white px-10 py-4 rounded-lg font-bold inline-flex items-center shadow-lg transition-all`}>
+              <Upload className={`w-24 h-24 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-6 animate-float`} />
+              <button className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} text-white px-12 py-5 rounded-xl font-bold text-lg inline-flex items-center shadow-premium transition-all duration-300 hover:scale-105`}>
                 <Upload className="w-6 h-6 mr-3" />Choose File
               </button>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-4`}>or drag and drop</p>
+              <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-5 font-medium`}>or drag and drop</p>
             </div>
           )}
           {to === 'resize' && !convertedFile && (
@@ -780,70 +996,83 @@ const App = () => {
             </div>
           )}
           {selectedFile && !convertedFile && (
-            <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-8 shadow-lg`}>
-              <div className={`flex items-center justify-between mb-6 p-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
+            <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-2xl p-8 shadow-premium animate-scaleIn`}>
+              <div className={`flex items-center justify-between mb-6 p-5 ${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-xl`}>
                 <div className="flex items-center">
-                  <div className={`w-14 h-14 ${darkMode ? 'bg-blue-900' : 'bg-blue-100'} rounded-lg flex items-center justify-center mr-4`}>
-                    <FileText className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`} />
+                  <div className={`w-16 h-16 ${darkMode ? 'bg-purple-900/50' : 'bg-purple-100'} rounded-xl flex items-center justify-center mr-4 shadow-lg`}>
+                    <FileText className={`w-9 h-9 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
                   </div>
                   <div className="text-left">
-                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{Array.isArray(selectedFile) ? `${selectedFile.length} files` : selectedFile.name}</p>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{Array.isArray(selectedFile) ? '' : (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB'}</p>
+                    <p className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{Array.isArray(selectedFile) ? `${selectedFile.length} files` : selectedFile.name}</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'} font-medium`}>{Array.isArray(selectedFile) ? '' : (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB'}</p>
                   </div>
                 </div>
-                <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className={`${darkMode ? 'text-gray-400 hover:text-red-500' : 'text-gray-400 hover:text-red-600'} transition-colors`}><X className="w-6 h-6" /></button>
+                <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className={`${darkMode ? 'text-gray-400 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'} transition-all p-2 rounded-lg`}><X className="w-6 h-6" /></button>
               </div>
-              {previewUrl && selectedFile?.type?.startsWith('image/') && <img src={previewUrl} alt="Preview" className="max-h-64 mx-auto rounded-lg mb-6 border" />}
-              {previewUrl && selectedFile?.type?.startsWith('video/') && <video src={previewUrl} controls className="max-h-64 mx-auto rounded-lg mb-6 w-full" />}
+              {previewUrl && selectedFile?.type?.startsWith('image/') && <img src={previewUrl} alt="Preview" className="max-h-72 mx-auto rounded-xl mb-6 border-2 shadow-lg" />}
+              {previewUrl && selectedFile?.type?.startsWith('video/') && <video src={previewUrl} controls className="max-h-72 mx-auto rounded-xl mb-6 w-full shadow-lg" />}
               {previewUrl && selectedFile?.type?.startsWith('audio/') && <audio src={previewUrl} controls className="mx-auto mb-6 w-full" />}
               <div className="flex items-center justify-center mb-8">
-                <span className={`${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100'} px-6 py-2 rounded-full text-sm font-bold`}>{activeConverter.from.toUpperCase()}</span>
-                <svg className={`w-8 h-8 mx-6 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                <span className={`${darkMode ? 'bg-blue-600' : 'bg-blue-500'} text-white px-6 py-2 rounded-full text-sm font-bold`}>{activeConverter.to.toUpperCase()}</span>
+                <span className={`${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'} px-7 py-3 rounded-full text-sm font-bold shadow-md`}>{activeConverter.from.toUpperCase()}</span>
+                <svg className={`w-10 h-10 mx-7 ${darkMode ? 'text-purple-400' : 'text-purple-500'} animate-pulse-soft`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                <span className={`${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gradient-to-r from-purple-500 to-blue-600'} text-white px-7 py-3 rounded-full text-sm font-bold shadow-lg`}>{activeConverter.to.toUpperCase()}</span>
               </div>
-              <button onClick={handleConvert} disabled={isConverting} className={`w-full ${darkMode ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-4 rounded-lg font-bold text-lg transition-all shadow-lg`}>
-                {isConverting ? '⚙️ Converting...' : '🚀 Convert Now'}
+              <button onClick={handleConvert} disabled={isConverting || ffmpegLoading} className={`w-full ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-5 rounded-xl font-bold text-xl transition-all duration-300 shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}>
+                {ffmpegLoading ? '⏳ Loading Converter...' : isConverting ? '⚙️ Converting...' : '🚀 Convert Now'}
               </button>
             </div>
           )}
           {convertedFile && (
-            <div className={`${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-green-200'} border-2 rounded-xl p-8 shadow-lg`}>
-              <div className={`w-20 h-20 ${darkMode ? 'bg-green-900' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
-                <CheckCircle className={`w-12 h-12 ${darkMode ? 'text-green-400' : 'text-green-500'}`} />
+            <div className={`${darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-green-500/30' : 'bg-white border-green-200'} border-2 rounded-2xl p-10 shadow-premium-lg animate-scaleIn`}>
+              <div className={`w-24 h-24 ${darkMode ? 'bg-gradient-to-br from-green-900 to-green-800' : 'bg-gradient-to-br from-green-100 to-emerald-100'} rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg animate-scaleIn`}>
+                <CheckCircle className={`w-14 h-14 ${darkMode ? 'text-green-400' : 'text-green-500'} animate-pulse-soft`} />
               </div>
-              <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>✅ Conversion Complete!</h3>
-              <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8`}>Your file is ready to download</p>
-              {convertedFile.type?.startsWith('image/') && <img src={convertedFile.url} alt="Result" className="max-h-64 mx-auto rounded-lg mb-6 border shadow-sm" />}
-              {convertedFile.preview && <img src={convertedFile.preview} alt="Preview" className="max-h-64 mx-auto rounded-lg mb-6 border shadow-sm" />}
+              <h3 className={`text-3xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 tracking-tight`}>✅ Conversion Complete!</h3>
+              <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-8 text-lg`}>Your file is ready to download</p>
+              {convertedFile.type?.startsWith('image/') && <img src={convertedFile.url} alt="Result" className="max-h-80 mx-auto rounded-xl mb-6 border-2 shadow-premium" />}
+              {convertedFile.preview && <img src={convertedFile.preview} alt="Preview" className="max-h-80 mx-auto rounded-xl mb-6 border-2 shadow-premium" />}
               {convertedFile.type?.startsWith('audio/') && <audio src={convertedFile.url} controls className="mx-auto mb-6 w-full" />}
-              {convertedFile.base64 && <textarea readOnly value={convertedFile.base64} className={`w-full h-32 text-xs p-3 border rounded-lg mb-4 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-50'} font-mono`} />}
+              {convertedFile.base64 && <textarea readOnly value={convertedFile.base64} className={`w-full h-32 text-xs p-4 border-2 rounded-xl mb-6 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-50 border-gray-200'} font-mono`} />}
               {convertedFile.originalSize && convertedFile.compressedSize && (
-                <div className={`${darkMode ? 'bg-blue-900 border-blue-700' : 'bg-blue-50 border-blue-500'} border-l-4 p-4 mb-6 rounded`}>
-                  <p className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📊 Compression: <span className="font-bold">{((1 - convertedFile.compressedSize / convertedFile.originalSize) * 100).toFixed(1)}%</span> smaller</p>
+                <div className={`${darkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-500'} border-l-4 p-5 mb-6 rounded-lg`}>
+                  <p className={`text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-semibold`}>📊 Compression: <span className="font-bold text-blue-500">{((1 - convertedFile.compressedSize / convertedFile.originalSize) * 100).toFixed(1)}%</span> smaller</p>
                 </div>
               )}
-              {convertedFile.note && <p className={`text-sm mb-6 p-3 rounded-lg border ${darkMode ? 'text-amber-400 bg-amber-900 border-amber-700' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>ℹ️ {convertedFile.note}</p>}
-              {/* Custom Filename Input Field */}
-              <div className="mb-4">
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                  File Name:
-                </label>
-                <input
-                  type="text"
-                  value={customFileName}
-                  onChange={(e) => setCustomFileName(e.target.value)}
-                  placeholder={`e.g., my_converted_file.${convertedFile.name.split('.').pop()}`}
-                  className={`w-full p-3 rounded-lg border ${darkMode
-                    ? 'bg-gray-700 text-white border-gray-600 focus:border-blue-500'
-                    : 'border-gray-300 focus:border-blue-500'
-                    } focus:outline-none transition-colors`}
-                />
+              {convertedFile.note && <p className={`text-base mb-6 p-4 rounded-xl border-2 ${darkMode ? 'text-amber-400 bg-amber-900/30 border-amber-700' : 'text-amber-700 bg-amber-50 border-amber-200'} font-medium`}>ℹ️ {convertedFile.note}</p>}
+
+              {/* Enhanced Custom Filename Input Field */}
+              <div className={`mb-7 p-6 rounded-xl ${darkMode ? 'bg-gray-700/50 border-2 border-gray-600' : 'bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200'} shadow-lg`}>
+                <div className="flex items-center mb-3">
+                  <Edit2 className={`w-5 h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
+                  <label className={`text-sm font-bold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                    Customize File Name
+                  </label>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={customFileName}
+                    onChange={(e) => setCustomFileName(e.target.value)}
+                    placeholder={`Enter filename (without extension)`}
+                    className={`w-full p-4 rounded-xl border-2 ${darkMode
+                      ? 'bg-gray-800 text-white border-gray-600 focus:border-purple-500 placeholder-gray-500'
+                      : 'bg-white border-purple-300 focus:border-purple-500 placeholder-gray-400'
+                      } focus:outline-none transition-all font-medium text-base shadow-inner`}
+                  />
+                  <span className={`absolute right-4 top-1/2 -translate-y-1/2 text-base font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    .{convertedFile.name.split('.').pop()}
+                  </span>
+                </div>
+                <p className={`text-sm mt-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'} font-medium`}>
+                  💡 File extension will be added automatically
+                </p>
               </div>
-              <div className="flex gap-3">
-                <button onClick={handleDownload} className={`flex-1 ${darkMode ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800' : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'} text-white px-6 py-4 rounded-lg font-bold text-lg flex items-center justify-center shadow-lg transition-all`}>
-                  <Download className="w-6 h-6 mr-3" />Download
+
+              <div className="flex gap-4">
+                <button onClick={handleDownload} className={`flex-1 ${darkMode ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700' : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'} text-white px-6 py-5 rounded-xl font-bold text-xl flex items-center justify-center shadow-premium transition-all duration-300 hover:scale-105 transform`}>
+                  <Download className="w-7 h-7 mr-3" />Download
                 </button>
-                <button onClick={() => { setSelectedFile(null); setConvertedFile(null); setPreviewUrl(null); setCustomFileName(''); }} className={`flex-1 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} px-6 py-4 rounded-lg font-bold transition-all`}>
+                <button onClick={() => { setSelectedFile(null); setConvertedFile(null); setPreviewUrl(null); setCustomFileName(''); }} className={`flex-1 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} px-6 py-5 rounded-xl font-bold text-xl transition-all duration-300 hover:scale-105 transform`}>
                   ↻ Convert Another
                 </button>
               </div>
@@ -855,20 +1084,27 @@ const App = () => {
   };
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50'} flex flex-col transition-colors duration-300`}>
+    <div className={`min-h-screen ${darkMode ? 'bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-purple-50 to-blue-50'} flex flex-col transition-all duration-500`}>
       <Header />
       <main className="flex-grow max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <ConverterUI />
       </main>
-      <footer className={`${darkMode ? 'bg-black' : 'bg-gray-900'} text-white mt-20 transition-colors duration-300`}>
-        <div className="max-w-6xl mx-auto px-4 py-10 text-center">
-          <p className="mb-2 font-semibold">© 2025 Pro Image Toolkit • Fast • Free • No Uploads Required</p>
-          <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>All conversions happen locally in your browser</p>
+      <footer className={`${darkMode ? 'bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 border-t border-purple-500/20' : 'bg-gradient-to-r from-gray-900 via-purple-900 to-indigo-900'} text-white mt-20 transition-all duration-500 shadow-2xl`}>
+        <div className="max-w-6xl mx-auto px-4 py-12 text-center">
+          <div className="mb-4">
+            <Zap className="w-10 h-10 text-yellow-400 mx-auto mb-3 animate-glow" />
+          </div>
+          <p className="mb-2 font-bold text-lg">© 2025 Pro Image Toolkit • Fast • Free • No Uploads Required</p>
+          <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-300'}`}>All conversions happen locally in your browser</p>
+          <div className="mt-6 flex justify-center gap-3">
+            <span className="px-4 py-2 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm">🔒 Secure</span>
+            <span className="px-4 py-2 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm">⚡ Instant</span>
+            <span className="px-4 py-2 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm">🌐 Offline</span>
+          </div>
         </div>
       </footer>
     </div>
   );
 };
-// ljnjvnfjhbhj 
-// jnfhnjhb jh hbg
+
 export default App;

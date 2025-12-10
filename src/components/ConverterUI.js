@@ -414,12 +414,12 @@ const ConverterUI = ({
                         <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-lg p-4 border-2 ${darkMode ? 'border-gray-600' : 'border-purple-200'}`}>
                             <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</p>
                             <div className="flex items-center justify-center space-x-4">
-                                <div className="text-4xl">🖼️</div>
+                                <div className="text-4xl"></div>
                                 <svg className={`w-8 h-8 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                                <div className="text-4xl" style={{ transform: mirrorDirection === 'horizontal' ? 'scaleX(-1)' : 'scaleY(-1)' }}>🖼️</div>
+                                <div className="text-4xl" style={{ transform: mirrorDirection === 'horizontal' ? 'scaleX(-1)' : 'scaleY(-1)' }}></div>
                             </div>
                             <p className={`text-xs mt-2 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                {mirrorDirection === 'horizontal' ? 'Left ↔️ Right' : 'Top ↕️ Bottom'}
+                                {mirrorDirection === 'horizontal' ? 'Left  Right' : 'Top  Bottom'}
                             </p>
                         </div>
                     </div>
@@ -584,7 +584,7 @@ const ConverterUI = ({
                         {generatedThumbnails.length > 0 && (
                             <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 shadow-premium`}>
                                 <h3 className={`font-bold text-xl mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    🖼️ Generated Thumbnails ({generatedThumbnails.length})
+                                    Generated Thumbnails ({generatedThumbnails.length})
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {generatedThumbnails.map((thumb, index) => (
@@ -620,6 +620,39 @@ const ConverterUI = ({
                                 </button>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* Image Compressor Info */}
+                {to === 'compress' && selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 mb-6 shadow-premium`}>
+                        <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                            <Settings className="w-5 h-5 mr-2" />
+                            Compression Info
+                        </h3>
+                        <div className="space-y-3">
+                            <div className={`flex justify-between items-center p-4 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-blue-50 to-indigo-50'} border-2 ${darkMode ? 'border-gray-600' : 'border-blue-200'}`}>
+                                <div>
+                                    <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Original Size</p>
+                                    <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                                    </p>
+                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        {(selectedFile.size / 1024).toFixed(0)} KB
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Quality</p>
+                                    <p className={`text-xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>60%</p>
+                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>JPEG</p>
+                                </div>
+                            </div>
+                            <div className={`${darkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-300'} border-l-4 p-4 rounded-lg`}>
+                                <p className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-medium`}>
+                                    💡 Your image will be compressed to approximately <span className="font-bold">{(selectedFile.size * 0.4 / 1024 / 1024).toFixed(2)} MB</span> ({((1 - 0.4) * 100).toFixed(0)}% smaller)
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 )}
 

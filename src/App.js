@@ -67,6 +67,11 @@ const App = () => {
   // Sharpen Intensity
   const [sharpenIntensity, setSharpenIntensity] = useState(1);
 
+  // Video Thumbnail
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [selectedTime, setSelectedTime] = useState(0);
+  const [generatedThumbnails, setGeneratedThumbnails] = useState([]);
+
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
@@ -295,9 +300,13 @@ const App = () => {
         });
       }
       else if (to === 'ico') result = await convertPNGToICO(selectedFile);
-      else if (to === 'images') result = await convertPDFToImages(selectedFile);
+      // else if (to === 'images') result = await convertPDFToImages(selectedFile);
       else if (to === 'base64') result = await imageToBase64(selectedFile);
-      else if (to === 'thumbnail') result = await extractThumbnail(selectedFile);
+      else if (to === 'thumbnail') {
+        result = await extractThumbnail(selectedFile, selectedTime);
+        setGeneratedThumbnails(prev => [...prev, result]);
+        return; // Don't set convertedFile for thumbnail, handle separately
+      }
 
       // FFmpeg paths
       else if (to === 'mp3') {
@@ -452,6 +461,12 @@ const App = () => {
           setMirrorDirection={setMirrorDirection}
           sharpenIntensity={sharpenIntensity}
           setSharpenIntensity={setSharpenIntensity}
+          videoDuration={videoDuration}
+          setVideoDuration={setVideoDuration}
+          selectedTime={selectedTime}
+          setSelectedTime={setSelectedTime}
+          generatedThumbnails={generatedThumbnails}
+          setGeneratedThumbnails={setGeneratedThumbnails}
         />
       </main>
       <Footer darkMode={darkMode} />

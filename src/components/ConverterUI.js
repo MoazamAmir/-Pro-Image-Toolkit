@@ -46,6 +46,12 @@ const ConverterUI = ({
     setMirrorDirection,
     sharpenIntensity,
     setSharpenIntensity,
+    videoDuration,
+    setVideoDuration,
+    selectedTime,
+    setSelectedTime,
+    generatedThumbnails,
+    setGeneratedThumbnails,
 }) => {
     // State for live preview
 
@@ -53,6 +59,7 @@ const ConverterUI = ({
     // State for live preview
     const [livePreview, setLivePreview] = useState(null);
     const [showComparison, setShowComparison] = useState(false);
+    const [framePreviews, setFramePreviews] = useState([]);
 
     // Apply brightness/contrast to create live preview
     useEffect(() => {
@@ -184,6 +191,49 @@ const ConverterUI = ({
             img.src = previewUrl;
         }
     }, [previewUrl, selectedFile, to]);
+
+    // Generate frame previews for video thumbnail
+    useEffect(() => {
+        if (to === 'thumbnail' && previewUrl && selectedFile && videoDuration > 0) {
+            const generateFrames = async () => {
+                const video = document.createElement('video');
+                video.src = previewUrl;
+                video.crossOrigin = 'anonymous';
+
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = resolve;
+                });
+
+                const frameCount = Math.min(15, Math.ceil(videoDuration)); // Max 15 frames
+                const interval = videoDuration / frameCount;
+                const frames = [];
+
+                for (let i = 0; i < frameCount; i++) {
+                    const time = i * interval;
+                    video.currentTime = time;
+
+                    await new Promise((resolve) => {
+                        video.onseeked = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = video.videoWidth / 4; // Smaller for preview
+                            canvas.height = video.videoHeight / 4;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            frames.push({
+                                url: canvas.toDataURL('image/jpeg', 0.7),
+                                time: time
+                            });
+                            resolve();
+                        };
+                    });
+                }
+
+                setFramePreviews(frames);
+            };
+
+            generateFrames();
+        }
+    }, [previewUrl, selectedFile, to, videoDuration]);
 
     // Theme classes based on darkMode
     const theme = {
@@ -425,6 +475,154 @@ const ConverterUI = ({
                     </div>
                 )}
 
+                {/* Video Thumbnail Extractor UI */}
+                {to === 'thumbnail' && previewUrl && selectedFile && (
+                    <div className="space-y-6">
+                        {/* Frame Selection Section */}
+                        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 shadow-premium`}>
+                            <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                                <Settings className="w-5 h-5 mr-2" />
+                                Select Frame
+                            </h3>
+
+                            {/* Time Slider */}
+                            <div className="mb-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        Time: {selectedTime.toFixed(2)}s
+                                    </label>
+                                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        ({selectedTime.toFixed(2)} / {videoDuration.toFixed(2)}s)
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max={videoDuration || 1}
+                                    step="0.1"
+                                    value={selectedTime}
+                                    onChange={(e) => setSelectedTime(parseFloat(e.target.value))}
+                                    className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                    disabled={!videoDuration}
+                                />
+                            </div>
+
+                            {/* Frame Preview Strip */}
+                            {framePreviews.length > 0 && (
+                                <div className="mb-4">
+                                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        🎬 Video Frames - Click to select
+                                    </p>
+                                    <div className="relative">
+                                        <div className="flex gap-2 overflow-x-auto pb-2 scroll-smooth" style={{ scrollbarWidth: 'thin' }}>
+                                            {framePreviews.map((frame, index) => (
+                                                <button
+                                                    key={index}
+                                                    onClick={() => setSelectedTime(frame.time)}
+                                                    className={`flex-shrink-0 relative rounded-lg border-2 transition-all hover:scale-105 ${Math.abs(selectedTime - frame.time) < 0.2
+                                                        ? 'border-purple-500 shadow-lg'
+                                                        : darkMode
+                                                            ? 'border-gray-600 hover:border-purple-400'
+                                                            : 'border-gray-300 hover:border-purple-400'
+                                                        }`}
+                                                >
+                                                    <img
+                                                        src={frame.url}
+                                                        alt={`Frame at ${frame.time.toFixed(2)}s`}
+                                                        className="w-24 h-16 object-cover rounded-md"
+                                                    />
+                                                    <div className={`absolute bottom-0 left-0 right-0 ${darkMode ? 'bg-black/70' : 'bg-white/70'} backdrop-blur-sm px-1 py-0.5 rounded-b-md`}>
+                                                        <p className={`text-xs font-bold text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {frame.time.toFixed(1)}s
+                                                        </p>
+                                                    </div>
+                                                    {Math.abs(selectedTime - frame.time) < 0.2 && (
+                                                        <div className="absolute top-1 right-1 bg-purple-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                                                            ✓
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="absolute left-0 top-0 bottom-2 w-8 bg-gradient-to-r from-gray-900/20 to-transparent pointer-events-none" />
+                                        <div className="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-gray-900/20 to-transparent pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Current Frame Preview */}
+                            <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-xl p-4 border-2 ${darkMode ? 'border-gray-600' : 'border-purple-200'}`}>
+                                <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Current Frame Preview
+                                </p>
+                                <video
+                                    ref={(video) => {
+                                        if (video && selectedFile) {
+                                            video.src = previewUrl;
+                                            video.currentTime = selectedTime;
+                                            video.onloadedmetadata = () => {
+                                                setVideoDuration(video.duration);
+                                                if (selectedTime === 0) setSelectedTime(0);
+                                            };
+                                        }
+                                    }}
+                                    className="w-full max-h-64 rounded-lg border-2 border-purple-500 shadow-lg"
+                                />
+                            </div>
+
+                            {/* Generate Button */}
+                            <button
+                                onClick={handleConvert}
+                                disabled={isConverting}
+                                className={`w-full mt-4 ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : 'bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700'} disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-4 rounded-xl font-bold text-lg transition-all shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}
+                            >
+                                {isConverting ? 'Generating...' : '📸 Generate Thumbnail from Current Frame'}
+                            </button>
+                        </div>
+
+                        {/* Generated Thumbnails */}
+                        {generatedThumbnails.length > 0 && (
+                            <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 shadow-premium`}>
+                                <h3 className={`font-bold text-xl mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    🖼️ Generated Thumbnails ({generatedThumbnails.length})
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {generatedThumbnails.map((thumb, index) => (
+                                        <div key={index} className={`${darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200'} border-2 rounded-xl p-4 shadow-lg hover:scale-105 transition-all`}>
+                                            <img
+                                                src={thumb.url}
+                                                alt={`Thumbnail ${index + 1}`}
+                                                className="w-full rounded-lg border-2 border-purple-400 mb-3 shadow-md"
+                                            />
+                                            <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                Time: {thumb.time.toFixed(2)}s
+                                            </p>
+                                            <button
+                                                onClick={() => {
+                                                    const a = document.createElement('a');
+                                                    a.href = thumb.url;
+                                                    a.download = thumb.name;
+                                                    a.click();
+                                                }}
+                                                className={`w-full ${darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center justify-center transition-all shadow-md hover:shadow-lg`}
+                                            >
+                                                <Download className="w-4 h-4 mr-2" />
+                                                Download
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <button
+                                    onClick={() => setGeneratedThumbnails([])}
+                                    className={`w-full mt-4 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} ${darkMode ? 'text-white' : 'text-gray-700'} px-4 py-2 rounded-lg font-semibold transition-all`}
+                                >
+                                    Clear All Thumbnails
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {!selectedFile && !convertedFile && (
                     <div className="max-w-3xl mx-auto mb-20">
                         <div
@@ -602,7 +800,7 @@ const ConverterUI = ({
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

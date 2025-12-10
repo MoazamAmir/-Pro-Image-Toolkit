@@ -577,20 +577,27 @@ export const convertTextToPDF = async (file) => {
     });
 };
 
-export const extractThumbnail = (file) => {
-    return new Promise((resolve) => {
+export const extractThumbnail = (file, time = 1) => {
+    return new Promise((resolve, reject) => {
         const video = document.createElement('video');
         video.src = URL.createObjectURL(file);
-        video.currentTime = 1;
+        video.currentTime = time;
         video.onloadeddata = () => {
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
             canvas.toBlob((blob) => {
-                resolve({ url: URL.createObjectURL(blob), name: 'thumbnail.jpg', blob, type: 'image/jpeg' });
+                resolve({
+                    url: URL.createObjectURL(blob),
+                    name: `thumbnail-${time.toFixed(2)}s.jpg`,
+                    blob,
+                    type: 'image/jpeg',
+                    time: time
+                });
             }, 'image/jpeg', 0.9);
         };
+        video.onerror = () => reject(new Error('Failed to load video'));
     });
 };
 

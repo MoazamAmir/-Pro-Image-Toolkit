@@ -649,7 +649,7 @@ const ConverterUI = ({
                             </div>
                             <div className={`${darkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-300'} border-l-4 p-4 rounded-lg`}>
                                 <p className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-medium`}>
-                                    💡 Your image will be compressed to approximately <span className="font-bold">{(selectedFile.size * 0.4 / 1024 / 1024).toFixed(2)} MB</span> ({((1 - 0.4) * 100).toFixed(0)}% smaller)
+                                    Your image will be compressed to approximately <span className="font-bold">{(selectedFile.size * 0.4 / 1024 / 1024).toFixed(2)} MB</span> ({((1 - 0.4) * 100).toFixed(0)}% smaller)
                                 </p>
                             </div>
                         </div>

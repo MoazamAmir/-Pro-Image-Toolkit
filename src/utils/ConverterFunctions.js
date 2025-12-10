@@ -168,7 +168,7 @@ export const flipImage = (file) => {
     });
 };
 
-export const mirrorImage = (file) => {
+export const mirrorImage = (file, direction = 'horizontal') => {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -178,11 +178,26 @@ export const mirrorImage = (file) => {
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext('2d');
-                ctx.translate(0, canvas.height);
-                ctx.scale(1, -1);
+
+                if (direction === 'horizontal') {
+                    // Flip left-to-right (horizontal mirror)
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                } else {
+                    // Flip top-to-bottom (vertical mirror)
+                    ctx.translate(0, canvas.height);
+                    ctx.scale(1, -1);
+                }
+
                 ctx.drawImage(img, 0, 0);
                 canvas.toBlob((blob) => {
-                    resolve({ url: URL.createObjectURL(blob), name: 'mirrored.png', blob, type: 'image/png' });
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: `mirrored-${direction}.png`,
+                        blob,
+                        type: 'image/png',
+                        note: `Mirrored ${direction === 'horizontal' ? 'left-to-right' : 'top-to-bottom'}`
+                    });
                 }, 'image/png');
             };
             img.src = e.target.result;
@@ -302,7 +317,7 @@ export const blurImage = (file) => {
     });
 };
 
-export const sharpenImage = (file) => {
+export const sharpenImage = (file, intensity = 1) => {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -315,7 +330,12 @@ export const sharpenImage = (file) => {
                 ctx.drawImage(img, 0, 0);
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
-                const weights = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+
+                // Adjust sharpen kernel based on intensity (0-2)
+                const centerWeight = 1 + (4 * intensity);
+                const edgeWeight = -1 * intensity;
+                const weights = [0, edgeWeight, 0, edgeWeight, centerWeight, edgeWeight, 0, edgeWeight, 0];
+
                 const side = Math.round(Math.sqrt(weights.length));
                 const halfSide = Math.floor(side / 2);
                 const w = canvas.width;
@@ -346,7 +366,13 @@ export const sharpenImage = (file) => {
                 }
                 ctx.putImageData(output, 0, 0);
                 canvas.toBlob((blob) => {
-                    resolve({ url: URL.createObjectURL(blob), name: 'sharpened.png', blob, type: 'image/png' });
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: 'sharpened.png',
+                        blob,
+                        type: 'image/png',
+                        note: `Sharpness intensity: ${intensity.toFixed(1)}`
+                    });
                 }, 'image/png');
             };
             img.src = e.target.result;

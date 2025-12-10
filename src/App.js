@@ -61,6 +61,12 @@ const App = () => {
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
 
+  // Mirror Direction
+  const [mirrorDirection, setMirrorDirection] = useState('horizontal');
+
+  // Sharpen Intensity
+  const [sharpenIntensity, setSharpenIntensity] = useState(1);
+
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
@@ -109,13 +115,39 @@ const App = () => {
     await loadFFmpeg();
     const ffmpeg = ffmpegRef.current;
     const ext = file.name.split('.').pop();
-    await ffmpeg.writeFile(`input.${ext}`, await fetchFile(file));
-    await ffmpeg.exec(['-i', `input.${ext}`, '-c:v', 'libvpx', '-b:v', '1M', '-c:a', 'libvorbis', 'output.webm']);
-    const data = await ffmpeg.readFile('output.webm');
-    const blob = new Blob([data.buffer], { type: 'video/webm' });
-    await ffmpeg.deleteFile(`input.${ext}`);
-    await ffmpeg.deleteFile('output.webm');
-    return { url: URL.createObjectURL(blob), name: 'converted.webm', blob, type: 'video/webm' };
+    const inputFileName = `input.${ext}`;
+    const outputFileName = 'output.webm';
+
+    try {
+      await ffmpeg.writeFile(inputFileName, await fetchFile(file));
+      // Using simple parameters compatible with FFmpeg.wasm
+      await ffmpeg.exec([
+        '-i', inputFileName,
+        '-c:v', 'libvpx',
+        '-b:v', '1M',
+        '-c:a', 'libvorbis',
+        '-q:a', '4',
+        outputFileName
+      ]);
+      const data = await ffmpeg.readFile(outputFileName);
+      const blob = new Blob([data.buffer], { type: 'video/webm' });
+
+      // Clean up
+      await ffmpeg.deleteFile(inputFileName);
+      await ffmpeg.deleteFile(outputFileName);
+
+      return { url: URL.createObjectURL(blob), name: 'converted.webm', blob, type: 'video/webm' };
+    } catch (error) {
+      // Clean up on error
+      console.error('WebM conversion error:', error);
+      try {
+        await ffmpeg.deleteFile(inputFileName);
+        await ffmpeg.deleteFile(outputFileName);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      throw new Error('Video to WebM conversion failed. Please try with a different video format or smaller file size.');
+    }
   };
 
   const convertMP3ToWAV = async (file) => {
@@ -246,13 +278,13 @@ const App = () => {
       else if (to === 'grayscale') result = await applyGrayscale(selectedFile);
       else if (to === 'rotate') result = await rotateImage(selectedFile);
       else if (to === 'flip') result = await flipImage(selectedFile);
-      else if (to === 'mirror') result = await mirrorImage(selectedFile);
+      else if (to === 'mirror') result = await mirrorImage(selectedFile, mirrorDirection);
       else if (to === 'compress') result = await compressImage(selectedFile);
       else if (to === 'resize') result = await resizeImage(selectedFile, resizeWidth, resizeHeight);
       else if (to === 'crop') result = await cropImage(selectedFile);
       else if (to === 'brightness') result = await adjustBrightness(selectedFile, brightness, contrast);
       else if (to === 'blur') result = await blurImage(selectedFile);
-      else if (to === 'sharpen') result = await sharpenImage(selectedFile);
+      else if (to === 'sharpen') result = await sharpenImage(selectedFile, sharpenIntensity);
       else if (to === 'watermark') {
         result = await addWatermark(selectedFile, {
           text: watermarkText,
@@ -356,7 +388,7 @@ const App = () => {
       { name: 'Add Watermark', from: 'image', to: 'watermark', accept: 'image/*' },
       { name: 'PNG to ICO', from: 'png', to: 'ico', accept: 'image/png' },
       { name: 'HTML to PDF', from: 'html', to: 'pdf', accept: '.html' },
-      { name: 'PDF to Images', from: 'pdf', to: 'images', accept: 'application/pdf' },
+      // { name: 'PDF to Images', from: 'pdf', to: 'images', accept: 'application/pdf' },
     ],
   };
 
@@ -416,6 +448,10 @@ const App = () => {
           setBrightness={setBrightness}
           contrast={contrast}
           setContrast={setContrast}
+          mirrorDirection={mirrorDirection}
+          setMirrorDirection={setMirrorDirection}
+          sharpenIntensity={sharpenIntensity}
+          setSharpenIntensity={setSharpenIntensity}
         />
       </main>
       <Footer darkMode={darkMode} />

@@ -42,12 +42,17 @@ const ConverterUI = ({
     setBrightness,
     contrast,
     setContrast,
+    mirrorDirection,
+    setMirrorDirection,
+    sharpenIntensity,
+    setSharpenIntensity,
 }) => {
     // State for live preview
 
     const to = activeConverter?.to;
     // State for live preview
     const [livePreview, setLivePreview] = useState(null);
+    const [showComparison, setShowComparison] = useState(false);
 
     // Apply brightness/contrast to create live preview
     useEffect(() => {
@@ -80,6 +85,105 @@ const ConverterUI = ({
             img.src = previewUrl;
         }
     }, [brightness, contrast, previewUrl, selectedFile, to]);
+
+    // Apply sharpen effect to create live preview
+    useEffect(() => {
+        if (to === 'sharpen' && previewUrl && selectedFile) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                // Sharpen kernel
+                const centerWeight = 1 + (4 * sharpenIntensity);
+                const edgeWeight = -1 * sharpenIntensity;
+                const weights = [0, edgeWeight, 0, edgeWeight, centerWeight, edgeWeight, 0, edgeWeight, 0];
+                const side = 3;
+                const halfSide = 1;
+                const w = canvas.width;
+                const h = canvas.height;
+                const output = ctx.createImageData(w, h);
+
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        const dstOff = (y * w + x) * 4;
+                        let r = 0, g = 0, b = 0;
+                        for (let cy = 0; cy < side; cy++) {
+                            for (let cx = 0; cx < side; cx++) {
+                                const scy = y + cy - halfSide;
+                                const scx = x + cx - halfSide;
+                                if (scy >= 0 && scy < h && scx >= 0 && scx < w) {
+                                    const srcOff = (scy * w + scx) * 4;
+                                    const wt = weights[cy * side + cx];
+                                    r += data[srcOff] * wt;
+                                    g += data[srcOff + 1] * wt;
+                                    b += data[srcOff + 2] * wt;
+                                }
+                            }
+                        }
+                        output.data[dstOff] = Math.min(255, Math.max(0, r));
+                        output.data[dstOff + 1] = Math.min(255, Math.max(0, g));
+                        output.data[dstOff + 2] = Math.min(255, Math.max(0, b));
+                        output.data[dstOff + 3] = data[dstOff + 3];
+                    }
+                }
+                ctx.putImageData(output, 0, 0);
+                setLivePreview(canvas.toDataURL('image/png'));
+            };
+            img.src = previewUrl;
+        }
+    }, [sharpenIntensity, previewUrl, selectedFile, to]);
+
+    // Apply blur effect to create live preview
+    useEffect(() => {
+        if (to === 'blur' && previewUrl && selectedFile) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.filter = 'blur(5px)';
+                ctx.drawImage(img, 0, 0);
+                setLivePreview(canvas.toDataURL('image/png'));
+            };
+            img.src = previewUrl;
+        }
+    }, [previewUrl, selectedFile, to]);
+
+    // Apply grayscale effect to create live preview
+    useEffect(() => {
+        if (to === 'grayscale' && previewUrl && selectedFile) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    data[i] = avg;
+                    data[i + 1] = avg;
+                    data[i + 2] = avg;
+                }
+                ctx.putImageData(imageData, 0, 0);
+                setLivePreview(canvas.toDataURL('image/png'));
+            };
+            img.src = previewUrl;
+        }
+    }, [previewUrl, selectedFile, to]);
 
     // Theme classes based on darkMode
     const theme = {
@@ -240,6 +344,87 @@ const ConverterUI = ({
                     </div>
                 )}
 
+                {to === 'mirror' && !selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
+                        <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                            Mirror Direction
+                        </h3>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Select Mirror Type</label>
+                            <select
+                                value={mirrorDirection}
+                                onChange={(e) => setMirrorDirection(e.target.value)}
+                                className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500' : 'border-gray-300 focus:border-purple-500'} focus:outline-none transition-all font-medium`}
+                            >
+                                <option value="horizontal">Horizontal (Flip Left-to-Right)</option>
+                                <option value="vertical">Vertical (Flip Top-to-Bottom)</option>
+                            </select>
+                        </div>
+                        <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} rounded-lg p-4 border-2 ${darkMode ? 'border-gray-600' : 'border-purple-200'}`}>
+                            <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Preview:</p>
+                            <div className="flex items-center justify-center space-x-4">
+                                <div className="text-4xl">🖼️</div>
+                                <svg className={`w-8 h-8 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                <div className="text-4xl" style={{ transform: mirrorDirection === 'horizontal' ? 'scaleX(-1)' : 'scaleY(-1)' }}>🖼️</div>
+                            </div>
+                            <p className={`text-xs mt-2 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {mirrorDirection === 'horizontal' ? 'Left ↔️ Right' : 'Top ↕️ Bottom'}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {to === 'sharpen' && selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
+                        <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                            Sharpen Intensity
+                        </h3>
+                        <div className="mb-4">
+                            <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Intensity: {sharpenIntensity.toFixed(1)}</label>
+                            <input
+                                type="range"
+                                min="0"
+                                max="2"
+                                step="0.1"
+                                value={sharpenIntensity}
+                                onChange={(e) => setSharpenIntensity(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                            />
+                            <div className="flex justify-between text-xs mt-1">
+                                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Soft</span>
+                                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Strong</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => setSharpenIntensity(1)}
+                                className={`px-4 py-2 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} transition-all`}
+                            >
+                                Reset
+                            </button>
+                            <button
+                                onClick={() => setShowComparison(!showComparison)}
+                                className={`px-4 py-2 rounded-lg font-semibold text-sm ${showComparison ? 'bg-purple-600 text-white' : darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} transition-all`}
+                            >
+                                {showComparison ? '✓ Compare' : 'Compare Before/After'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {(to === 'blur' || to === 'grayscale') && selectedFile && !convertedFile && (
+                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
+                        <button
+                            onClick={() => setShowComparison(!showComparison)}
+                            className={`w-full px-4 py-3 rounded-lg font-semibold text-sm ${showComparison ? 'bg-purple-600 text-white' : darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} transition-all`}
+                        >
+                            {showComparison ? '✓ Comparing Before/After' : 'Show Before/After Comparison'}
+                        </button>
+                    </div>
+                )}
+
                 {!selectedFile && !convertedFile && (
                     <div className="max-w-3xl mx-auto mb-20">
                         <div
@@ -308,15 +493,44 @@ const ConverterUI = ({
                         </div>
                         {previewUrl && selectedFile?.type?.startsWith('image/') && (
                             <div className="relative mb-6">
-                                <img
-                                    src={to === 'brightness' && livePreview ? livePreview : previewUrl}
-                                    alt="Preview"
-                                    className="max-h-72 mx-auto rounded-xl border-2 shadow-lg transition-all duration-200"
-                                />
-                                {to === 'brightness' && livePreview && (
-                                    <div className={`absolute top-2 left-2 ${darkMode ? 'bg-black/70' : 'bg-white/70'} backdrop-blur-sm px-3 py-1 rounded-lg text-xs font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Live Preview
+                                {/* Show comparison view for effects with live preview */}
+                                {(to === 'brightness' || to === 'sharpen' || to === 'blur' || to === 'grayscale') && livePreview && showComparison ? (
+                                    <div className="space-y-4">
+                                        <div className={`${darkMode ? 'bg-gray-700/50' : 'bg-gradient-to-r from-purple-50 to-blue-50'} ronded-xl p-4 border-2 ${darkMode ? 'border-gray-600' : 'border-purple-200'}`}>
+                                            <p className={`text-sm font-semibold mb-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}> Before & After Comparison</p>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="text-center">
+                                                    <p className={`text-xs font-bold mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>BEFORE</p>
+                                                    <img
+                                                        src={previewUrl}
+                                                        alt="Before"
+                                                        className="w-full rounded-lg border-2 shadow-lg"
+                                                    />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className={`text-xs font-bold mb-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>AFTER </p>
+                                                    <img
+                                                        src={livePreview}
+                                                        alt="After"
+                                                        className="w-full rounded-lg border-2 border-purple-500 shadow-lg"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
+                                ) : (
+                                    <>
+                                        <img
+                                            src={(to === 'brightness' || to === 'sharpen' || to === 'blur' || to === 'grayscale') && livePreview ? livePreview : previewUrl}
+                                            alt="Preview"
+                                            className="max-h-72 mx-auto rounded-xl border-2 shadow-lg transition-all duration-200"
+                                        />
+                                        {((to === 'brightness' || to === 'sharpen' || to === 'blur' || to === 'grayscale') && livePreview) && (
+                                            <div className={`absolute top-2 left-2 ${darkMode ? 'bg-black/70' : 'bg-white/70'} backdrop-blur-sm px-3 py-1 rounded-lg text-xs font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                Live Preview ✨
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         )}
@@ -353,7 +567,7 @@ const ConverterUI = ({
                                 <p className={`text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-semibold`}>📊 Compression: <span className="font-bold text-blue-500">{((1 - convertedFile.compressedSize / convertedFile.originalSize) * 100).toFixed(1)}%</span> smaller</p>
                             </div>
                         )}
-                        {convertedFile.note && <p className={`text-base mb-6 p-4 rounded-xl border-2 ${darkMode ? 'text-amber-400 bg-amber-900/30 border-amber-700' : 'text-amber-700 bg-amber-50 border-amber-200'} font-medium`}>ℹ️ {convertedFile.note}</p>}
+                        {convertedFile.note && <p className={`text-base mb-6 p-4 rounded-xl border-2 ${darkMode ? 'text-amber-400 bg-amber-900/30 border-amber-700' : 'text-amber-700 bg-amber-50 border-amber-200'} font-medium`}> {convertedFile.note}</p>}
                         <div className={`mb-7 p-6 rounded-xl ${darkMode ? 'bg-gray-700/50 border-2 border-gray-600' : 'bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200'} shadow-lg`}>
                             <div className="flex items-center mb-3">
                                 <Edit2 className={`w-5 h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
@@ -375,7 +589,7 @@ const ConverterUI = ({
                                     .{convertedFile.name.split('.').pop()}
                                 </span>
                             </div>
-                            <p className={`text-sm mt-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'} font-medium`}>💡 File extension will be added automatically</p>
+                            <p className={`text-sm mt-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'} font-medium`}> File extension will be added automatically</p>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                             <button onClick={handleDownload} className={`flex-1 ${darkMode ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700' : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'} text-white px-4 sm:px-6 py-4 sm:py-5 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl flex items-center justify-center shadow-premium transition-all duration-300 hover:scale-105 transform`}>

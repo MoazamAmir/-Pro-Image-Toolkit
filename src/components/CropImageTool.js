@@ -5,6 +5,7 @@ export default function CropImageTool({ isDarkMode }) {
     const [selectedImage, setSelectedImage] = useState(null);
     const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
     const [aspectRatio, setAspectRatio] = useState('FreeForm');
+    const [outputFormat, setOutputFormat] = useState('png');
     const [cropSettings, setCropSettings] = useState({
         width: 200,
         height: 200,
@@ -127,6 +128,12 @@ export default function CropImageTool({ isDarkMode }) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+            // Add white background for JPG format
+            if (outputFormat === 'jpg' || outputFormat === 'jpeg') {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
             ctx.drawImage(
                 img,
                 cropSettings.positionX,
@@ -139,18 +146,77 @@ export default function CropImageTool({ isDarkMode }) {
                 cropSettings.height
             );
 
-            canvas.toBlob((blob) => {
-                if (blob) {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `cropped-image-${Date.now()}.png`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                }
-            }, 'image/png');
+            // Handle different formats
+            if (outputFormat === 'pdf-standard' || outputFormat === 'pdf-print') {
+                // For PDF formats, use jsPDF
+                import('jspdf').then(({ jsPDF }) => {
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const pdf = new jsPDF({
+                        orientation: cropSettings.width > cropSettings.height ? 'landscape' : 'portrait',
+                        unit: 'px',
+                        format: [cropSettings.width, cropSettings.height]
+                    });
+                    pdf.addImage(imgData, 'JPEG', 0, 0, cropSettings.width, cropSettings.height);
+                    pdf.save(`cropped-image-${Date.now()}.pdf`);
+                }).catch(() => {
+                    alert('PDF export not available. Please install jsPDF library or select a different format.');
+                });
+            } else if (outputFormat === 'svg') {
+                // For SVG, convert canvas to data URL and wrap in SVG
+                const dataURL = canvas.toDataURL('image/png');
+                const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${cropSettings.width}" height="${cropSettings.height}">
+  <image xlink:href="${dataURL}" width="${cropSettings.width}" height="${cropSettings.height}"/>
+</svg>`;
+                const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `cropped-image-${Date.now()}.svg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } else if (outputFormat === 'gif') {
+                // For GIF, download as PNG (GIF creation from single image)
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `cropped-image-${Date.now()}.gif`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                }, 'image/gif', 0.95);
+            } else if (outputFormat === 'mp4') {
+                // MP4 video creation requires video processing libraries
+                alert('MP4 video export is not available for static images. Please select an image format (JPG, PNG, or GIF).');
+            } else if (outputFormat === 'pptx') {
+                // PPTX creation requires additional libraries
+                alert('PPTX export is not yet implemented. Please select an image format (JPG, PNG, PDF, or SVG).');
+            } else {
+                // For standard image formats (JPG, PNG, WEBP)
+                const mimeType = outputFormat === 'jpg' || outputFormat === 'jpeg' ? 'image/jpeg' :
+                    outputFormat === 'png' ? 'image/png' :
+                        outputFormat === 'webp' ? 'image/webp' : 'image/png';
+                const fileExt = outputFormat === 'jpg' || outputFormat === 'jpeg' ? 'jpg' : outputFormat;
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `cropped-image-${Date.now()}.${fileExt}`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                }, mimeType, 0.95);
+            }
         };
         img.src = selectedImage;
     };
@@ -407,6 +473,28 @@ export default function CropImageTool({ isDarkMode }) {
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Output Format / Tools */}
+                    <div className="space-y-4">
+                        <label className={`text-sm font-semibold ${theme.textSecondary} uppercase tracking-wider`}>Tools</label>
+                        <select
+                            value={outputFormat}
+                            onChange={(e) => setOutputFormat(e.target.value)}
+                            className={`w-full px-3 py-3 rounded-lg border ${theme.border} ${theme.inputBg} ${theme.textPrimary} focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all`}
+                        >
+                            <option value="jpg">JPG - Best for sharing</option>
+                            <option value="png">PNG - Best for complex images, illustrations</option>
+                            <option value="pdf-standard">PDF Standard - Best for documents</option>
+                            <option value="pdf-print">PDF Print - Best for printing</option>
+                            <option value="svg">SVG - Best for web design and animations</option>
+                            {/* <option value="mp4">MP4 Video - High quality video</option> */}
+                            <option value="gif">GIF - Short clip, no sound</option>
+                            {/* <option value="pptx">PPTX - Microsoft PowerPoint document</option> */}
+                        </select>
+                        <p className={`text-xs ${theme.textTertiary}`}>
+                            Select the output format for your cropped image
+                        </p>
                     </div>
 
                     {/* Position */}

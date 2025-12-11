@@ -1,27 +1,78 @@
 // src/components/Header.js
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { Zap, Moon, Sun, Film, Image, FileText, Grid3x3, Settings } from 'lucide-react';
 
 const Header = ({
     darkMode,
     setDarkMode,
-    showDropdown,
-    setShowDropdown,
     converters,
-    setActiveConverter,
+    handleSetActiveConverter,
     setSelectedFile,
     setConvertedFile,
     setPreviewUrl,
-    dropdownRef,
-    handleMouseEnter,
-    handleMouseLeave,
 }) => {
+    const [activeDropdown, setActiveDropdown] = useState(null);
+    const dropdownRefs = useRef({});
+
+    const getCategoryIcon = (category) => {
+        switch (category) {
+            case 'Video & Audio':
+                return <Film className={`w-3 h-3 sm:w-4 sm:h-4 mr-1 ${darkMode ? 'text-purple-400' : 'text-purple-200'}`} />;
+            case 'Image':
+                return <Image className={`w-3 h-3 sm:w-4 sm:h-4 mr-1 ${darkMode ? 'text-blue-400' : 'text-blue-200'}`} />;
+            case 'PDF & Documents':
+                return <FileText className={`w-3 h-3 sm:w-4 sm:h-4 mr-1 ${darkMode ? 'text-indigo-400' : 'text-indigo-200'}`} />;
+            case 'GIF & Animation':
+                return <Grid3x3 className={`w-3 h-3 sm:w-4 sm:h-4 mr-1 ${darkMode ? 'text-pink-400' : 'text-pink-200'}`} />;
+            case 'Advanced':
+                return <Settings className={`w-3 h-3 sm:w-4 sm:h-4 mr-1 ${darkMode ? 'text-violet-400' : 'text-violet-200'}`} />;
+            default:
+                return null;
+        }
+    };
+
+    const getCategoryColor = (category) => {
+        switch (category) {
+            case 'Video & Audio':
+                return darkMode ? 'from-purple-600 to-purple-500' : 'from-purple-100 to-purple-50';
+            case 'Image':
+                return darkMode ? 'from-blue-600 to-blue-500' : 'from-blue-100 to-blue-50';
+            case 'PDF & Documents':
+                return darkMode ? 'from-indigo-600 to-indigo-500' : 'from-indigo-100 to-indigo-50';
+            case 'GIF & Animation':
+                return darkMode ? 'from-pink-600 to-pink-500' : 'from-pink-100 to-pink-50';
+            case 'Advanced':
+                return darkMode ? 'from-violet-600 to-violet-500' : 'from-violet-100 to-violet-50';
+            default:
+                return darkMode ? 'from-gray-600 to-gray-500' : 'from-gray-100 to-gray-50';
+        }
+    };
+
+    const handleMouseEnter = (category) => {
+        setActiveDropdown(category);
+    };
+
+    const handleMouseLeave = (category, e) => {
+        if (dropdownRefs.current[category] && !dropdownRefs.current[category].contains(e.relatedTarget)) {
+            setActiveDropdown(null);
+        }
+    };
+
+    const handleToolClick = (item) => {
+        handleSetActiveConverter(item);
+        setActiveDropdown(null);
+        setSelectedFile(null);
+        setConvertedFile(null);
+        setPreviewUrl(null);
+    };
+
     return (
         <header className={`${darkMode ? 'bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900' : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600'} shadow-2xl sticky top-0 z-50 transition-all duration-500 backdrop-blur-sm`}>
             <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-14 sm:h-16">
+                    {/* Logo */}
                     <div className="flex items-center cursor-pointer group" onClick={() => {
-                        setActiveConverter(null);
+                        handleSetActiveConverter(null);
                         setSelectedFile(null);
                         setConvertedFile(null);
                         setPreviewUrl(null);
@@ -32,61 +83,113 @@ const Header = ({
                         </div>
                         <span className="text-base sm:text-xl font-bold text-white group-hover:text-yellow-300 transition-all duration-300 tracking-tight">Pro Image Toolkit</span>
                     </div>
-                    <nav className="flex space-x-2 sm:space-x-8">
-                        <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} ref={dropdownRef}>
-                            <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-300' : 'text-white hover:text-yellow-200'} px-2 sm:px-4 py-2 text-xs sm:text-sm font-semibold flex items-center transition-all duration-300 rounded-lg hover:bg-white/10`}>
-                                <span className="hidden sm:inline">Convert Tools</span>
-                                <span className="sm:hidden">Tools</span>
-                                <svg className={`ml-1 sm:ml-2 w-3 h-3 sm:w-4 sm:h-4 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                            </button>
-                            {showDropdown && (
+
+                    {/* Category Navigation */}
+                    <nav className="hidden md:flex space-x-1 lg:space-x-2">
+                        {Object.entries(converters).map(([category, items]) => {
+                            const displayName = category === 'Advanced' ? 'Tools' : category;
+                            return (
                                 <div
-                                    className={`fixed top-14 sm:top-16 left-1/2 transform -translate-x-1/2 mt-2 sm:mt-3 ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-xl shadow-premium-lg rounded-xl sm:rounded-2xl border-2 z-50 w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[1200px] max-h-[80vh] overflow-y-auto animate-slideDown`}
+                                    key={category}
+                                    className="relative"
+                                    onMouseEnter={() => handleMouseEnter(category)}
+                                    onMouseLeave={(e) => handleMouseLeave(category, e)}
+                                    ref={(el) => (dropdownRefs.current[category] = el)}
                                 >
-                                    <style>{`
-                    @keyframes slideDown {
-                      from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-                      to { opacity: 1; transform: translateX(-50%) translateY(0); }
-                    }
-                  `}</style>
-                                    <div className="p-4 sm:p-6 md:p-8">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 md:gap-8">
-                                            {Object.entries(converters).map(([category, items]) => (
-                                                <div key={category} className="space-y-2 sm:space-y-3">
-                                                    <div className="flex items-center mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2 border-gradient-to-r from-purple-500 to-blue-500">
-                                                        {category === 'Video & Audio' && <Film className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />}
-                                                        {category === 'Image' && <Image className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
-                                                        {category === 'PDF & Documents' && <FileText className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />}
-                                                        {category === 'GIF & Animation' && <Grid3x3 className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-pink-400' : 'text-pink-600'}`} />}
-                                                        {category === 'Advanced' && <Settings className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 ${darkMode ? 'text-violet-400' : 'text-violet-600'}`} />}
-                                                        <h3 className={`font-bold text-xs sm:text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{category}</h3>
-                                                    </div>
-                                                    <ul className="space-y-2">
-                                                        {items.map((item) => (
-                                                            <li key={item.name}>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setActiveConverter(item);
-                                                                        setShowDropdown(false);
-                                                                        setSelectedFile(null);
-                                                                        setConvertedFile(null);
-                                                                        setPreviewUrl(null);
-                                                                    }}
-                                                                    className={`text-xs sm:text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600' : 'text-gray-700 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50'} w-full text-left py-2 sm:py-2.5 px-2 sm:px-3 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg font-medium hover-lift`}
-                                                                >
-                                                                    {item.name}
-                                                                </button>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
+                                    <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-300' : 'text-white hover:text-yellow-200'} px-2 lg:px-3 py-2 text-xs lg:text-sm font-semibold flex items-center transition-all duration-300 rounded-lg hover:bg-white/10`}>
+                                        {getCategoryIcon(category)}
+                                        <span className="hidden lg:inline">{displayName}</span>
+                                        <span className="lg:hidden">{displayName.split(' ')[0]}</span>
+                                    </button>
+
+                                    {/* Dropdown for each category */}
+                                    {activeDropdown === category && (
+                                        <div
+                                            className={`absolute top-full left-0 mt-2 ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-xl shadow-premium-lg rounded-xl border-2 z-50 min-w-[220px] animate-slideDown`}
+                                        >
+                                            <style>{`
+                                                @keyframes slideDown {
+                                                    from { opacity: 0; transform: translateY(-10px); }
+                                                    to { opacity: 1; transform: translateY(0); }
+                                                }
+                                            `}</style>
+                                            <div className="p-3">
+                                                <div className={`flex items-center mb-3 pb-2 border-b-2 bg-gradient-to-r ${getCategoryColor(category)} rounded-lg px-2 py-1`}>
+                                                    {getCategoryIcon(category)}
+                                                    <h3 className={`font-bold text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{displayName}</h3>
                                                 </div>
-                                            ))}
+                                                <ul className="space-y-1 max-h-[60vh] overflow-y-auto">
+                                                    {items.map((item) => (
+                                                        <li key={item.name}>
+                                                            <button
+                                                                onClick={() => handleToolClick(item)}
+                                                                className={`text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600' : 'text-gray-700 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50'} w-full text-left py-2 px-3 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg font-medium`}
+                                                            >
+                                                                {item.name}
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </nav>
+
+                    {/* Mobile Menu - Single Dropdown */}
+                    <nav className="md:hidden">
+                        <div
+                            className="relative"
+                            onMouseEnter={() => handleMouseEnter('mobile')}
+                            onMouseLeave={(e) => handleMouseLeave('mobile', e)}
+                            ref={(el) => (dropdownRefs.current['mobile'] = el)}
+                        >
+                            <button className={`${darkMode ? 'text-gray-200 hover:text-yellow-300' : 'text-white hover:text-yellow-200'} px-2 sm:px-4 py-2 text-xs sm:text-sm font-semibold flex items-center transition-all duration-300 rounded-lg hover:bg-white/10`}>
+                                <span>Tools</span>
+                                <svg className={`ml-1 w-3 h-3 transition-transform duration-300 ${activeDropdown === 'mobile' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            {activeDropdown === 'mobile' && (
+                                <div
+                                    className={`fixed top-14 left-1/2 transform -translate-x-1/2 mt-2 ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-xl shadow-premium-lg rounded-xl border-2 z-50 w-[95vw] max-h-[70vh] overflow-y-auto animate-slideDown`}
+                                >
+                                    <div className="p-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {Object.entries(converters).map(([category, items]) => {
+                                                const displayName = category === 'Advanced' ? 'Tools' : category;
+                                                return (
+                                                    <div key={category} className="space-y-2">
+                                                        <div className={`flex items-center mb-2 pb-2 border-b-2 bg-gradient-to-r ${getCategoryColor(category)} rounded-lg px-2 py-1`}>
+                                                            {getCategoryIcon(category)}
+                                                            <h3 className={`font-bold text-xs ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{displayName}</h3>
+                                                        </div>
+                                                        <ul className="space-y-1">
+                                                            {items.map((item) => (
+                                                                <li key={item.name}>
+                                                                    <button
+                                                                        onClick={() => handleToolClick(item)}
+                                                                        className={`text-xs ${darkMode ? 'text-gray-300 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600' : 'text-gray-700 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50'} w-full text-left py-2 px-2 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg font-medium`}
+                                                                    >
+                                                                        {item.name}
+                                                                    </button>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </nav>
+
+                    {/* Right Side - Dark Mode & Badge */}
                     <div className="flex items-center space-x-2 sm:space-x-4">
                         <button
                             onClick={() => setDarkMode(!darkMode)}

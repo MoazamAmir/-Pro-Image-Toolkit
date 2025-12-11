@@ -29,21 +29,52 @@ export const convertImage = (file, format) => {
     });
 };
 
-export const resizeImage = (file, width, height) => {
+export const resizeImage = (file, width, height, format = 'png', quality = 0.95) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = new window.Image();
             img.onload = () => {
+                const originalWidth = img.width;
+                const originalHeight = img.height;
+
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
+
+                // Add white background for JPG
+                if (format === 'jpg' || format === 'jpeg') {
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
                 ctx.drawImage(img, 0, 0, width, height);
+
+                const mimeType = format === 'jpg' || format === 'jpeg' ? 'image/jpeg' :
+                    format === 'png' ? 'image/png' :
+                        format === 'webp' ? 'image/webp' : 'image/png';
+
+                const extension = format === 'jpg' || format === 'jpeg' ? 'jpg' : format;
+
                 canvas.toBlob((blob) => {
-                    if (blob) resolve({ url: URL.createObjectURL(blob), name: `resized.png`, blob, type: 'image/png' });
-                    else reject(new Error('Resize failed'));
-                }, 'image/png', 0.95);
+                    if (blob) {
+                        resolve({
+                            url: URL.createObjectURL(blob),
+                            name: `resized.${extension}`,
+                            blob,
+                            type: mimeType,
+                            originalWidth,
+                            originalHeight,
+                            newWidth: width,
+                            newHeight: height,
+                            originalSize: file.size,
+                            newSize: blob.size
+                        });
+                    } else {
+                        reject(new Error('Resize failed'));
+                    }
+                }, mimeType, quality);
             };
             img.onerror = () => reject(new Error('Image load failed'));
             img.src = e.target.result;
@@ -606,8 +637,17 @@ export const imageToBase64 = (file) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const base64 = e.target.result;
+            // Create a downloadable text file with the base64 string
             const blob = new Blob([base64], { type: 'text/plain' });
-            resolve({ url: URL.createObjectURL(blob), name: 'base64.txt', blob, type: 'text/plain', base64 });
+            const url = URL.createObjectURL(blob);
+            resolve({
+                url: url,
+                name: 'base64.txt',
+                blob: blob,
+                type: 'text/plain',
+                base64: base64,
+                note: `Base64 string (${Math.round(base64.length / 1024)} KB)`
+            });
         };
         reader.readAsDataURL(file);
     });

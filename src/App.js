@@ -1,5 +1,6 @@
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Upload, Image, FileText, Film, Grid3x3, X, Download, CheckCircle, Music, Settings, Zap, Moon, Sun, Edit2 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
@@ -36,15 +37,79 @@ import {
   convertGIFToPNG,
 } from './utils/ConverterFunctions';
 
+// Define converters outside component to avoid dependency issues
+const converters = {
+  'Image': [
+    { name: 'PNG to JPG', from: 'png', to: 'jpg', accept: 'image/png' },
+    { name: 'JPG to PNG', from: 'jpg', to: 'png', accept: 'image/jpeg' },
+    { name: 'WEBP to PNG', from: 'webp', to: 'png', accept: 'image/webp' },
+    { name: 'WEBP to JPG', from: 'webp', to: 'jpg', accept: 'image/webp' },
+    { name: 'PNG to WEBP', from: 'png', to: 'webp', accept: 'image/png' },
+    { name: 'JPG to WEBP', from: 'jpg', to: 'webp', accept: 'image/jpeg' },
+    { name: 'Image to SVG', from: 'image', to: 'svg', accept: 'image/*' },
+    { name: 'PNG to SVG', from: 'png', to: 'svg', accept: 'image/png' },
+    { name: 'JPG to SVG', from: 'jpg', to: 'svg', accept: 'image/jpeg' },
+    { name: 'Image Resizer', from: 'image', to: 'resize', accept: 'image/*' },
+    { name: 'Image to Base64', from: 'image', to: 'base64', accept: 'image/*' },
+    { name: 'Image to BMP', from: 'image', to: 'bmp', accept: 'image/*' },
+    { name: 'Image Compressor', from: 'image', to: 'compress', accept: 'image/*' },
+    { name: 'Grayscale Filter', from: 'image', to: 'grayscale', accept: 'image/*' },
+  ],
+  'PDF & Documents': [
+    { name: 'Image to PDF', from: 'image', to: 'pdf', accept: 'image/*' },
+    { name: 'PNG to PDF', from: 'png', to: 'pdf', accept: 'image/png' },
+    { name: 'JPG to PDF', from: 'jpg', to: 'pdf', accept: 'image/jpeg' },
+    { name: 'Multiple Images to PDF', from: 'images', to: 'pdf', accept: 'image/*', multiple: true },
+    { name: 'Text to PDF', from: 'text', to: 'pdf', accept: '.txt' },
+    { name: 'SVG to PDF', from: 'svg', to: 'pdf', accept: 'image/svg+xml' },
+  ],
+  'Video & Audio': [
+    { name: 'MP4 to MP3', from: 'mp4', to: 'mp3', accept: 'video/mp4' },
+    { name: 'Video to WebM', from: 'video', to: 'webm', accept: 'video/*' },
+    { name: 'MP3 to WAV', from: 'mp3', to: 'wav', accept: 'audio/mp3' },
+    { name: 'WAV to MP3', from: 'wav', to: 'mp3', accept: 'audio/wav' },
+    { name: 'Video Thumbnail', from: 'video', to: 'thumbnail', accept: 'video/*' },
+    { name: 'Extract Audio (MP3)', from: 'video', to: 'mp3', accept: 'video/*' },
+  ],
+  'GIF & Animation': [
+    { name: 'Video to GIF', from: 'video', to: 'gif', accept: 'video/*' },
+    { name: 'Images to GIF', from: 'images', to: 'gif', accept: 'image/*', multiple: true },
+    { name: 'GIF to Video (MP4)', from: 'gif', to: 'mp4', accept: 'image/gif' },
+    { name: 'GIF to PNG', from: 'gif', to: 'png', accept: 'image/gif' },
+  ],
+  'Image Editing': [
+    { name: 'Image Rotate 90°', from: 'image', to: 'rotate', accept: 'image/*' },
+    { name: 'Image Flip', from: 'image', to: 'flip', accept: 'image/*' },
+    { name: 'Image Mirror', from: 'image', to: 'mirror', accept: 'image/*' },
+    { name: 'Image Crop', from: 'image', to: 'crop', accept: 'image/*' },
+    { name: 'Brightness/Contrast', from: 'image', to: 'brightness', accept: 'image/*' },
+    { name: 'Blur Effect', from: 'image', to: 'blur', accept: 'image/*' },
+    { name: 'Sharpen Effect', from: 'image', to: 'sharpen', accept: 'image/*' },
+    { name: 'Add Watermark', from: 'image', to: 'watermark', accept: 'image/*' },
+
+  ],
+  'File Conversion': [
+    { name: 'PNG to ICO', from: 'png', to: 'ico', accept: 'image/png' },
+    { name: 'HTML to PDF', from: 'html', to: 'pdf', accept: '.html' },
+  ]
+};
+
 const App = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeConverter, setActiveConverter] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [convertedFile, setConvertedFile] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [resizeWidth, setResizeWidth] = useState(800);
   const [resizeHeight, setResizeHeight] = useState(600);
+  const [resizeMode, setResizeMode] = useState('bySize'); // 'bySize', 'byPercentage', 'socialMedia'
+  const [resizePercentage, setResizePercentage] = useState(100);
+  const [lockAspectRatio, setLockAspectRatio] = useState(true);
+  const [resizeFormat, setResizeFormat] = useState('original'); // 'jpg', 'png', 'webp', 'original'
+  const [targetFileSize, setTargetFileSize] = useState(''); // in KB
+  const [socialMediaPreset, setSocialMediaPreset] = useState('');
+  const [originalDimensions, setOriginalDimensions] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [customFileName, setCustomFileName] = useState('');
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
@@ -72,8 +137,17 @@ const App = () => {
   const [selectedTime, setSelectedTime] = useState(0);
   const [generatedThumbnails, setGeneratedThumbnails] = useState([]);
 
+  // Video to GIF Options
+  const [gifTrimStart, setGifTrimStart] = useState(0);
+  const [gifTrimEnd, setGifTrimEnd] = useState(0);
+  const [gifWidth, setGifWidth] = useState(480);
+  const [gifLoopCount, setGifLoopCount] = useState(0);
+  const [gifPreserveTransparency, setGifPreserveTransparency] = useState(false);
+  const [gifFPS, setGifFPS] = useState(15);
+  const [gifCompression, setGifCompression] = useState(10);
+  const [gifOptimizeBackground, setGifOptimizeBackground] = useState(false);
+
   const fileInputRef = useRef(null);
-  const dropdownRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
 
   useEffect(() => {
@@ -82,6 +156,32 @@ const App = () => {
       setCustomFileName(nameWithoutExt);
     }
   }, [convertedFile]);
+
+  // Load converter from URL on mount
+  useEffect(() => {
+    const tool = searchParams.get('tool');
+    if (tool && !activeConverter) {
+      // Find the converter by name from all categories
+      const allConverters = Object.values(converters).flat();
+      const foundConverter = allConverters.find(
+        item => item.name.toLowerCase().replace(/[^a-z0-9]/g, '-') === tool
+      );
+      if (foundConverter) {
+        setActiveConverter(foundConverter);
+      }
+    }
+  }, [searchParams]);
+
+  // Update URL when converter changes
+  const handleSetActiveConverter = (converter) => {
+    setActiveConverter(converter);
+    if (converter) {
+      const toolSlug = converter.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      setSearchParams({ tool: toolSlug });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   const loadFFmpeg = async () => {
     if (ffmpegLoaded || ffmpegLoading) return;
@@ -196,15 +296,90 @@ const App = () => {
     await loadFFmpeg();
     const ffmpeg = ffmpegRef.current;
     const ext = file.name.split('.').pop();
-    await ffmpeg.writeFile(`input.${ext}`, await fetchFile(file));
-    await ffmpeg.exec(['-i', `input.${ext}`, '-vf', 'fps=10,scale=480:-1:flags=lanczos,palettegen', 'palette.png']);
-    await ffmpeg.exec(['-i', `input.${ext}`, '-i', 'palette.png', '-filter_complex', 'fps=10,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse', 'output.gif']);
-    const data = await ffmpeg.readFile('output.gif');
-    const blob = new Blob([data.buffer], { type: 'image/gif' });
-    await ffmpeg.deleteFile(`input.${ext}`);
-    await ffmpeg.deleteFile('palette.png');
-    await ffmpeg.deleteFile('output.gif');
-    return { url: URL.createObjectURL(blob), name: 'converted.gif', blob, type: 'image/gif' };
+    const inputFileName = `input.${ext}`;
+
+    try {
+      await ffmpeg.writeFile(inputFileName, await fetchFile(file));
+
+      // Build FFmpeg command with options
+      const trimStart = gifTrimStart || 0;
+      const trimEnd = gifTrimEnd || 0;
+      const width = gifWidth || 480;
+      const fps = gifFPS || 15;
+      const loopCount = gifLoopCount;
+
+      // Build filter string
+      let filterString = `fps=${fps},scale=${width}:-1:flags=lanczos`;
+
+      // First pass: generate palette
+      const paletteCmd = ['-i', inputFileName];
+
+      // Add trim if specified
+      if (trimStart > 0) {
+        paletteCmd.push('-ss', trimStart.toString());
+      }
+      if (trimEnd > 0 && trimEnd > trimStart) {
+        paletteCmd.push('-to', trimEnd.toString());
+      }
+
+      paletteCmd.push('-vf', `${filterString},palettegen`);
+      paletteCmd.push('palette.png');
+
+      await ffmpeg.exec(paletteCmd);
+
+      // Second pass: create GIF
+      const gifCmd = ['-i', inputFileName, '-i', 'palette.png'];
+
+      // Add trim if specified
+      if (trimStart > 0) {
+        gifCmd.push('-ss', trimStart.toString());
+      }
+      if (trimEnd > 0 && trimEnd > 0) {
+        gifCmd.push('-to', trimEnd.toString());
+      }
+
+      // Add filter complex
+      gifCmd.push('-filter_complex', `${filterString}[x];[x][1:v]paletteuse`);
+
+      // Add loop count
+      gifCmd.push('-loop', loopCount.toString());
+
+      // Output file
+      gifCmd.push('output.gif');
+
+      await ffmpeg.exec(gifCmd);
+
+      const data = await ffmpeg.readFile('output.gif');
+      const blob = new Blob([data.buffer], { type: 'image/gif' });
+
+      // Clean up files
+      try {
+        await ffmpeg.deleteFile(inputFileName);
+        await ffmpeg.deleteFile('palette.png');
+        await ffmpeg.deleteFile('output.gif');
+      } catch (cleanupError) {
+        console.warn('Cleanup error:', cleanupError);
+      }
+
+      return {
+        url: URL.createObjectURL(blob),
+        name: 'converted.gif',
+        blob,
+        type: 'image/gif',
+        note: `${width}px width, ${fps} FPS${trimStart > 0 || trimEnd > 0 ? ', trimmed' : ''}${loopCount === 0 ? ', infinite loop' : loopCount > 0 ? `, ${loopCount} loops` : ''}`
+      };
+    } catch (error) {
+      // Clean up on error
+      console.error('Video to GIF conversion error:', error);
+      try {
+        await ffmpeg.deleteFile(inputFileName);
+        await ffmpeg.deleteFile('palette.png');
+        await ffmpeg.deleteFile('output.gif');
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      throw new Error('Video to GIF conversion failed. Please try with a shorter video or different format.');
+    }
   };
 
   const convertGIFToVideo = async (file) => {
@@ -219,6 +394,58 @@ const App = () => {
     return { url: URL.createObjectURL(blob), name: 'converted.mp4', blob, type: 'video/mp4' };
   };
 
+  const convertImagesToGIF = async (files) => {
+    await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current;
+
+    try {
+      // Write all image files
+      for (let i = 0; i < files.length; i++) {
+        const ext = files[i].name.split('.').pop();
+        await ffmpeg.writeFile(`image${i}.${ext}`, await fetchFile(files[i]));
+      }
+
+      // Create a concat file list for ffmpeg
+      let concatContent = '';
+      for (let i = 0; i < files.length; i++) {
+        const ext = files[i].name.split('.').pop();
+        concatContent += `file 'image${i}.${ext}'\nduration 1\n`;
+      }
+      // Add the last image one more time for proper duration
+      const lastExt = files[files.length - 1].name.split('.').pop();
+      concatContent += `file 'image${files.length - 1}.${lastExt}'\n`;
+
+      await ffmpeg.writeFile('concat.txt', new TextEncoder().encode(concatContent));
+
+      // Convert images to GIF with 1 second per frame
+      await ffmpeg.exec([
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', 'concat.txt',
+        '-vf', 'fps=1,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
+        '-loop', '0',
+        'output.gif'
+      ]);
+
+      const data = await ffmpeg.readFile('output.gif');
+      const blob = new Blob([data.buffer], { type: 'image/gif' });
+
+      // Clean up all files
+      for (let i = 0; i < files.length; i++) {
+        const ext = files[i].name.split('.').pop();
+        await ffmpeg.deleteFile(`image${i}.${ext}`);
+      }
+      await ffmpeg.deleteFile('concat.txt');
+      await ffmpeg.deleteFile('output.gif');
+
+      return { url: URL.createObjectURL(blob), name: 'animated.gif', blob, type: 'image/gif' };
+    } catch (error) {
+      // Clean up on error
+      console.error('Images to GIF conversion error:', error);
+      throw new Error('Images to GIF conversion failed. Please ensure all files are valid images.');
+    }
+  };
+
   // === Event Handlers ===
   const handleFileSelect = (e) => {
     const files = e.target.files;
@@ -227,11 +454,25 @@ const App = () => {
     setSelectedFile(file);
     setConvertedFile(null);
     setPreviewUrl(null);
-    if (Array.isArray(file) ? file[0] : file.type.startsWith('image/')) {
+
+    if ((Array.isArray(file) ? file[0]?.type : file.type)?.startsWith('image/')) {
       const reader = new FileReader();
-      reader.onload = (ev) => setPreviewUrl(ev.target.result);
+      reader.onload = (ev) => {
+        setPreviewUrl(ev.target.result);
+
+        // Load original dimensions for resize mode
+        if (activeConverter?.to === 'resize') {
+          const img = new window.Image();
+          img.onload = () => {
+            setOriginalDimensions({ width: img.width, height: img.height });
+            setResizeWidth(img.width);
+            setResizeHeight(img.height);
+          };
+          img.src = ev.target.result;
+        }
+      };
       reader.readAsDataURL(Array.isArray(file) ? file[0] : file);
-    } else if ((Array.isArray(file) ? file[0] : file).type.startsWith('video/') || (Array.isArray(file) ? file[0] : file).type.startsWith('audio/')) {
+    } else if ((Array.isArray(file) ? file[0]?.type : file.type)?.startsWith('video/') || (Array.isArray(file) ? file[0]?.type : file.type)?.startsWith('audio/')) {
       setPreviewUrl(URL.createObjectURL(Array.isArray(file) ? file[0] : file));
     }
   };
@@ -247,12 +488,28 @@ const App = () => {
     setSelectedFile(file);
     setConvertedFile(null);
     setPreviewUrl(null);
-    if (Array.isArray(file) ? file[0] : file.type.startsWith('image/')) {
+    if ((Array.isArray(file) ? file[0]?.type : file.type)?.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (ev) => setPreviewUrl(ev.target.result);
       reader.readAsDataURL(Array.isArray(file) ? file[0] : file);
-    } else if ((Array.isArray(file) ? file[0] : file).type.startsWith('video/') || (Array.isArray(file) ? file[0] : file).type.startsWith('audio/')) {
+    } else if ((Array.isArray(file) ? file[0]?.type : file.type)?.startsWith('video/') || (Array.isArray(file) ? file[0]?.type : file.type)?.startsWith('audio/')) {
       setPreviewUrl(URL.createObjectURL(Array.isArray(file) ? file[0] : file));
+    }
+  };
+
+  const handleResizeWidthChange = (newWidth) => {
+    setResizeWidth(newWidth);
+    if (lockAspectRatio && originalDimensions) {
+      const aspectRatio = originalDimensions.height / originalDimensions.width;
+      setResizeHeight(Math.round(newWidth * aspectRatio));
+    }
+  };
+
+  const handleResizeHeightChange = (newHeight) => {
+    setResizeHeight(newHeight);
+    if (lockAspectRatio && originalDimensions) {
+      const aspectRatio = originalDimensions.width / originalDimensions.height;
+      setResizeWidth(Math.round(newHeight * aspectRatio));
     }
   };
 
@@ -285,7 +542,67 @@ const App = () => {
       else if (to === 'flip') result = await flipImage(selectedFile);
       else if (to === 'mirror') result = await mirrorImage(selectedFile, mirrorDirection);
       else if (to === 'compress') result = await compressImage(selectedFile);
-      else if (to === 'resize') result = await resizeImage(selectedFile, resizeWidth, resizeHeight);
+      else if (to === 'resize') {
+        let finalWidth = resizeWidth;
+        let finalHeight = resizeHeight;
+
+        // Load image to get original dimensions
+        const img = new window.Image();
+        const imageLoadPromise = new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            img.onload = () => resolve();
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(selectedFile);
+        });
+
+        await imageLoadPromise;
+
+        // Store original dimensions
+        if (!originalDimensions) {
+          setOriginalDimensions({ width: img.width, height: img.height });
+        }
+
+        // Calculate dimensions based on mode
+        if (resizeMode === 'byPercentage') {
+          finalWidth = Math.round(img.width * (resizePercentage / 100));
+          finalHeight = Math.round(img.height * (resizePercentage / 100));
+        } else if (resizeMode === 'socialMedia' && socialMediaPreset) {
+          const presets = {
+            'instagram-post': { width: 1080, height: 1080 },
+            'instagram-story': { width: 1080, height: 1920 },
+            'facebook-cover': { width: 820, height: 312 },
+            'twitter-post': { width: 1200, height: 675 },
+            'youtube-thumbnail': { width: 1280, height: 720 },
+          };
+          if (presets[socialMediaPreset]) {
+            finalWidth = presets[socialMediaPreset].width;
+            finalHeight = presets[socialMediaPreset].height;
+          }
+        }
+
+        // Determine format
+        let outputFormat = resizeFormat;
+        if (resizeFormat === 'original') {
+          const fileType = selectedFile.type;
+          if (fileType === 'image/jpeg' || fileType === 'image/jpg') outputFormat = 'jpg';
+          else if (fileType === 'image/png') outputFormat = 'png';
+          else if (fileType === 'image/webp') outputFormat = 'webp';
+          else outputFormat = 'png';
+        }
+
+        // Calculate quality based on target file size (simplified approach)
+        let quality = 0.95;
+        if (targetFileSize && parseInt(targetFileSize) > 0) {
+          // Estimate quality needed (this is a rough approximation)
+          const targetBytes = parseInt(targetFileSize) * 1024;
+          const estimatedSize = finalWidth * finalHeight * 3; // rough estimate
+          quality = Math.max(0.1, Math.min(0.95, targetBytes / estimatedSize));
+        }
+
+        result = await resizeImage(selectedFile, finalWidth, finalHeight, outputFormat, quality);
+      }
       else if (to === 'crop') result = await cropImage(selectedFile);
       else if (to === 'brightness') result = await adjustBrightness(selectedFile, brightness, contrast);
       else if (to === 'blur') result = await blurImage(selectedFile);
@@ -310,14 +627,16 @@ const App = () => {
 
       // FFmpeg paths
       else if (to === 'mp3') {
-        if (selectedFile.type.startsWith('video/')) result = await extractAudioFromVideo(selectedFile);
+        const fileType = Array.isArray(selectedFile) ? selectedFile[0]?.type : selectedFile.type;
+        if (fileType?.startsWith('video/')) result = await extractAudioFromVideo(selectedFile);
         else if (from === 'wav') result = await convertWAVToMP3(selectedFile);
         else result = await extractAudioFromVideo(selectedFile);
       }
       else if (to === 'mp4' && from === 'gif') result = await convertGIFToVideo(selectedFile);
       else if (to === 'webm') result = await convertVideoToWebM(selectedFile);
       else if (to === 'wav') result = await convertMP3ToWAV(selectedFile);
-      else if (to === 'gif' && (from === 'video' || selectedFile.type.startsWith('video/'))) result = await convertVideoToGIF(selectedFile);
+      else if (to === 'gif' && from === 'images' && Array.isArray(selectedFile)) result = await convertImagesToGIF(selectedFile);
+      else if (to === 'gif' && (from === 'video' || (!Array.isArray(selectedFile) && selectedFile.type?.startsWith('video/')))) result = await convertVideoToGIF(selectedFile);
       else result = await convertImage(selectedFile, 'png');
 
       setConvertedFile(result);
@@ -340,82 +659,16 @@ const App = () => {
     a.click();
   };
 
-  const handleMouseEnter = () => setShowDropdown(true);
-  const handleMouseLeave = (e) => {
-    if (dropdownRef.current && !dropdownRef.current.contains(e.relatedTarget)) {
-      setShowDropdown(false);
-    }
-  };
-
-  const converters = {
-    'Image': [
-      { name: 'PNG to JPG', from: 'png', to: 'jpg', accept: 'image/png' },
-      { name: 'JPG to PNG', from: 'jpg', to: 'png', accept: 'image/jpeg' },
-      { name: 'WEBP to PNG', from: 'webp', to: 'png', accept: 'image/webp' },
-      { name: 'WEBP to JPG', from: 'webp', to: 'jpg', accept: 'image/webp' },
-      { name: 'PNG to WEBP', from: 'png', to: 'webp', accept: 'image/png' },
-      { name: 'JPG to WEBP', from: 'jpg', to: 'webp', accept: 'image/jpeg' },
-      { name: 'Image to SVG', from: 'image', to: 'svg', accept: 'image/*' },
-      { name: 'PNG to SVG', from: 'png', to: 'svg', accept: 'image/png' },
-      { name: 'JPG to SVG', from: 'jpg', to: 'svg', accept: 'image/jpeg' },
-      { name: 'Image Resizer', from: 'image', to: 'resize', accept: 'image/*' },
-      { name: 'Image to Base64', from: 'image', to: 'base64', accept: 'image/*' },
-      { name: 'Image to BMP', from: 'image', to: 'bmp', accept: 'image/*' },
-      { name: 'Image Compressor', from: 'image', to: 'compress', accept: 'image/*' },
-      { name: 'Grayscale Filter', from: 'image', to: 'grayscale', accept: 'image/*' },
-    ],
-    'PDF & Documents': [
-      { name: 'Image to PDF', from: 'image', to: 'pdf', accept: 'image/*' },
-      { name: 'PNG to PDF', from: 'png', to: 'pdf', accept: 'image/png' },
-      { name: 'JPG to PDF', from: 'jpg', to: 'pdf', accept: 'image/jpeg' },
-      { name: 'Multiple Images to PDF', from: 'images', to: 'pdf', accept: 'image/*', multiple: true },
-      { name: 'Text to PDF', from: 'text', to: 'pdf', accept: '.txt' },
-      { name: 'SVG to PDF', from: 'svg', to: 'pdf', accept: 'image/svg+xml' },
-    ],
-    'Video & Audio': [
-      { name: 'MP4 to MP3', from: 'mp4', to: 'mp3', accept: 'video/mp4' },
-      { name: 'Video to WebM', from: 'video', to: 'webm', accept: 'video/*' },
-      { name: 'MP3 to WAV', from: 'mp3', to: 'wav', accept: 'audio/mp3' },
-      { name: 'WAV to MP3', from: 'wav', to: 'mp3', accept: 'audio/wav' },
-      { name: 'Video Thumbnail', from: 'video', to: 'thumbnail', accept: 'video/*' },
-      { name: 'Extract Audio (MP3)', from: 'video', to: 'mp3', accept: 'video/*' },
-    ],
-    'GIF & Animation': [
-      { name: 'Video to GIF', from: 'video', to: 'gif', accept: 'video/*' },
-      { name: 'Images to GIF', from: 'images', to: 'gif', accept: 'image/*', multiple: true },
-      { name: 'GIF to Video (MP4)', from: 'gif', to: 'mp4', accept: 'image/gif' },
-      { name: 'GIF to PNG', from: 'gif', to: 'png', accept: 'image/gif' },
-    ],
-    'Advanced': [
-      { name: 'Image Rotate 90°', from: 'image', to: 'rotate', accept: 'image/*' },
-      { name: 'Image Flip', from: 'image', to: 'flip', accept: 'image/*' },
-      { name: 'Image Mirror', from: 'image', to: 'mirror', accept: 'image/*' },
-      { name: 'Image Crop', from: 'image', to: 'crop', accept: 'image/*' },
-      { name: 'Brightness/Contrast', from: 'image', to: 'brightness', accept: 'image/*' },
-      { name: 'Blur Effect', from: 'image', to: 'blur', accept: 'image/*' },
-      { name: 'Sharpen Effect', from: 'image', to: 'sharpen', accept: 'image/*' },
-      { name: 'Add Watermark', from: 'image', to: 'watermark', accept: 'image/*' },
-      { name: 'PNG to ICO', from: 'png', to: 'ico', accept: 'image/png' },
-      { name: 'HTML to PDF', from: 'html', to: 'pdf', accept: '.html' },
-      // { name: 'PDF to Images', from: 'pdf', to: 'images', accept: 'application/pdf' },
-    ],
-  };
-
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-purple-50 to-blue-50'} flex flex-col transition-all duration-500`}>
       <Header
         darkMode={darkMode}
         setDarkMode={setDarkMode}
-        showDropdown={showDropdown}
-        setShowDropdown={setShowDropdown}
         converters={converters}
-        setActiveConverter={setActiveConverter}
+        handleSetActiveConverter={handleSetActiveConverter}
         setSelectedFile={setSelectedFile}
         setConvertedFile={setConvertedFile}
         setPreviewUrl={setPreviewUrl}
-        dropdownRef={dropdownRef}
-        handleMouseEnter={handleMouseEnter}
-        handleMouseLeave={handleMouseLeave}
       />
       <main className="flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full">
         <ConverterUI
@@ -429,6 +682,22 @@ const App = () => {
           resizeHeight={resizeHeight}
           setResizeWidth={setResizeWidth}
           setResizeHeight={setResizeHeight}
+          resizeMode={resizeMode}
+          setResizeMode={setResizeMode}
+          resizePercentage={resizePercentage}
+          setResizePercentage={setResizePercentage}
+          lockAspectRatio={lockAspectRatio}
+          setLockAspectRatio={setLockAspectRatio}
+          resizeFormat={resizeFormat}
+          setResizeFormat={setResizeFormat}
+          targetFileSize={targetFileSize}
+          setTargetFileSize={setTargetFileSize}
+          socialMediaPreset={socialMediaPreset}
+          setSocialMediaPreset={setSocialMediaPreset}
+          originalDimensions={originalDimensions}
+          setOriginalDimensions={setOriginalDimensions}
+          handleResizeWidthChange={handleResizeWidthChange}
+          handleResizeHeightChange={handleResizeHeightChange}
           fileInputRef={fileInputRef}
           handleFileSelect={handleFileSelect}
           handleDragEnter={handleDragEnter}
@@ -467,6 +736,22 @@ const App = () => {
           setSelectedTime={setSelectedTime}
           generatedThumbnails={generatedThumbnails}
           setGeneratedThumbnails={setGeneratedThumbnails}
+          gifTrimStart={gifTrimStart}
+          setGifTrimStart={setGifTrimStart}
+          gifTrimEnd={gifTrimEnd}
+          setGifTrimEnd={setGifTrimEnd}
+          gifWidth={gifWidth}
+          setGifWidth={setGifWidth}
+          gifLoopCount={gifLoopCount}
+          setGifLoopCount={setGifLoopCount}
+          gifPreserveTransparency={gifPreserveTransparency}
+          setGifPreserveTransparency={setGifPreserveTransparency}
+          gifFPS={gifFPS}
+          setGifFPS={setGifFPS}
+          gifCompression={gifCompression}
+          setGifCompression={setGifCompression}
+          gifOptimizeBackground={gifOptimizeBackground}
+          setGifOptimizeBackground={setGifOptimizeBackground}
         />
       </main>
       <Footer darkMode={darkMode} />

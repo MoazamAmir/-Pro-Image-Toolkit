@@ -14,6 +14,22 @@ const ConverterUI = ({
     resizeHeight,
     setResizeWidth,
     setResizeHeight,
+    resizeMode,
+    setResizeMode,
+    resizePercentage,
+    setResizePercentage,
+    lockAspectRatio,
+    setLockAspectRatio,
+    resizeFormat,
+    setResizeFormat,
+    targetFileSize,
+    setTargetFileSize,
+    socialMediaPreset,
+    setSocialMediaPreset,
+    originalDimensions,
+    setOriginalDimensions,
+    handleResizeWidthChange,
+    handleResizeHeightChange,
     fileInputRef,
     handleFileSelect,
     handleDragEnter,
@@ -52,6 +68,22 @@ const ConverterUI = ({
     setSelectedTime,
     generatedThumbnails,
     setGeneratedThumbnails,
+    gifTrimStart,
+    setGifTrimStart,
+    gifTrimEnd,
+    setGifTrimEnd,
+    gifWidth,
+    setGifWidth,
+    gifLoopCount,
+    setGifLoopCount,
+    gifPreserveTransparency,
+    setGifPreserveTransparency,
+    gifFPS,
+    setGifFPS,
+    gifCompression,
+    setGifCompression,
+    gifOptimizeBackground,
+    setGifOptimizeBackground,
 }) => {
     // State for live preview
 
@@ -511,7 +543,7 @@ const ConverterUI = ({
                             {framePreviews.length > 0 && (
                                 <div className="mb-4">
                                     <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                                        🎬 Video Frames - Click to select
+                                        Video Frames - Click to select
                                     </p>
                                     <div className="relative">
                                         <div className="flex gap-2 overflow-x-auto pb-2 scroll-smooth" style={{ scrollbarWidth: 'thin' }}>
@@ -623,6 +655,85 @@ const ConverterUI = ({
                     </div>
                 )}
 
+                {/* Video to GIF Options */}
+                {(to === 'gif' && activeConverter?.from === 'video') && !selectedFile && !convertedFile && (
+                    <div className="space-y-4 mb-6">
+                        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 shadow-premium`}>
+                            <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                                <Settings className="w-5 h-5 mr-2" />
+                                GIF Options
+                            </h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`text-sm font-semibold mb-2 block ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Trim start </label>
+                                    <div className="flex gap-2">
+                                        <input type="number" value={gifTrimStart} onChange={(e) => setGifTrimStart(parseFloat(e.target.value) || 0)} placeholder="0" className={`flex-1 p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-medium`} />
+                                        <button className={`px-4 py-3 rounded-lg font-semibold text-sm ${darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-purple-500 hover:bg-purple-600 text-white'} transition-all`}>Copy Player Time</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={`text-sm font-semibold mb-2 block ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Trim end </label>
+                                    <div className="flex gap-2">
+                                        <input type="number" value={gifTrimEnd} onChange={(e) => setGifTrimEnd(parseFloat(e.target.value) || 0)} placeholder="0" className={`flex-1 p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-medium`} />
+                                        <button className={`px-4 py-3 rounded-lg font-semibold text-sm ${darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-purple-500 hover:bg-purple-600 text-white'} transition-all`}>Copy Player Time</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Width (px)</label>
+                                    <input type="number" value={gifWidth} onChange={(e) => setGifWidth(parseInt(e.target.value) || 480)} placeholder="480" className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-semibold`} />
+                                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Enter GIF width in pixels (0-10000)</p>
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Loop Count</label>
+                                    <input type="number" value={gifLoopCount} onChange={(e) => setGifLoopCount(parseInt(e.target.value) || 0)} placeholder="0" className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-semibold`} />
+                                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Enter Loop count (0-10000). Leave empty (0) to loop infinitely.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="checkbox" checked={gifPreserveTransparency} onChange={(e) => setGifPreserveTransparency(e.target.checked)} className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded" />
+                                        <span className={`ml-2 text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Preserve transparency (transparent video to transparent GIF)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 shadow-premium`}>
+                            <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                                <Zap className="w-5 h-5 mr-2" />
+                                Optimize GIF
+                            </h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>FPS</label>
+                                    <select value={gifFPS} onChange={(e) => setGifFPS(parseInt(e.target.value))} className={`w-full p-3 rounded-lg border-2 ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} focus:outline-none font-semibold`}>
+                                        {[5, 10, 15, 20, 25, 30, 60].map(fps => (<option key={fps} value={fps}>{fps}</option>))}
+                                    </select>
+                                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Higher FPS (Frames Per Second) produce a smoother animation. It is recommended.</p>
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Compression</label>
+                                    <div className="flex items-center gap-4 mb-2">
+                                        <input type="range" min="0" max="100" value={gifCompression} onChange={(e) => setGifCompression(parseInt(e.target.value))} className="flex-1 h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                        <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{gifCompression}</span>
+                                    </div>
+                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Applied level of compression. Default (10) is a good balance between compression & quality. Higher values compress more.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="checkbox" checked={gifOptimizeBackground} onChange={(e) => setGifOptimizeBackground(e.target.checked)} className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded" />
+                                        <span className={`ml-2 text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Optimize for static background (when most colors in moving parts of the image)</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="mt-6">
+                                <button onClick={() => { setGifTrimStart(0); setGifTrimEnd(0); setGifWidth(480); setGifLoopCount(0); setGifPreserveTransparency(false); setGifFPS(15); setGifCompression(10); setGifOptimizeBackground(false); }} className={`w-full px-4 py-3 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} transition-all shadow-md flex items-center justify-center gap-2`}>
+                                    <Settings className="w-4 h-4" />
+                                    Reset all options
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Image Compressor Info */}
                 {to === 'compress' && selectedFile && !convertedFile && (
                     <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 mb-6 shadow-premium`}>
@@ -699,11 +810,220 @@ const ConverterUI = ({
                 )}
 
                 {to === 'resize' && !convertedFile && (
-                    <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'} rounded-xl p-6 mb-6 shadow-lg border`}>
-                        <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Image Dimensions</h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="number" value={resizeWidth} onChange={(e) => setResizeWidth(parseInt(e.target.value))} placeholder="Width" className={`${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border'} rounded-lg p-3 font-semibold`} />
-                            <input type="number" value={resizeHeight} onChange={(e) => setResizeHeight(parseInt(e.target.value))} placeholder="Height" className={`${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'border'} rounded-lg p-3 font-semibold`} />
+                    <div className="space-y-4 mb-6">
+                        {/* Tab Navigation */}
+                        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl overflow-hidden shadow-premium`}>
+                            <div className="flex border-b border-gray-700">
+                                <button
+                                    onClick={() => setResizeMode('bySize')}
+                                    className={`flex-1 py-3 px-4 font-semibold text-sm transition-all ${resizeMode === 'bySize'
+                                        ? darkMode
+                                            ? 'bg-purple-600 text-white'
+                                            : 'bg-purple-500 text-white'
+                                        : darkMode
+                                            ? 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    By Size
+                                </button>
+                                <button
+                                    onClick={() => setResizeMode('byPercentage')}
+                                    className={`flex-1 py-3 px-4 font-semibold text-sm transition-all ${resizeMode === 'byPercentage'
+                                        ? darkMode
+                                            ? 'bg-purple-600 text-white'
+                                            : 'bg-purple-500 text-white'
+                                        : darkMode
+                                            ? 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    At Percentage
+                                </button>
+                                <button
+                                    onClick={() => setResizeMode('socialMedia')}
+                                    className={`flex-1 py-3 px-4 font-semibold text-sm transition-all ${resizeMode === 'socialMedia'
+                                        ? darkMode
+                                            ? 'bg-purple-600 text-white'
+                                            : 'bg-purple-500 text-white'
+                                        : darkMode
+                                            ? 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    Social Media
+                                </button>
+                            </div>
+
+                            {/* Tab Content */}
+                            <div className="p-6">
+                                {/* By Size Tab */}
+                                {resizeMode === 'bySize' && (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <label className="flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={lockAspectRatio}
+                                                    onChange={(e) => setLockAspectRatio(e.target.checked)}
+                                                    className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+                                                />
+                                                <span className={`ml-2 text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                    🔒 Lock Aspect Ratio
+                                                </span>
+                                            </label>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                    Width
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={resizeWidth}
+                                                    onChange={(e) => handleResizeWidthChange(parseInt(e.target.value) || 0)}
+                                                    placeholder="Enter Width"
+                                                    className={`w-full p-3 rounded-lg border-2 ${darkMode
+                                                        ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500'
+                                                        : 'border-gray-300 focus:border-purple-500'
+                                                        } focus:outline-none font-semibold`}
+                                                />
+                                                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>px</p>
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                                    Height
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={resizeHeight}
+                                                    onChange={(e) => handleResizeHeightChange(parseInt(e.target.value) || 0)}
+                                                    placeholder="Enter Height"
+                                                    className={`w-full p-3 rounded-lg border-2 ${darkMode
+                                                        ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500'
+                                                        : 'border-gray-300 focus:border-purple-500'
+                                                        } focus:outline-none font-semibold`}
+                                                />
+                                                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>px</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* At Percentage Tab */}
+                                {resizeMode === 'byPercentage' && (
+                                    <div className="space-y-4">
+                                        <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                            Resize Percentage: {resizePercentage}%
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min="1"
+                                            max="200"
+                                            value={resizePercentage}
+                                            onChange={(e) => setResizePercentage(parseInt(e.target.value))}
+                                            className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                        />
+                                        <div className="flex justify-between text-xs">
+                                            <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>1%</span>
+                                            <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>200%</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Social Media Tab */}
+                                {resizeMode === 'socialMedia' && (
+                                    <div className="space-y-3">
+                                        <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                            Select Preset:
+                                        </p>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {[
+                                                { id: 'instagram-post', label: 'Instagram Post', size: '1080 x 1080' },
+                                                { id: 'instagram-story', label: 'Instagram Story', size: '1080 x 1920' },
+                                                { id: 'facebook-cover', label: 'Facebook Cover', size: '820 x 312' },
+                                                { id: 'twitter-post', label: 'Twitter Post', size: '1200 x 675' },
+                                                { id: 'youtube-thumbnail', label: 'YouTube Thumbnail', size: '1280 x 720' },
+                                            ].map((preset) => (
+                                                <button
+                                                    key={preset.id}
+                                                    onClick={() => setSocialMediaPreset(preset.id)}
+                                                    className={`p-3 rounded-lg text-left transition-all ${socialMediaPreset === preset.id
+                                                        ? 'bg-purple-600 text-white shadow-lg'
+                                                        : darkMode
+                                                            ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="font-semibold text-sm">{preset.label}</span>
+                                                        <span className="text-xs opacity-75">{preset.size}</span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Export Settings */}
+                        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl p-6 shadow-premium`}>
+                            <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
+                                <Settings className="w-5 h-5 mr-2" />
+                                Export Settings
+                            </h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        Target File Size (optional)
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            value={targetFileSize}
+                                            onChange={(e) => setTargetFileSize(e.target.value)}
+                                            placeholder="Set a target output file size. Only works for JPG files"
+                                            className={`flex-1 p-3 rounded-lg border-2 ${darkMode
+                                                ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500'
+                                                : 'border-gray-300 focus:border-purple-500'
+                                                } focus:outline-none font-medium text-sm`}
+                                        />
+                                        <select
+                                            className={`p-3 rounded-lg border-2 ${darkMode
+                                                ? 'bg-gray-700 text-white border-gray-600'
+                                                : 'border-gray-300'
+                                                } font-semibold`}
+                                            value="KB"
+                                            disabled
+                                        >
+                                            <option>KB</option>
+                                        </select>
+                                    </div>
+                                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Set a hard output file size. Only works with JPG files
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        Save Image As
+                                    </label>
+                                    <select
+                                        value={resizeFormat}
+                                        onChange={(e) => setResizeFormat(e.target.value)}
+                                        className={`w-full p-3 rounded-lg border-2 ${darkMode
+                                            ? 'bg-gray-700 text-white border-gray-600 focus:border-purple-500'
+                                            : 'border-gray-300 focus:border-purple-500'
+                                            } focus:outline-none font-semibold`}
+                                    >
+                                        <option value="original">Original</option>
+                                        <option value="jpg">JPG</option>
+                                        <option value="png">PNG</option>
+                                        <option value="webp">WEBP</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -798,6 +1118,56 @@ const ConverterUI = ({
                                 <p className={`text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'} font-semibold`}>📊 Compression: <span className="font-bold text-blue-500">{((1 - convertedFile.compressedSize / convertedFile.originalSize) * 100).toFixed(1)}%</span> smaller</p>
                             </div>
                         )}
+
+                        {/* Resize Results Table */}
+                        {convertedFile.newWidth && convertedFile.newHeight && to === 'resize' && (
+                            <div className={`${darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200'} border-2 rounded-xl p-6 mb-6`}>
+                                <h4 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 Resize Results</h4>
+                                <div className="overflow-x-auto">
+                                    <table className={`w-full text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        <thead>
+                                            <tr className={`border-b-2 ${darkMode ? 'border-gray-600' : 'border-purple-300'}`}>
+                                                <th className="py-3 px-4 text-left font-bold">File Name</th>
+                                                <th className="py-3 px-4 text-center font-bold">Original (px)</th>
+                                                <th className="py-3 px-4 text-center font-bold">New (px)</th>
+                                                <th className="py-3 px-4 text-center font-bold">New Size</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr className={`${darkMode ? 'hover:bg-gray-600/50' : 'hover:bg-purple-100/50'} transition-colors`}>
+                                                <td className="py-4 px-4 font-semibold">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileText className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`} />
+                                                        {convertedFile.name}
+                                                    </div>
+                                                </td>
+                                                <td className="py-4 px-4 text-center font-mono">
+                                                    {convertedFile.originalWidth} X {convertedFile.originalHeight}
+                                                </td>
+                                                <td className="py-4 px-4 text-center font-mono font-bold text-purple-500">
+                                                    {convertedFile.newWidth} X {convertedFile.newHeight}
+                                                </td>
+                                                <td className="py-4 px-4 text-center">
+                                                    <div className="flex flex-col items-center gap-1">
+                                                        <span className="font-bold text-green-500">
+                                                            {(convertedFile.newSize / 1024).toFixed(2)} KB ⬇️
+                                                        </span>
+                                                        <button
+                                                            onClick={handleDownload}
+                                                            className={`${darkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white px-3 py-1 rounded-lg font-semibold text-xs flex items-center transition-all shadow-md hover:shadow-lg`}
+                                                        >
+                                                            <Download className="w-3 h-3 mr-1" />
+                                                            Download
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
                         {convertedFile.note && <p className={`text-base mb-6 p-4 rounded-xl border-2 ${darkMode ? 'text-amber-400 bg-amber-900/30 border-amber-700' : 'text-amber-700 bg-amber-50 border-amber-200'} font-medium`}> {convertedFile.note}</p>}
                         <div className={`mb-7 p-6 rounded-xl ${darkMode ? 'bg-gray-700/50 border-2 border-gray-600' : 'bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200'} shadow-lg`}>
                             <div className="flex items-center mb-3">

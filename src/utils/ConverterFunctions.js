@@ -1,7 +1,291 @@
+import { Document, Packer, Paragraph, ImageRun, TextRun } from 'docx';
 import { jsPDF } from 'jspdf';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import html2canvas from 'html2canvas';
+import mammoth from 'mammoth';
+import pptxgen from 'pptxgenjs';
+import heic2any from 'heic2any';
+
+// Set worker source to a reliable CDN that matches the version (Legacy for Webpack 5)
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.mjs`;
+
+export const convertHTMLToPDF = async (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                // Create a temporary container to render HTML
+                const container = document.createElement('div');
+                container.innerHTML = e.target.result;
+                container.style.position = 'absolute';
+                container.style.left = '-9999px';
+                container.style.top = '0';
+                container.style.width = '800px'; // Set a fixed width for A4 consistency
+                document.body.appendChild(container);
+
+                // Use html2canvas to capture the rendered HTML
+                const canvas = await html2canvas(container, {
+                    scale: 2, // Improve quality
+                    useCORS: true
+                });
+
+                document.body.removeChild(container);
+
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                const pdfBlob = pdf.output('blob');
+
+                resolve({
+                    url: URL.createObjectURL(pdfBlob),
+                    name: 'converted.pdf',
+                    blob: pdfBlob,
+                    type: 'application/pdf',
+                    note: 'Calculated layout from HTML'
+                });
+            } catch (error) {
+                reject(new Error('HTML to PDF failed: ' + error.message));
+            }
+        };
+        reader.onerror = () => reject(new Error('File read failed'));
+        reader.readAsText(file);
+    });
+};
+
+export const convertDOCXToPDF = async (file) => {
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const html = result.value;
+
+        // Use the existing convertHTMLToPDF logic but from memory
+        const container = document.createElement('div');
+        container.innerHTML = html;
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = '800px';
+        document.body.appendChild(container);
+
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true });
+        document.body.removeChild(container);
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        const pdfBlob = pdf.output('blob');
+
+        return {
+            url: URL.createObjectURL(pdfBlob),
+            name: 'converted.pdf',
+            blob: pdfBlob,
+            type: 'application/pdf',
+            note: 'Converted from Word via HTML'
+        };
+    } catch (error) {
+        throw new Error('Word to PDF conversion failed: ' + error.message);
+    }
+};
+
+export const convertPDFToImages = async (file, format = 'png', quality = 1.0, onProgress) => {
+    if (onProgress) onProgress(10);
+    return new Promise(async (resolve, reject) => {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+            // For now, we extract the first page. For multiple pages, we would return an array.
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 2 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            const mimeType = format === 'jpg' || format === 'jpeg' ? 'image/jpeg' : 'image/png';
+            const ext = format === 'jpg' || format === 'jpeg' ? 'jpg' : 'png';
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: `page-1.${ext}`,
+                        blob,
+                        type: mimeType,
+                        note: `Converted Page 1 of ${pdf.numPages}`
+                    });
+                } else {
+                    reject(new Error('Canvas to Blob failed'));
+                }
+            }, mimeType, quality || 1.0);
+        } catch (error) {
+            reject(new Error('PDF to Image failed: ' + error.message));
+        }
+    });
+};
+
+export const convertPDFToText = async (file, onProgress) => {
+    if (onProgress) onProgress(10);
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            if (onProgress) onProgress(Math.round(10 + (i / pdf.numPages) * 80));
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            fullText += pageText + '\n\n';
+        }
+
+        const blob = new Blob([fullText], { type: 'text/plain' });
+        return {
+            url: URL.createObjectURL(blob),
+            name: 'extracted-text.txt',
+            blob: blob,
+            type: 'text/plain',
+            text: fullText
+        };
+    } catch (error) {
+        throw new Error('PDF to Text extraction failed: ' + error.message);
+    }
+};
+
+export const convertPDFToXLSX = async (file) => {
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let rows = [];
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            // Coordinate based extraction is complex; here we provide a CSV-like row mapping
+            const lines = textContent.items.map(item => item.str);
+            rows.push(lines.join(','));
+        }
+
+        const csvContent = rows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+
+        return {
+            url: URL.createObjectURL(blob),
+            name: 'extracted-table.csv',
+            blob: blob,
+            type: 'text/csv',
+            note: 'Text formatted as CSV'
+        };
+    } catch (error) {
+        throw new Error('PDF to XLSX conversion failed: ' + error.message);
+    }
+};
+
+export const convertPDFToWORD = async (file) => {
+    try {
+        const textResult = await convertPDFToText(file);
+        const text = textResult.text;
+
+        const lines = text.split('\n');
+        const paragraphs = lines.map(line => new Paragraph({
+            children: [new TextRun(line)],
+        }));
+
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                children: paragraphs,
+            }],
+        });
+
+        const blob = await Packer.toBlob(doc);
+        return {
+            url: URL.createObjectURL(blob),
+            name: 'converted-from-pdf.docx',
+            blob: blob,
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            note: 'Text extracted from PDF'
+        };
+    } catch (error) {
+        throw new Error('PDF to Word conversion failed: ' + error.message);
+    }
+};
+
+export const convertPDFToPPTX = async (file) => {
+    try {
+        const textResult = await convertPDFToText(file);
+        const text = textResult.text;
+        const pages = text.split('\n\n');
+
+        const pptx = new pptxgen();
+        pages.forEach((pageText, index) => {
+            if (pageText.trim()) {
+                const slide = pptx.addSlide();
+                slide.addText(`Slide ${index + 1}`, { x: 0.5, y: 0.5, fontSize: 18, color: '363636' });
+                slide.addText(pageText.substring(0, 2000), { x: 0.5, y: 1.2, fontSize: 11, color: '000000', align: 'left' });
+            }
+        });
+
+        const buffer = await pptx.write('arraybuffer');
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+
+        return {
+            url: URL.createObjectURL(blob),
+            name: 'converted.pptx',
+            blob: blob,
+            type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            note: 'Generated from PDF text content'
+        };
+    } catch (error) {
+        throw new Error('PDF to PPTX conversion failed: ' + error.message);
+    }
+};
+
+export const convertPNGToICO = (file) => {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new window.Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                // Standard favicon size
+                canvas.width = 32;
+                canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, 32, 32);
+                canvas.toBlob((blob) => {
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: 'favicon.ico',
+                        blob,
+                        type: 'image/x-icon',
+                        note: '32x32 Favicon'
+                    });
+                }, 'image/vnd.microsoft.icon');
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+};
 
 // --- Image Conversions ---
-export const convertImage = (file, format) => {
+export const convertImage = (file, format, quality = 1.0) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -11,6 +295,8 @@ export const convertImage = (file, format) => {
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 if (format === 'jpg' || format === 'jpeg') {
                     ctx.fillStyle = '#FFFFFF';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -20,7 +306,7 @@ export const convertImage = (file, format) => {
                 canvas.toBlob((blob) => {
                     if (blob) resolve({ url: URL.createObjectURL(blob), name: `converted.${format}`, blob, type: mime });
                     else reject(new Error('Conversion failed'));
-                }, mime, 0.95);
+                }, mime, quality);
             };
             img.onerror = () => reject(new Error('Image load failed'));
             img.src = e.target.result;
@@ -42,6 +328,8 @@ export const resizeImage = (file, width, height, format = 'png', quality = 0.95)
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
 
                 // Add white background for JPG
                 if (format === 'jpg' || format === 'jpeg') {
@@ -237,7 +525,7 @@ export const mirrorImage = (file, direction = 'horizontal') => {
     });
 };
 
-export const compressImage = (file) => {
+export const compressImage = (file, quality = 0.6) => {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -247,10 +535,12 @@ export const compressImage = (file) => {
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0);
                 canvas.toBlob((blob) => {
                     resolve({ url: URL.createObjectURL(blob), name: 'compressed.jpg', blob, type: 'image/jpeg', originalSize: file.size, compressedSize: blob.size });
-                }, 'image/jpeg', 0.6);
+                }, 'image/jpeg', (typeof quality === 'number' ? quality : 0.6));
             };
             img.src = e.target.result;
         };
@@ -269,6 +559,8 @@ export const cropImage = (file) => {
                 canvas.width = size;
                 canvas.height = size;
                 const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 const x = (img.width - size) / 2;
                 const y = (img.height - size) / 2;
                 ctx.drawImage(img, x, y, size, size, 0, 0, size, size);
@@ -486,6 +778,15 @@ export const convertToPDF = async (file) => {
     });
 };
 
+// Old HEIC placeholder functions removed - now using heic2any-based functions at end of file
+
+export const convertEPUBToPDF = async (file) => {
+    // EPUB is a zipped collection of HTML/CSS.
+    // A full EPUB to PDF converter in browser is massive.
+    // We can offer a simplified version that handles text extraction or rely on FFmpeg.
+    throw new Error('EPUB conversion is restricted to FFmpeg for best results. Loading...');
+};
+
 export const convertSVGToPDF = async (file) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -674,44 +975,95 @@ export const convertGIFToPNG = (file) => {
     });
 };
 
-export const convertPNGToICO = (file) => {
-    return new Promise((resolve) => {
+export const convertPNGToDOCX = async (file) => {
+    return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new window.Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 32;
-                canvas.height = 32;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, 32, 32);
-                canvas.toBlob((blob) => {
-                    resolve({ url: URL.createObjectURL(blob), name: 'favicon.ico', blob, type: 'image/x-icon', note: 'Resized to 32x32 for favicon' });
-                }, 'image/png');
-            };
-            img.src = e.target.result;
+        reader.onload = async (e) => {
+            try {
+                const base64Data = e.target.result;
+                const imageBuffer = await fetch(base64Data).then(res => res.arrayBuffer());
+                const img = new window.Image();
+                img.onload = async () => {
+                    const maxWidth = 600;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        const ratio = maxWidth / width;
+                        width = maxWidth;
+                        height = height * ratio;
+                    }
+
+                    const doc = new Document({
+                        sections: [{
+                            properties: {},
+                            children: [
+                                new Paragraph({
+                                    children: [
+                                        new ImageRun({
+                                            data: imageBuffer,
+                                            transformation: {
+                                                width: width,
+                                                height: height,
+                                            },
+                                        }),
+                                    ],
+                                }),
+                            ],
+                        }],
+                    });
+
+                    const blob = await Packer.toBlob(doc);
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: 'converted.docx',
+                        blob: blob,
+                        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    });
+                };
+                img.src = base64Data;
+            } catch (error) {
+                reject(new Error('PNG to DOCX conversion failed: ' + error.message));
+            }
         };
+        reader.onerror = () => reject(new Error('File read failed'));
         reader.readAsDataURL(file);
     });
 };
 
-export const convertHTMLToPDF = async (file) => {
+export const convertTXTToDOCX = async (file) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
-                const htmlContent = e.target.result;
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(htmlContent, 'text/html');
-                const text = doc.body.textContent || doc.body.innerText || '';
-                const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-                const splitText = pdf.splitTextToSize(text, 180);
-                pdf.setFontSize(12);
-                pdf.text(splitText, 10, 10);
-                const pdfBlob = pdf.output('blob');
-                resolve({ url: URL.createObjectURL(pdfBlob), name: 'converted.pdf', blob: pdfBlob, type: 'application/pdf', note: 'HTML text converted to PDF' });
+                const text = e.target.result;
+                // Create a document with the text content
+                const doc = new Document({
+                    sections: [{
+                        properties: {},
+                        children: [
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: text,
+                                        font: "Times New Roman",
+                                        size: 24, // 12pt
+                                    }),
+                                ],
+                            }),
+                        ],
+                    }],
+                });
+
+                const blob = await Packer.toBlob(doc);
+                resolve({
+                    url: URL.createObjectURL(blob),
+                    name: 'converted.docx',
+                    blob: blob,
+                    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                });
             } catch (error) {
-                reject(new Error('HTML to PDF failed: ' + error.message));
+                reject(new Error('TXT to DOCX conversion failed: ' + error.message));
             }
         };
         reader.onerror = () => reject(new Error('File read failed'));
@@ -719,21 +1071,173 @@ export const convertHTMLToPDF = async (file) => {
     });
 };
 
-// PDF to Images (requires pdfjs-dist in real app)
-export const convertPDFToImages = async (file) => {
-    return new Promise((resolve) => {
-        // Placeholder: return first page as image
-        const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 1132;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#f0f0f0';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#333';
-        ctx.font = '20px Arial';
-        ctx.fillText('PDF Page 1 (Demo)', 50, 100);
-        canvas.toBlob((blob) => {
-            resolve({ url: URL.createObjectURL(blob), name: 'page-1.png', blob, type: 'image/png', note: 'Demo: First page only' });
-        }, 'image/png');
+export const convertDOCXToImage = async (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const arrayBuffer = e.target.result;
+                const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                const html = result.value;
+
+                // Create container
+                const container = document.createElement('div');
+                container.innerHTML = html;
+                container.style.position = 'absolute';
+                container.style.left = '-9999px';
+                container.style.top = '0';
+                container.style.width = '800px'; // A4 width approx
+                container.style.backgroundColor = 'white';
+                container.style.padding = '40px';
+                container.style.color = 'black';
+                document.body.appendChild(container);
+
+                const canvas = await html2canvas(container, {
+                    scale: 2,
+                    useCORS: true
+                });
+
+                document.body.removeChild(container);
+
+                canvas.toBlob((blob) => {
+                    resolve({
+                        url: URL.createObjectURL(blob),
+                        name: 'converted.png',
+                        blob,
+                        type: 'image/png',
+                        note: 'Converted from DOCX'
+                    });
+                }, 'image/png');
+
+            } catch (error) {
+                reject(new Error('DOCX to Image failed: ' + error.message));
+            }
+        };
+        reader.readAsArrayBuffer(file);
     });
+};
+
+export const base64ToImage = (base64String, fileName = 'converted-image.png') => {
+    return new Promise((resolve, reject) => {
+        try {
+            const base64Content = base64String.includes(',') ? base64String.split(',')[1] : base64String;
+            const mimeMatch = base64String.match(/^data:([^;]+);base64,/);
+            const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+            const extension = mime.split('/')[1] || 'png';
+            const byteCharacters = atob(base64Content);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mime });
+            resolve({
+                url: URL.createObjectURL(blob),
+                name: `${fileName.split('.')[0]}.${extension}`,
+                blob: blob,
+                type: mime,
+                preview: URL.createObjectURL(blob)
+            });
+        } catch (error) {
+            reject(new Error('Base64 to Image failed: ' + error.message));
+        }
+    });
+};
+
+// --- HEIC Conversions ---
+export const convertHEIC = async (file, outputFormat = 'jpeg') => {
+    try {
+        // Map common format names to MIME types
+        const formatMap = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'bmp': 'image/bmp',
+        };
+
+        const targetMime = formatMap[outputFormat.toLowerCase()] || 'image/jpeg';
+        const extension = outputFormat === 'jpg' ? 'jpeg' : outputFormat;
+
+        // Convert HEIC to the target format using heic2any
+        const convertedBlob = await heic2any({
+            blob: file,
+            toType: targetMime,
+            quality: 0.92
+        });
+
+        // heic2any can return a single Blob or an array of Blobs (for multi-image HEIC)
+        const resultBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+
+        return {
+            url: URL.createObjectURL(resultBlob),
+            name: `converted.${extension}`,
+            blob: resultBlob,
+            type: targetMime,
+            preview: URL.createObjectURL(resultBlob)
+        };
+    } catch (error) {
+        throw new Error(`HEIC conversion failed: ${error.message}`);
+    }
+};
+
+export const convertHEICToPDF = async (file) => {
+    try {
+        // First convert HEIC to JPEG
+        const jpegResult = await convertHEIC(file, 'jpeg');
+
+        // Then use the JPEG to create a PDF
+        const img = new window.Image();
+        return new Promise((resolve, reject) => {
+            img.onload = () => {
+                try {
+                    const imgWidth = img.width;
+                    const imgHeight = img.height;
+                    const pdf = new jsPDF({
+                        orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
+                        unit: 'px',
+                        format: 'a4'
+                    });
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = pdf.internal.pageSize.getHeight();
+                    const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                    const imgX = (pdfWidth - imgWidth * ratio) / 2;
+                    const imgY = (pdfHeight - imgHeight * ratio) / 2;
+                    pdf.addImage(jpegResult.url, 'JPEG', imgX, imgY, imgWidth * ratio, imgHeight * ratio, undefined, 'FAST');
+                    const pdfBlob = pdf.output('blob');
+                    resolve({
+                        url: URL.createObjectURL(pdfBlob),
+                        name: 'converted.pdf',
+                        blob: pdfBlob,
+                        type: 'application/pdf',
+                        preview: jpegResult.url
+                    });
+                } catch (error) {
+                    reject(new Error('HEIC to PDF conversion failed: ' + error.message));
+                }
+            };
+            img.onerror = () => reject(new Error('Failed to load converted HEIC image'));
+            img.src = jpegResult.url;
+        });
+    } catch (error) {
+        throw new Error(`HEIC to PDF conversion failed: ${error.message}`);
+    }
+};
+
+export const convertHEICToTIFF = async (file) => {
+    try {
+        // Convert HEIC to PNG first (best quality for TIFF)
+        const pngResult = await convertHEIC(file, 'png');
+
+        // Note: Browser cannot natively create TIFF, but we can provide PNG as a high-quality alternative
+        // For true TIFF, we would need a specialized library or backend
+        return {
+            ...pngResult,
+            name: 'converted.png',
+            note: 'Converted to high-quality PNG (TIFF requires server-side processing)'
+        };
+    } catch (error) {
+        throw new Error(`HEIC to TIFF conversion failed: ${error.message}`);
+    }
 };

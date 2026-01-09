@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { threeDElements } from '../data/threeDElements';
+import { framesElements } from '../data/framesElements';
+import { gridTemplates } from '../data/gridTemplates';
 import {
     Type,
     ImageIcon,
@@ -73,6 +75,8 @@ import {
 import { photoCategories } from '../data/photoCategories';
 import { textTemplates } from '../data/textTemplates';
 import { formTemplates, formCategories } from '../data/formTemplates';
+import { mockupElements } from '../data/mockupElements';
+import { saveEditorState, loadEditorState } from '../utils/editorStorage';
 
 const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const [activeTab, setActiveTab] = useState('text');
@@ -140,8 +144,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             const newLayer = {
                 ...layer,
                 id: Date.now(),
-                x: layer.x + 5,
-                y: layer.y + 5,
+                x: Math.min(100, layer.x + 5),
+                y: Math.min(100, layer.y + 5),
                 isSelected: true
             };
             const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
@@ -180,8 +184,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             const newLayer = {
                 ...clipboard,
                 id: Date.now(),
-                x: clipboard.x + 5,
-                y: clipboard.y + 5,
+                x: Math.min(100, clipboard.x + 5),
+                y: Math.min(100, clipboard.y + 5),
                 isSelected: true
             };
             const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
@@ -319,12 +323,39 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                     };
                     setLayers([newLayer]);
                     saveToHistory([newLayer]);
+                    setImageSrc(src); // 👈 ADDED: Set imageSrc for ref capture
                 };
                 img.src = src;
             };
             reader.readAsDataURL(file);
         }
     }, [file]);
+
+    // Auto-save layers and adjustments to localStorage whenever they change
+    useEffect(() => {
+        // Only save if we have more than just the background layer or adjustments have changed
+        if (layers.length > 0) {
+            saveEditorState({ layers, adjustments });
+        }
+    }, [layers, adjustments]);
+
+    // Load saved editor state on mount
+    useEffect(() => {
+        const savedState = loadEditorState();
+        if (savedState) {
+            if (savedState.layers && savedState.layers.length > 0) {
+                setLayers(savedState.layers);
+                // 👈 ADDED: Restore imageSrc from background layer
+                const bgLayer = savedState.layers.find(l => l.id === 'background-layer');
+                if (bgLayer && bgLayer.content) {
+                    setImageSrc(bgLayer.content);
+                }
+            }
+            if (savedState.adjustments) {
+                setAdjustments(prev => ({ ...prev, ...savedState.adjustments }));
+            }
+        }
+    }, []);
 
     const handleMouseDown = (e, layer) => {
         if (editingLayerId === layer.id || layer.isLocked) return;
@@ -362,15 +393,44 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
 
             if (dragRef.current.isDragging && dragRef.current.layerId) {
                 const { layerId, offset } = dragRef.current;
-                const newX = ((e.clientX - rect.left - offset.x) / rect.width) * 100;
-                const newY = ((e.clientY - rect.top - offset.y) / rect.height) * 100;
+                let newX = ((e.clientX - rect.left - offset.x) / rect.width) * 100;
+                let newY = ((e.clientY - rect.top - offset.y) / rect.height) * 100;
 
-                setLayers(prev => prev.map(l =>
-                    l.id === layerId ? { ...l, x: newX, y: newY } : l
-                ));
+                setLayers(prev => {
+                    // Get the layer to calculate its size constraints
+                    const layer = prev.find(l => l.id === layerId);
+                    if (layer) {
+                        // Calculate element's actual size
+                        let layerWidth, layerHeight;
+
+                        if (layer.type === 'text') {
+                            // Estimate text width based on content length and fontSize
+                            const textLength = (layer.content || '').length;
+                            layerWidth = textLength * layer.fontSize * 0.6; // More accurate estimation
+                            layerHeight = layer.fontSize * 1.2;
+                        } else if (layer.type === 'form') {
+                            layerWidth = layer.width || 280;
+                            layerHeight = layer.height || 350;
+                        } else {
+                            layerWidth = layer.width || 100;
+                            layerHeight = layer.height || 100;
+                        }
+
+                        const halfWidthPercent = (layerWidth / 2 / rect.width) * 100;
+                        const halfHeightPercent = (layerHeight / 2 / rect.height) * 100;
+
+                        // Constrain so element stays fully inside the image boundary
+                        newX = Math.max(halfWidthPercent, Math.min(100 - halfWidthPercent, newX));
+                        newY = Math.max(halfHeightPercent, Math.min(100 - halfHeightPercent, newY));
+                    }
+
+                    return prev.map(l =>
+                        l.id === layerId ? { ...l, x: newX, y: newY } : l
+                    );
+                });
             } else if (resizing) {
                 const handle = resizing.handle;
-                // movementX/Y are not always reliable in all browsers, 
+                // movementX/Y are not always reliable in all browsers,
                 // but they are sufficient for relative resizing
                 const dx = e.movementX;
                 const dy = e.movementY;
@@ -383,26 +443,51 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                         if (ly.id !== resizing.id) return ly;
                         let { width = 100, height = 100, fontSize = 24, x = 50, y = 50 } = ly;
 
+                        // Calculate max allowed size based on position
+                        const maxWidthFromLeft = (x / 100) * rect.width * 2;
+                        const maxWidthFromRight = ((100 - x) / 100) * rect.width * 2;
+                        const maxWidth = Math.min(maxWidthFromLeft, maxWidthFromRight);
+
+                        const maxHeightFromTop = (y / 100) * rect.height * 2;
+                        const maxHeightFromBottom = ((100 - y) / 100) * rect.height * 2;
+                        const maxHeight = Math.min(maxHeightFromTop, maxHeightFromBottom);
+
                         if (ly.id === 'background-layer' || (ly.type === 'shape' && ly.shapeType === 'image')) {
-                            if (handle.includes('e')) width = Math.max(20, width + dx);
-                            if (handle.includes('w')) width = Math.max(20, width - dx);
-                            if (handle.includes('s')) height = Math.max(20, height + dy);
-                            if (handle.includes('n')) height = Math.max(20, height - dy);
+                            if (handle.includes('e')) width = Math.max(20, Math.min(maxWidth, width + dx));
+                            if (handle.includes('w')) width = Math.max(20, Math.min(maxWidth, width - dx));
+                            if (handle.includes('s')) height = Math.max(20, Math.min(maxHeight, height + dy));
+                            if (handle.includes('n')) height = Math.max(20, Math.min(maxHeight, height - dy));
                         } else if (ly.type === 'text' || (ly.type === 'shape' && ly.shapeType === 'icon')) {
                             const movement = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+
+                            // Calculate max fontSize based on position and text content length
+                            const textLength = (ly.content || '').length || 1;
+                            const maxFontSizeByWidth = maxWidth / (textLength * 0.6);
+                            const maxFontSizeByHeight = maxHeight / 1.2;
+                            const maxFontSize = Math.min(maxFontSizeByWidth, maxFontSizeByHeight);
+
                             if (handle.includes('e') || handle.includes('s')) {
-                                if (ly.type === 'text') fontSize = Math.max(8, fontSize + movement);
-                                else { width = Math.max(20, width + movement); height = width; }
+                                if (ly.type === 'text') fontSize = Math.max(8, Math.min(maxFontSize, fontSize + movement));
+                                else {
+                                    const newSize = Math.max(20, Math.min(Math.min(maxWidth, maxHeight), width + movement));
+                                    width = newSize;
+                                    height = newSize;
+                                }
                             } else {
-                                if (ly.type === 'text') fontSize = Math.max(20, fontSize - movement);
-                                else { width = Math.max(20, width - movement); height = width; }
+                                if (ly.type === 'text') fontSize = Math.max(8, Math.min(maxFontSize, fontSize - movement));
+                                else {
+                                    const newSize = Math.max(20, Math.min(Math.min(maxWidth, maxHeight), width - movement));
+                                    width = newSize;
+                                    height = newSize;
+                                }
                             }
                         } else {
-                            if (handle.includes('e')) width = Math.max(20, width + dx);
-                            if (handle.includes('w')) width = Math.max(20, width - dx);
-                            if (handle.includes('s')) height = Math.max(20, height + dy);
-                            if (handle.includes('n')) height = Math.max(20, height - dy);
+                            if (handle.includes('e')) width = Math.max(20, Math.min(maxWidth, width + dx));
+                            if (handle.includes('w')) width = Math.max(20, Math.min(maxWidth, width - dx));
+                            if (handle.includes('s')) height = Math.max(20, Math.min(maxHeight, height + dy));
+                            if (handle.includes('n')) height = Math.max(20, Math.min(maxHeight, height - dy));
                         }
+
                         return { ...ly, width, height, fontSize, x, y };
                     });
                 });
@@ -437,8 +522,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             if (isDraggingLayer) {
                 setCropRect(prev => ({
                     ...prev,
-                    x: Math.max(0, Math.min(prev.x + dx, imageRef.current.naturalWidth - prev.width)),
-                    y: Math.max(0, Math.min(prev.y + dy, imageRef.current.naturalHeight - prev.height))
+                    x: Math.round(Math.max(0, Math.min(prev.x + dx, imageRef.current.naturalWidth - prev.width))),
+                    y: Math.round(Math.max(0, Math.min(prev.y + dy, imageRef.current.naturalHeight - prev.height)))
                 }));
             } else if (isResizingCrop) {
                 setCropRect(prev => {
@@ -456,11 +541,11 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                         y += height - newHeight;
                         height = newHeight;
                     }
-                    // Constrain
-                    x = Math.max(0, Math.min(x, img.naturalWidth - width));
-                    y = Math.max(0, Math.min(y, img.naturalHeight - height));
-                    width = Math.min(width, img.naturalWidth - x);
-                    height = Math.min(height, img.naturalHeight - y);
+                    // Constrain and Round
+                    x = Math.round(Math.max(0, Math.min(x, img.naturalWidth - width)));
+                    y = Math.round(Math.max(0, Math.min(y, img.naturalHeight - height)));
+                    width = Math.round(Math.min(width, img.naturalWidth - x));
+                    height = Math.round(Math.min(height, img.naturalHeight - y));
                     return { ...prev, width, height, x, y };
                 });
             }
@@ -536,10 +621,10 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         if (!imageRef.current) return;
         const img = imageRef.current;
         const initialCrop = {
-            width: img.naturalWidth * 0.8,
-            height: img.naturalHeight * 0.8,
-            x: img.naturalWidth * 0.1,
-            y: img.naturalHeight * 0.1
+            width: Math.round(img.naturalWidth * 0.8),
+            height: Math.round(img.naturalHeight * 0.8),
+            x: Math.round(img.naturalWidth * 0.1),
+            y: Math.round(img.naturalHeight * 0.1)
         };
         setCropRect(initialCrop);
         setIsCropMode(true);
@@ -548,21 +633,59 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
 
     const applyCrop = () => {
         if (!cropRect || !imageRef.current) return;
+
         const canvas = document.createElement('canvas');
-        canvas.width = cropRect.width;
-        canvas.height = cropRect.height;
+        // Round to avoid sub-pixel rendering issues
+        const cropW = Math.round(cropRect.width);
+        const cropH = Math.round(cropRect.height);
+        const cropX = Math.round(cropRect.x);
+        const cropY = Math.round(cropRect.y);
+
+        canvas.width = cropW;
+        canvas.height = cropH;
         const ctx = canvas.getContext('2d');
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.onload = () => {
-            ctx.drawImage(img, cropRect.x, cropRect.y, cropRect.width, cropRect.height, 0, 0, cropRect.width, cropRect.height);
+            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
             const newDataUrl = canvas.toDataURL();
             setImageSrc(newDataUrl);
 
-            // Update the background layer content if it exists
-            const nextLayers = layers.map(l =>
-                l.id === 'background-layer' ? { ...l, content: newDataUrl } : l
-            );
+            // Update the background layer content and PHYSICAL size
+            // If we don't update width/height, it will stretch the new content to the old size
+            const bgLayer = layers.find(l => l.id === 'background-layer');
+            const oldW = bgLayer?.width || 1000;
+            const oldH = bgLayer?.height || 1000;
+
+            // New physical size in the editor
+            const newW = cropW * (oldW / imageRef.current.naturalWidth);
+            const newH = cropH * (oldH / imageRef.current.naturalHeight);
+
+            const nextLayers = layers.map(l => {
+                if (l.id === 'background-layer') {
+                    return { ...l, content: newDataUrl, width: newW, height: newH };
+                }
+
+                // Reposition other layers so they stay on the same part of the image
+                // Coordinates are in % of container (which is bgLayer size)
+                // This is a bit complex because % is relative to the NEW size
+                const xInPx = (l.x / 100) * oldW;
+                const yInPx = (l.y / 100) * oldH;
+
+                // Translate px to be relative to the cropped area
+                const cropXInPx = (cropX / imageRef.current.naturalWidth) * oldW;
+                const cropYInPx = (cropY / imageRef.current.naturalHeight) * oldH;
+
+                const newXInPx = xInPx - cropXInPx;
+                const newYInPx = yInPx - cropYInPx;
+
+                return {
+                    ...l,
+                    x: (newXInPx / newW) * 100,
+                    y: (newYInPx / newH) * 100
+                };
+            });
+
             setLayers(nextLayers);
             saveToHistory(nextLayers);
 
@@ -570,6 +693,23 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             setCropRect(null);
         };
         img.src = imageSrc;
+    };
+
+    const updateFormFieldValue = (layerId, fieldIdx, value) => {
+        setLayers(prev => prev.map(l => {
+            if (l.id === layerId) {
+                const newValues = { ...(l.formData.values || {}) };
+                newValues[fieldIdx] = value;
+                return {
+                    ...l,
+                    formData: {
+                        ...l.formData,
+                        values: newValues
+                    }
+                };
+            }
+            return l;
+        }));
     };
 
     const addShape = (shapeType, extra = null) => {
@@ -627,6 +767,82 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         setActiveLayerId(newLayer.id);
     };
 
+    const addFrame = (frameItem) => {
+        let initialWidth = 300;
+        let initialHeight = 300;
+        if (frameItem.aspectRatio) {
+            if (frameItem.aspectRatio > 1) { // Wider than tall
+                initialHeight = 300 / frameItem.aspectRatio;
+            } else { // Taller than wide or square
+                initialWidth = 300 * frameItem.aspectRatio;
+            }
+        }
+        const newLayer = {
+            id: Date.now(),
+            type: 'frame',
+            frameType: frameItem.shapeType || 'basic', // basic, complex
+            frameProps: frameItem,
+            content: null, // User image will go here
+            placeholder: (frameItem.frameStyle === 'Paper' || frameItem.frameStyle === 'paper') ? null : frameItem.thumb,
+            width: initialWidth,
+            height: initialHeight,
+            x: 50,
+            y: 50,
+            isSelected: true
+        };
+        const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
+        setLayers(nextLayers);
+        saveToHistory(nextLayers);
+        setActiveLayerId(newLayer.id);
+    };
+
+    const addGrid = (template) => {
+        const bgLayer = layers.find(l => l.id === 'background-layer');
+        // Default to a reasonable size if no background layer (though there should be one)
+        const baseW = bgLayer ? bgLayer.width : 1000;
+        const baseH = bgLayer ? bgLayer.height : 1000;
+
+        const timestamp = Date.now();
+        const newGridLayers = template.slots.map((slot, i) => {
+            // Convert slot percentages to actual px width/height and center position percentages
+            // Slot: x, y, w, h are in percentages (0-100)
+
+            // Width/Height in pixels
+            const wPx = baseW * (slot.w / 100);
+            const hPx = baseH * (slot.h / 100);
+
+            // Center X/Y in percentages
+            // slot.x is left edge %, slot.w is width %
+            const centerX = slot.x + (slot.w / 2);
+            const centerY = slot.y + (slot.h / 2);
+
+            return {
+                id: timestamp + i,
+                type: 'frame',
+                frameType: 'basic',
+                frameProps: {
+                    title: `Grid ${i + 1}`,
+                    style: { backgroundColor: '#e5e7eb', border: '5px solid #ffffff' } // Default style with white border
+                },
+                content: null,
+                width: wPx,
+                height: hPx,
+                x: centerX,
+                y: centerY,
+                isSelected: false // Don't select automatically to avoid mess
+            };
+        });
+
+        // Add all new layers
+        const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), ...newGridLayers];
+        setLayers(nextLayers);
+        saveToHistory(nextLayers);
+        // Do not set active layer (or maybe set the first one?)
+        if (newGridLayers.length > 0) {
+            setActiveLayerId(newGridLayers[0].id);
+        }
+    };
+
     const applyPresetFilter = (f) => {
         setAdjustments({
             brightness: 100, contrast: 100, saturation: 100, blur: 0, grayscale: 0, sepia: 0, hue: 0, invert: 0,
@@ -641,38 +857,320 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         const ctx = canvas.getContext('2d');
-        ctx.filter = `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`;
-        ctx.drawImage(img, 0, 0);
-        if (adjustments.highlights !== 0 || adjustments.shadows !== 0) {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            const h = adjustments.highlights / 100;
-            const s = adjustments.shadows / 100;
-            for (let i = 0; i < data.length; i += 4) {
-                for (let j = 0; j < 3; j++) {
-                    let v = data[i + j] / 255;
-                    if (h !== 0 && v > 0.5) v += (v - 0.5) * 2 * h;
-                    if (s !== 0 && v < 0.5) v += (0.5 - v) * 2 * s;
-                    data[i + j] = Math.max(0, Math.min(255, v * 255));
-                }
-            }
-            ctx.putImageData(imageData, 0, 0);
-        }
-        ctx.filter = 'none';
+
+        // Clip everything to the canvas bounds - nothing renders outside the image area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, canvas.width, canvas.height);
+        ctx.clip();
+
         for (const layer of layers) {
             if (layer.isHidden) continue;
+
             const rect = containerRef.current.getBoundingClientRect();
-            const scaleX = img.naturalWidth / rect.width;
-            const scaleY = img.naturalHeight / rect.height;
-            const canvasX = (layer.x * rect.width / 100) * scaleX;
-            const canvasY = (layer.y * rect.height / 100) * scaleY;
+            const bgLayer = layers.find(l => l.id === 'background-layer');
+
+            // If background layer is the canvas size basis
+            const scaleX = img.naturalWidth / (bgLayer ? bgLayer.width : rect.width);
+            const scaleY = img.naturalHeight / (bgLayer ? bgLayer.height : rect.height);
+
+            const canvasX = (layer.x * (bgLayer ? bgLayer.width : rect.width) / 100) * scaleX;
+            const canvasY = (layer.y * (bgLayer ? bgLayer.height : rect.height) / 100) * scaleY;
 
             ctx.save();
             ctx.translate(canvasX, canvasY);
             ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
             ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
 
-            if (layer.type === 'text') {
+            if (layer.id === 'background-layer' || (layer.type === 'shape' && layer.shapeType === 'image')) {
+                const w = (layer.width || 100) * scaleX;
+                const h = (layer.height || 100) * scaleY;
+
+                const imgObj = new Image();
+                imgObj.crossOrigin = "anonymous";
+                imgObj.src = layer.content;
+                await new Promise((resolve) => {
+                    imgObj.onload = resolve;
+                    imgObj.onerror = resolve; // Continue even if error
+                });
+
+                if (layer.id === 'background-layer') {
+                    // Apply Canvas Filters
+                    ctx.filter = `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`;
+                    ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
+                    ctx.filter = 'none';
+
+                    if (adjustments.highlights !== 0 || adjustments.shadows !== 0) {
+                        const imageData = ctx.getImageData(canvasX - w / 2, canvasY - h / 2, w, h);
+                        const data = imageData.data;
+                        const h_adj = adjustments.highlights / 100;
+                        const s_adj = adjustments.shadows / 100;
+                        for (let i = 0; i < data.length; i += 4) {
+                            for (let j = 0; j < 3; j++) {
+                                let v = data[i + j] / 255;
+                                if (h_adj !== 0 && v > 0.5) v += (v - 0.5) * 2 * h_adj;
+                                if (s_adj !== 0 && v < 0.5) v += (0.5 - v) * 2 * s_adj;
+                                data[i + j] = Math.max(0, Math.min(255, v * 255));
+                            }
+                        }
+                        ctx.putImageData(imageData, canvasX - w / 2, canvasY - h / 2);
+                    }
+                } else {
+                    ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
+                }
+            } else if (layer.type === 'frame') {
+                const w = (layer.width || 300) * scaleX;
+                const h = (layer.height || 300) * scaleY;
+                const clipPath = layer.frameProps?.clipPath;
+                const style = layer.frameProps?.style || {};
+
+                // Create temp canvas
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = w;
+                tempCanvas.height = h;
+                const tCtx = tempCanvas.getContext('2d');
+
+                let innerX = 0, innerY = 0, innerW = w, innerH = h;
+
+                // --- 1. Draw Frame Background / Border (if no clipPath) ---
+                if (!clipPath && (style.border || style.backgroundColor)) {
+                    let bTop = 0, bRight = 0, bBottom = 0, bLeft = 0;
+                    let bColor = 'transparent';
+
+                    if (style.border) {
+                        const match = style.border.match(/(\d+)px\s+\w+\s+(.+)/);
+                        if (match) {
+                            const val = parseInt(match[1]) * scaleX;
+                            bTop = bRight = bBottom = bLeft = val;
+                            bColor = match[2];
+                        }
+                    }
+                    if (style.borderBottomWidth) bBottom = parseInt(style.borderBottomWidth) * scaleX;
+                    if (style.borderTopWidth) bTop = parseInt(style.borderTopWidth) * scaleX;
+                    if (style.borderLeftWidth) bLeft = parseInt(style.borderLeftWidth) * scaleX;
+                    if (style.borderRightWidth) bRight = parseInt(style.borderRightWidth) * scaleX;
+
+                    if (bColor !== 'transparent' || style.backgroundColor) {
+                        tCtx.fillStyle = style.backgroundColor || bColor;
+                        if (!style.backgroundColor && bColor !== 'transparent') tCtx.fillStyle = bColor;
+
+                        let radius = 0;
+                        if (style.borderRadius) radius = parseInt(style.borderRadius) * scaleX;
+
+                        tCtx.beginPath();
+                        if (tCtx.roundRect) tCtx.roundRect(0, 0, w, h, radius);
+                        else tCtx.rect(0, 0, w, h);
+                        tCtx.fill();
+                    }
+
+                    innerX = bLeft;
+                    innerY = bTop;
+                    innerW = w - bLeft - bRight;
+                    innerH = h - bTop - bBottom;
+                }
+
+                // --- 2. Clip and Draw Image ---
+                tCtx.save();
+                tCtx.beginPath();
+                if (clipPath) {
+                    tCtx.translate(w / 2, h / 2);
+                    if (clipPath.startsWith('circle')) {
+                        tCtx.arc(0, 0, w / 2, 0, Math.PI * 2);
+                    } else if (clipPath.startsWith('polygon')) {
+                        const points = clipPath.match(/[\d.]+% [\d.]+/g);
+                        if (points) {
+                            points.forEach((p, i) => {
+                                const [xStr, yStr] = p.split(' ');
+                                const px = (parseFloat(xStr) / 100) * w - w / 2;
+                                const py = (parseFloat(yStr) / 100) * h - h / 2;
+                                if (i === 0) tCtx.moveTo(px, py);
+                                else tCtx.lineTo(px, py);
+                            });
+                        }
+                    } else {
+                        tCtx.rect(-w / 2, -h / 2, w, h);
+                    }
+                } else {
+                    tCtx.rect(innerX, innerY, innerW, innerH);
+                }
+                tCtx.closePath();
+                tCtx.clip();
+
+                const imgSrc = layer.content || layer.placeholder;
+                if (imgSrc) {
+                    const imgObj = new Image();
+                    imgObj.crossOrigin = "anonymous";
+                    imgObj.src = imgSrc;
+                    await new Promise((resolve) => {
+                        imgObj.onload = resolve;
+                        imgObj.onerror = resolve;
+                    });
+
+                    if (imgObj.width && imgObj.height) {
+                        const aspect = imgObj.width / imgObj.height;
+                        const targetW = clipPath ? w : innerW;
+                        const targetH = clipPath ? h : innerH;
+                        const targetAspect = targetW / targetH;
+
+                        let drawW, drawH;
+                        if (aspect > targetAspect) {
+                            drawH = targetH;
+                            drawW = targetH * aspect;
+                        } else {
+                            drawW = targetW;
+                            drawH = targetW / aspect;
+                        }
+
+                        if (clipPath) {
+                            tCtx.drawImage(imgObj, -drawW / 2, -drawH / 2, drawW, drawH);
+                        } else {
+                            const centerX = innerX + innerW / 2;
+                            const centerY = innerY + innerH / 2;
+                            tCtx.drawImage(imgObj, centerX - drawW / 2, centerY - drawH / 2, drawW, drawH);
+                        }
+                    }
+                } else {
+                    tCtx.fillStyle = '#f3f4f6';
+                    tCtx.fill();
+                }
+                tCtx.restore();
+
+                // --- 3. Decorations ---
+                if (layer.frameProps?.frameStyle === 'film') {
+                    tCtx.fillStyle = 'rgba(255,255,255,0.3)';
+                    const holeSize = 10 * scaleX;
+                    if (layer.frameProps?.orientation === 'horizontal') {
+                        for (let i = 0; i < 8; i++) {
+                            const hX = (w / 8) * (i + 0.5) - holeSize / 2;
+                            tCtx.fillRect(hX, 5 * scaleX, holeSize, holeSize);
+                            tCtx.fillRect(hX, h - 5 * scaleX - holeSize, holeSize, holeSize);
+                        }
+                    } else {
+                        for (let i = 0; i < 8; i++) {
+                            const hY = (h / 8) * (i + 0.5) - holeSize / 2;
+                            tCtx.fillRect(5 * scaleX, hY, holeSize, holeSize);
+                            tCtx.fillRect(w - 5 * scaleX - holeSize, hY, holeSize, holeSize);
+                        }
+                    }
+                }
+
+                if (layer.frameProps?.hasTape) {
+                    tCtx.save();
+                    tCtx.translate(w / 2, 0);
+                    tCtx.rotate(((layer.id % 10) - 5) * Math.PI / 180);
+                    tCtx.fillStyle = '#e8e4db';
+                    tCtx.globalAlpha = 0.8;
+                    const tapeW = w / 3;
+                    const tapeH = 25 * scaleX;
+                    tCtx.fillRect(-tapeW / 2, -tapeH / 2, tapeW, tapeH);
+                    tCtx.restore();
+                }
+
+                // --- New Device Decorations ---
+                if (layer.frameProps?.frameStyle === 'browser') {
+                    const dotSize = 8 * scaleX;
+                    const dotGap = 6 * scaleX;
+                    const startX = 12 * scaleX + dotSize / 2;
+                    const startY = 18 * scaleX; // Center of 36px bar
+
+                    // Red
+                    tCtx.fillStyle = '#ff5f56';
+                    tCtx.beginPath();
+                    tCtx.arc(startX, startY, dotSize / 2, 0, Math.PI * 2);
+                    tCtx.fill();
+
+                    // Yellow
+                    tCtx.fillStyle = '#ffbd2e';
+                    tCtx.beginPath();
+                    tCtx.arc(startX + dotSize + dotGap, startY, dotSize / 2, 0, Math.PI * 2);
+                    tCtx.fill();
+
+                    // Green
+                    tCtx.fillStyle = '#27c93f';
+                    tCtx.beginPath();
+                    tCtx.arc(startX + (dotSize + dotGap) * 2, startY, dotSize / 2, 0, Math.PI * 2);
+                    tCtx.fill();
+                }
+
+                if (layer.frameProps?.frameStyle === 'phone' || layer.frameProps?.frameStyle === 'tablet') {
+                    if (layer.frameProps?.hasNotch) {
+                        tCtx.fillStyle = '#1a1a1a';
+                        const notchW = w * 0.4;
+                        const notchH = 25 * scaleX;
+                        const notchR = 10 * scaleX;
+                        if (tCtx.roundRect) {
+                            tCtx.roundRect((w - notchW) / 2, 0, notchW, notchH, [0, 0, notchR, notchR]);
+                        } else {
+                            tCtx.fillRect((w - notchW) / 2, 0, notchW, notchH);
+                        }
+                        tCtx.fill();
+                    }
+                    if (layer.frameProps?.hasHolePunch) {
+                        tCtx.fillStyle = '#1a1a1a';
+                        tCtx.beginPath();
+                        tCtx.arc(w / 2, 30 * scaleX, 8 * scaleX, 0, Math.PI * 2);
+                        tCtx.fill();
+                    }
+                    if (layer.frameProps?.hasButtons) {
+                        tCtx.fillStyle = '#1a1a1a';
+                        // Power button (right)
+                        tCtx.fillRect(w - 2 * scaleX, h * 0.2, 2 * scaleX, 40 * scaleX);
+                        // Volume buttons (left)
+                        tCtx.fillRect(0, h * 0.15, 2 * scaleX, 30 * scaleX);
+                        tCtx.fillRect(0, h * 0.22, 2 * scaleX, 30 * scaleX);
+                    }
+                }
+
+                if (layer.frameProps?.frameStyle === 'watch') {
+                    if (layer.frameProps?.hasCrown) {
+                        tCtx.fillStyle = '#222';
+                        // Side button
+                        tCtx.fillRect(w - 2 * scaleX, h * 0.6, 2 * scaleX, 30 * scaleX);
+                        // Digital Crown
+                        const crownW = 8 * scaleX;
+                        const crownH = 25 * scaleX;
+                        tCtx.beginPath();
+                        if (tCtx.roundRect) tCtx.roundRect(w - 4 * scaleX, h * 0.3, crownW, crownH, 2 * scaleX);
+                        else tCtx.rect(w - 4 * scaleX, h * 0.3, crownW, crownH);
+                        tCtx.fill();
+                    }
+                }
+
+                if (layer.frameProps?.frameStyle === 'monitor' || layer.frameProps?.frameStyle === 'laptop') {
+                    tCtx.fillStyle = style.backgroundColor || '#333';
+                    const standW = w / 4;
+                    const standH = 45 * scaleY;
+                    const baseX = (w - standW) / 2;
+
+                    if (layer.frameProps?.frameStyle === 'monitor') {
+                        tCtx.beginPath();
+                        tCtx.moveTo(baseX + standW * 0.2, h - 25 * scaleY);
+                        tCtx.lineTo(baseX + standW * 0.8, h - 25 * scaleY);
+                        tCtx.lineTo(baseX + standW, h);
+                        tCtx.lineTo(baseX, h);
+                        tCtx.fill();
+                    } else if (layer.frameProps?.frameStyle === 'laptop') {
+                        // Advanced laptop base
+                        tCtx.fillStyle = '#222';
+                        tCtx.beginPath();
+                        tCtx.moveTo(0, h - 10 * scaleY);
+                        tCtx.lineTo(w, h - 10 * scaleY);
+                        tCtx.lineTo(w - 10 * scaleX, h);
+                        tCtx.lineTo(10 * scaleX, h);
+                        tCtx.fill();
+                        // Trackpad notch
+                        tCtx.fillStyle = '#111';
+                        tCtx.fillRect(w / 2 - 20 * scaleX, h - 10 * scaleY, 40 * scaleX, 4 * scaleY);
+                    }
+                }
+
+                ctx.drawImage(tempCanvas, -w / 2, -h / 2);
+
+
+                // Note: We removed the separate "Draw Border" block because we now draw the Frame Background first, then clip inside.
+                // This handles "Inside Borders" and "Outside Borders" better for rectangular frames.
+
+            } else if (layer.type === 'text') {
                 ctx.font = `${layer.fontWeight} ${layer.fontSize * scaleX}px ${layer.fontFamily}`;
                 ctx.fillStyle = layer.color;
                 ctx.textAlign = 'center';
@@ -727,7 +1225,6 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                         ctx.rect(btnX, btnY, btnW, btnH);
                     }
                     ctx.fill();
-
                     ctx.fillStyle = btnColor;
                     ctx.font = `bold ${14 * scaleX}px Arial`;
                     ctx.textAlign = 'center';
@@ -738,7 +1235,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 // Draw Fields
                 if (formData.fields) {
                     let currentY = -h / 2 + 50 * scaleY;
-                    formData.fields.forEach((field) => {
+                    formData.fields.forEach((field, fIdx) => {
                         const fieldW = w - 32 * scaleX;
                         const fieldStartX = -w / 2 + 16 * scaleX;
 
@@ -755,9 +1252,27 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                             ctx.lineWidth = 1 * scaleX;
                             const inputH = field.type === 'textarea' ? 60 * scaleY : 32 * scaleY;
                             ctx.strokeRect(fieldStartX, currentY, fieldW, inputH);
+
+                            // Draw the Value
+                            const val = formData.values?.[fIdx] || '';
+                            if (val) {
+                                ctx.fillStyle = formData.textColor || '#1f2937';
+                                ctx.font = `${11 * scaleX}px Arial`;
+                                ctx.textAlign = 'left';
+                                ctx.textBaseline = 'middle';
+                                if (field.type === 'textarea') {
+                                    // Simple manual wrapping or just drawing top left
+                                    ctx.fillText(val, fieldStartX + 8 * scaleX, currentY + 12 * scaleY);
+                                } else {
+                                    ctx.fillText(val, fieldStartX + 8 * scaleX, currentY + inputH / 2);
+                                }
+                            }
+
                             currentY += inputH + 12 * scaleY;
                         } else if (field.type === 'radio' || field.type === 'checkbox') {
                             const options = field.options || [];
+                            const selection = formData.values?.[fIdx];
+
                             options.forEach(opt => {
                                 ctx.strokeStyle = '#d1d5db';
                                 ctx.lineWidth = 1 * scaleX;
@@ -765,8 +1280,18 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                     ctx.beginPath();
                                     ctx.arc(fieldStartX + 8 * scaleX, currentY + 8 * scaleY, 6 * scaleX, 0, Math.PI * 2);
                                     ctx.stroke();
+                                    if (selection === opt) {
+                                        ctx.fillStyle = '#9333ea';
+                                        ctx.beginPath();
+                                        ctx.arc(fieldStartX + 8 * scaleX, currentY + 8 * scaleY, 3 * scaleX, 0, Math.PI * 2);
+                                        ctx.fill();
+                                    }
                                 } else {
                                     ctx.strokeRect(fieldStartX, currentY, 12 * scaleX, 12 * scaleY);
+                                    if (Array.isArray(selection) && selection.includes(opt)) {
+                                        ctx.fillStyle = '#9333ea';
+                                        ctx.fillRect(fieldStartX + 2 * scaleX, currentY + 2 * scaleY, 8 * scaleX, 8 * scaleY);
+                                    }
                                 }
                                 ctx.fillStyle = formData.textColor || '#374151';
                                 ctx.font = `${11 * scaleX}px Arial`;
@@ -774,8 +1299,9 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                 currentY += 20 * scaleY;
                             });
                         } else if (field.type === 'rating') {
-                            ctx.fillStyle = '#fbbf24';
+                            const rating = formData.values?.[fIdx] || 0;
                             for (let i = 0; i < (field.max || 5); i++) {
+                                ctx.fillStyle = i < rating ? (formData.accentColor || '#fbbf24') : '#d1d5db';
                                 ctx.fillText('★', fieldStartX + (i * 20 * scaleX), currentY + 10 * scaleY);
                             }
                             currentY += 25 * scaleY;
@@ -923,48 +1449,87 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                         ctx.fill();
                     }
                 }
+
+                // Render text inside shape if exists
+                if (layer.content && ['square', 'square-rounded', 'circle', 'triangle', 'pentagon', 'hexagon', 'octagon', 'parallelogram', 'star-5'].includes(layer.shapeType)) {
+                    ctx.font = `bold ${Math.min(w, h) * 0.15}px Arial`;
+                    ctx.fillStyle = darkMode ? '#ffffff' : '#000000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    const maxWidth = w * 0.8;
+                    const words = layer.content.split(' ');
+                    const lines = [];
+                    if (words.length > 0) {
+                        let currentLine = words[0];
+                        for (let i = 1; i < words.length; i++) {
+                            const word = words[i];
+                            const width = ctx.measureText(currentLine + " " + word).width;
+                            if (width < maxWidth) {
+                                currentLine += " " + word;
+                            } else {
+                                lines.push(currentLine);
+                                currentLine = word;
+                            }
+                        }
+                        lines.push(currentLine);
+                    }
+
+                    const lineHeight = Math.min(w, h) * 0.18;
+                    const totalHeight = lines.length * lineHeight;
+                    lines.forEach((line, index) => {
+                        ctx.fillText(line, 0, (index * lineHeight) - (totalHeight / 2) + (lineHeight / 2));
+                    });
+                }
             }
             ctx.restore();
         }
+
+        // Restore the main clipping context
+        ctx.restore();
+
         return canvas;
     };
 
     const handleApply = async () => {
-        try {
-            setIsSaving(true);
-            // Give UI a moment to show the saving overlay
-            await new Promise(r => setTimeout(r, 100));
+        setIsSaving(true);
+        // Small delay to ensure UI updates before heavy canvas work
+        await new Promise(r => setTimeout(r, 500));
 
-            const canvas = await renderFinalCanvas();
-            if (canvas) {
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        onApply(blob);
-                    } else {
-                        console.error('Failed to create blob');
-                        onApply(null);
-                    }
-                    setIsSaving(false);
-                }, 'image/png');
-            } else {
-                console.error('Failed to render canvas');
+        const canvas = await renderFinalCanvas();
+        if (canvas) {
+            canvas.toBlob((blob) => {
                 setIsSaving(false);
-                onCancel();
-            }
-        } catch (error) {
-            console.error('Error during apply:', error);
+                if (blob) {
+                    // Save current state to localStorage before navigating
+                    saveEditorState({ layers, adjustments });
+                    // Navigate directly to converter - no loading indicator
+                    onApply(blob);
+                } else {
+                    console.error('Failed to create blob');
+                    onApply(null);
+                }
+            }, 'image/png');
+        } else {
             setIsSaving(false);
+            console.error('Failed to render canvas');
             onCancel();
         }
     };
 
     const handleDownload = async () => {
+        setIsSaving(true);
+        await new Promise(r => setTimeout(r, 500));
+
         const canvas = await renderFinalCanvas();
         if (canvas) {
             const link = document.createElement('a');
             link.download = `edited_${file.name.replace(/\.[^/.]+$/, "")}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
+            setIsSaving(false);
+        } else {
+            setIsSaving(false);
         }
     };
 
@@ -998,7 +1563,84 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         </button>
     );
 
+    const applyMockup = (mockup) => {
+        const img = new Image();
+        img.onload = () => {
+            // 1. Set background
+            setImageSrc(mockup.image);
+
+            // 2. Create background layer
+            const bgLayer = {
+                id: 'background-layer',
+                type: 'shape',
+                shapeType: 'image',
+                content: mockup.image,
+                color: 'transparent',
+                width: 1000,
+                height: 1000 * (img.height / img.width),
+                x: 50,
+                y: 50,
+                isSelected: false,
+                isLocked: true, // Lock background
+                isBackground: true
+            };
+
+            // 3. Create frame layers
+            const frameLayers = mockup.frames.map((frame, index) => ({
+                id: `mockup-frame-${Date.now()}-${index}`,
+                type: 'frame',
+                frameType: 'basic',
+                frameProps: { ...frame, shapeType: 'basic' },
+                content: null,
+                placeholder: null, // Transparent to show background or maybe a semi-transparent hint?
+                // Actually, for mockups, usually the frame area is empty or specific. 
+                // We'll use a transparent placeholder so the user can drop onto it.
+                // But to make it visible we might need a border?
+                // The images have frames in them, so we just need invisible "drop zones".
+                // But wait, the previous frame implementation draws a shape.
+                // If we want it to look like it's IN the image, we should probably just have the drop zone.
+                // Let's set opacity to 0.1 or something if empty, or just rely on 'frame' logic.
+                width: frame.width * 10, // Convert % to logical width (assuming 1000 base) -> wait, width in layers is in logical units
+                // In my logic above: width = 1000. So 10% = 100.
+                // frame.width is in %. 
+                // Let's check how I used width in other places. 
+                // addShape uses width=100.
+                // In handleGlobalMouseMove: newX is %. 
+                // Wait, width/height in layer state seems to be logical pixels relative to 1000? 
+                // No, let's look at `handleGlobalMouseMove`:
+                // const halfWidthPercent = (layerWidth / 2 / rect.width) * 100;
+                // It seems width is just a number, but how is it rendered?
+                // I need to check the rendering part (not shown in previous view_file).
+                // Let's assume standard logic: 
+                // If the background is 1000 wide, then a 10% width frame should be 100 wide.
+                // Yes.
+                width: frame.width * 10,
+                height: frame.height * (1000 * (img.height / img.width) / 100), // Height relative to aspect ratio?
+                // OR: simply frame.height * 10 if we assume square 1000x1000 canvas?
+                // No, canvas height depends on aspect ratio.
+                // frame.height is % of HEIGHT.
+                // So if total height is H, then frame height is (frame.height/100) * H.
+                // canvas height = 1000 * (img.height / img.width).
+                // So: frame.height * (1000 * (img.height / img.width)) / 100.
+                x: frame.x, // %
+                y: frame.y, // %
+                rotation: frame.rotation || 0,
+                isSelected: false,
+                isLocked: true, // Lock validation: Prevents selection border and moving
+                isPlaceholder: true, // Flag to indicate this is a drop zone
+                backgroundColor: 'transparent' // Explicitly set transparent background
+            }));
+
+            setLayers([bgLayer, ...frameLayers]);
+            saveToHistory([bgLayer, ...frameLayers]);
+            setActiveLayerId(null);
+        };
+        img.src = mockup.image;
+    };
+
     return (
+        // ... (start of return)
+
         <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
             {/* TOP NAVIGATION BAR */}
             <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
@@ -1062,8 +1704,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                     <TabButton id="text" icon={Type} label="Text" />
                     <TabButton id="layers" icon={Layers} label="Layers" />
                     <TabButton id="filters" icon={Palette} label="Filters" />
-                    <TabButton id="adjust" icon={Sliders} label="Adjust" />
-                    <TabButton id="brand" icon={Box} label="Brand" premium />
+                    {/* <TabButton id="adjust" icon={Sliders} label="Adjust" />
+                    <TabButton id="brand" icon={Box} label="Brand" premium /> */}
                     <TabButton id="forms" icon={FileText} label="Forms" />
                     <button
                         onClick={enterCropMode}
@@ -1137,12 +1779,12 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                     {[
                                                         { id: 'shapes', name: 'Shapes', icon: <div className="flex gap-0.5"><SquareIcon className="w-3 h-3 fill-current" /><CircleIcon className="w-3 h-3 fill-current" /></div>, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
                                                         // { id: 'graphics', name: 'Graphics', icon: <Sun className="w-5 h-5" />, color: 'text-amber-500', bg: 'bg-amber-500/10' },
-                                                        { id: 'stickers', name: 'Stickers', icon: <Smile className="w-5 h-5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                                                        { id: 'Animations', name: 'Animations', icon: <Smile className="w-5 h-5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                                                         { id: 'photos', name: 'Photos', icon: <ImageIcon className="w-5 h-5" />, color: 'text-purple-500', bg: 'bg-purple-500/10' },
                                                         { id: 'videos', name: 'Videos', icon: <Video className="w-5 h-5" />, color: 'text-pink-500', bg: 'bg-pink-500/10' },
                                                         { id: 'audio', name: 'Audio', icon: <Music className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-500/10' },
-                                                        { id: 'charts', name: 'Charts', icon: <PieChart className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-                                                        { id: 'tables', name: 'Tables', icon: <Grid className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+                                                        // { id: 'charts', name: 'Charts', icon: <PieChart className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+                                                        // { id: 'tables', name: 'Tables', icon: <Grid className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-500/10' },
                                                         { id: 'frames', name: 'Frames', icon: <Crop className="w-5 h-5" />, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
                                                         { id: 'grids', name: 'Grids', icon: <Layout className="w-5 h-5" />, color: 'text-teal-500', bg: 'bg-teal-500/10' },
                                                         { id: 'mockups', name: 'Mockups', icon: <Smartphone className="w-5 h-5" />, color: 'text-slate-500', bg: 'bg-slate-500/10' },
@@ -1348,8 +1990,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                             {/* Stickers */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-3">
-                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Stickers</h4>
-                                                    <button onClick={() => setElementsView('stickers')} className="text-[10px] hover:underline opacity-60">See all</button>
+                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Animations</h4>
+                                                    <button onClick={() => setElementsView('Animations')} className="text-[10px] hover:underline opacity-60">See all</button>
                                                 </div>
                                                 <div className="grid grid-cols-3 gap-3">
                                                     {['🚀', '🎁', '👀'].map((emoji, i) => (
@@ -1441,12 +2083,17 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                             <button
                                                                 key={i}
                                                                 onClick={() => addImageLayer(url)}
-                                                                className="aspect-[3/2] rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group"
+                                                                className="aspect-[3/2] rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-move"
+                                                                draggable={true}
+                                                                onDragStart={(e) => {
+                                                                    e.dataTransfer.setData('text/plain', url);
+                                                                    e.dataTransfer.effectAllowed = 'copy';
+                                                                }}
                                                             >
                                                                 <img
                                                                     src={url}
                                                                     alt={category.title}
-                                                                    className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                    className="w-full h-full object-cover transition-transform group-hover:scale-110 pointer-events-none"
                                                                     loading="lazy"
                                                                     onError={(e) => e.target.parentElement.style.display = 'none'}
                                                                 />
@@ -1492,8 +2139,114 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                             ))}
                                         </div>
                                     )}
+                                    {elementsView === 'frames' && (
+                                        <div className="animate-fadeIn space-y-6">
+                                            {/* Header */}
+                                            <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                <button
+                                                    onClick={() => setElementsView('home')}
+                                                    className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Frames</h3>
+                                            </div>
+                                            {/* Subcategories */}
+                                            {[
+                                                { title: 'Basic shapes', icon: <SquareIcon className="w-5 h-5" /> },
+                                                { title: 'Film and photo', icon: <Camera className="w-5 h-5" /> },
+                                                { title: 'Devices', icon: <Smartphone className="w-5 h-5" /> },
+                                                { title: 'Paper', icon: <FileText className="w-5 h-5" /> },
+                                                { title: 'Flowers', icon: <Sun className="w-5 h-5" /> },
+                                                { title: 'Blob', icon: <CircleIcon className="w-5 h-5" /> },
+                                                { title: 'Retro', icon: <Star className="w-5 h-5" /> },
+                                                { title: 'Letters', icon: <Type className="w-5 h-5" /> },
+                                                { title: 'Numbers', icon: <Grid className="w-5 h-5" /> },
+                                                { title: 'Trending', icon: <Sparkles className="w-5 h-5" /> }
+                                            ].map((sub, index) => (
+                                                <ThreeDCategory
+                                                    key={index}
+                                                    sub={sub}
+                                                    items={framesElements[sub.title]}
+                                                    onAdd={(item) => addFrame(item)}
+                                                    darkMode={darkMode}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
+                                    {elementsView === 'grids' && (
+                                        <div className="animate-fadeIn space-y-6">
+                                            <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                <button
+                                                    onClick={() => setElementsView('home')}
+                                                    className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Grids</h3>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {gridTemplates.map((template) => (
+                                                    <button
+                                                        key={template.id}
+                                                        onClick={() => addGrid(template)}
+                                                        className={`aspect-[2/3] w-full rounded-md border-2 transition-all hover:scale-105 hover:border-teal-500 relative overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+                                                        title={template.title}
+                                                    >
+                                                        {template.slots.map((slot, i) => (
+                                                            <div
+                                                                key={i}
+                                                                className="absolute border border-gray-400/30 bg-gray-500/10"
+                                                                style={{
+                                                                    left: `${slot.x}%`,
+                                                                    top: `${slot.y}%`,
+                                                                    width: `${slot.w}%`,
+                                                                    height: `${slot.h}%`
+                                                                }}
+                                                            />
+                                                        ))}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {elementsView === 'mockups' && (
+                                        <div className="animate-fadeIn space-y-6">
+                                            <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                <button
+                                                    onClick={() => setElementsView('home')}
+                                                    className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Mockups</h3>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {mockupElements.map((mockup) => (
+                                                    <button
+                                                        key={mockup.id}
+                                                        onClick={() => applyMockup(mockup)}
+                                                        className={`aspect-square w-full rounded-xl border-2 transition-all hover:scale-105 hover:border-purple-500 relative overflow-hidden group ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+                                                    >
+                                                        <img
+                                                            src={mockup.thumb}
+                                                            alt={mockup.title}
+                                                            className="w-full h-full object-cover pointer-events-none"
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <span className="text-white font-bold text-xs">{mockup.title}</span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Default view for other categories (Placeholder) */}
-                                    {elementsView !== 'home' && elementsView !== 'shapes' && elementsView !== 'graphics' && elementsView !== 'photos' && elementsView !== '3d' && (
+                                    {elementsView !== 'home' && elementsView !== 'shapes' && elementsView !== 'graphics' && elementsView !== 'photos' && elementsView !== '3d' && elementsView !== 'frames' && elementsView !== 'grids' && elementsView !== 'mockups' && (
                                         <div className="animate-fadeIn space-y-4">
                                             <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
                                                 <button
@@ -1752,8 +2505,13 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                             {['#9333ea', '#6366f1', '#f472b6', '#fbbf24', '#10b981', '#ef4444', '#3b82f6', '#000000'].map(color => (
                                                 <button
                                                     key={color}
-                                                    onClick={() => {/* Use color */ }}
-                                                    className="w-full aspect-square rounded-lg border border-gray-200 shadow-sm hover:scale-105 transition-transform"
+                                                    onClick={() => {
+                                                        if (activeLayerId) {
+                                                            setLayers(layers.map(l => l.id === activeLayerId ? { ...l, color } : l));
+                                                            saveToHistory(layers.map(l => l.id === activeLayerId ? { ...l, color } : l));
+                                                        }
+                                                    }}
+                                                    className={`w-full aspect-square rounded-lg border shadow-sm hover:scale-105 transition-transform ${activeLayerId && layers.find(l => l.id === activeLayerId)?.color === color ? 'ring-2 ring-purple-600 border-transparent' : 'border-gray-200'}`}
                                                     style={{ backgroundColor: color }}
                                                 />
                                             ))}
@@ -1810,7 +2568,16 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 <button
                                                     key={idx}
                                                     onClick={() => {
-                                                        const newLayer = { id: Date.now(), type: 'form', formData: form, width: 280, height: 350, x: 50, y: 50, isSelected: true };
+                                                        const newLayer = {
+                                                            id: Date.now(),
+                                                            type: 'form',
+                                                            formData: { ...form, values: {} },
+                                                            width: 280,
+                                                            height: 350,
+                                                            x: 50,
+                                                            y: 50,
+                                                            isSelected: true
+                                                        };
                                                         const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
                                                         setLayers(nextLayers);
                                                         saveToHistory(nextLayers);
@@ -1865,6 +2632,28 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                     </div>
                 </div>
 
+                {/* SAVING OVERLAY */}
+                {isSaving && (
+                    <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+                        <div className={`p-8 rounded-3xl ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-2 shadow-2xl flex flex-col items-center gap-4 max-w-xs w-full`}>
+                            <div className="relative">
+                                <div className="w-16 h-16 border-4 border-purple-500/20 rounded-full animate-ping absolute inset-0" />
+                                <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin relative z-10" />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Sparkles className="w-6 h-6 text-purple-600 animate-pulse" />
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>Saving Design</h3>
+                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Processing and capturing your masterpiece...</p>
+                            </div>
+                            <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+                                <div className="h-full bg-gradient-to-r from-purple-600 to-blue-600 animate-shimmer" style={{ width: '60%' }} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* MAIN CANVAS AREA */}
                 <div
                     className={`flex-1 relative flex flex-col ${darkMode ? 'bg-[#0f111a]' : 'bg-[#f4f7fa]'} transition-all overflow-hidden`}
@@ -1882,25 +2671,15 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                             onClick={(e) => e.stopPropagation()}
                             className="relative transition-all duration-700 animate-scaleIn shadow-xl border-2 border-transparent"
                             style={{
+                                width: layers.find(l => l.id === 'background-layer')?.width + 'px' || 'auto',
+                                height: layers.find(l => l.id === 'background-layer')?.height + 'px' || 'auto',
                                 maxHeight: '90vh',
                                 maxWidth: '95vw',
-                                aspectRatio: imageRef.current ? `${imageRef.current.naturalWidth} / ${imageRef.current.naturalHeight}` : 'auto'
                             }}
                         >
-                            {!activeLayerId && (
-                                <div className="absolute -inset-1 border-2 border-purple-600/20 rounded pointer-events-none z-50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            )}
                             {imageSrc && (
-                                <div className="relative group/canvas overflow-hidden">
-                                    <img
-                                        ref={imageRef}
-                                        src={imageSrc}
-                                        alt="Working"
-                                        className="max-w-full max-h-full block rounded pointer-events-none select-none"
-                                        style={{
-                                            filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`
-                                        }}
-                                    />
+                                <div className="relative group/canvas overflow-hidden w-full h-full">
+                                    {/* Background handles its own rendering as a layer below */}
                                     {/* Crop Overlay */}
                                     {isCropMode && cropRect && imageRef.current && (
                                         <>
@@ -1945,56 +2724,67 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                             `}
                                                     />
                                                 ))}
-                                                {/* Floating Crop Confirmation Toolbar */}
-                                                <div className="absolute -top-14 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-2xl border border-gray-200 z-[70] animate-fadeIn min-w-[320px]">
-                                                    <div className="flex items-center gap-2 px-2">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[8px] font-black text-gray-400 uppercase">Width</span>
-                                                            <input
-                                                                type="number"
-                                                                value={Math.round(cropRect.width)}
-                                                                onChange={(e) => {
-                                                                    const val = parseInt(e.target.value) || 0;
-                                                                    const maxWidth = imageRef.current.naturalWidth - cropRect.x;
-                                                                    setCropRect(prev => ({ ...prev, width: Math.max(20, Math.min(val, maxWidth)) }));
-                                                                }}
-                                                                className="w-16 bg-gray-100 border-none rounded-md px-2 py-1 text-xs font-bold text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
-                                                            />
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[8px] font-black text-gray-400 uppercase">Height</span>
-                                                            <input
-                                                                type="number"
-                                                                value={Math.round(cropRect.height)}
-                                                                onChange={(e) => {
-                                                                    const val = parseInt(e.target.value) || 0;
-                                                                    const maxHeight = imageRef.current.naturalHeight - cropRect.y;
-                                                                    setCropRect(prev => ({ ...prev, height: Math.max(20, Math.min(val, maxHeight)) }));
-                                                                }}
-                                                                className="w-16 bg-gray-100 border-none rounded-md px-2 py-1 text-xs font-bold text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-px h-8 bg-gray-200" />
-                                                    <div className="flex items-center gap-1">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
-                                                            className="px-3 py-2 text-[10px] font-black uppercase text-gray-500 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); applyCrop(); }}
-                                                            className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:shadow-lg hover:shadow-purple-500/30 transition-all flex items-center gap-1.5 active:scale-95"
-                                                        >
-                                                            <Check className="w-3.5 h-3.5" />
-                                                            Apply
-                                                        </button>
-                                                    </div>
-                                                </div>
+
                                             </div>
                                         </>
                                     )}
+                                </div>
+                            )}
+                            {/* Floating Crop Confirmation Toolbar - Moved here to avoid overflow clipping */}
+                            {isCropMode && cropRect && imageRef.current && (
+                                <div
+                                    className="absolute flex items-center gap-3 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-2xl border border-gray-200 z-[70] animate-fadeIn min-w-[320px]"
+                                    style={{
+                                        left: `${((cropRect.x + cropRect.width / 2) / imageRef.current.naturalWidth) * 100}%`,
+                                        top: `${(cropRect.y / imageRef.current.naturalHeight) * 100}%`,
+                                        transform: 'translate(-50%, -120%)'
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center gap-2 px-2">
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-black text-gray-400 uppercase">Width</span>
+                                            <input
+                                                type="number"
+                                                value={Math.round(cropRect.width)}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    const maxWidth = imageRef.current.naturalWidth - cropRect.x;
+                                                    setCropRect(prev => ({ ...prev, width: Math.max(20, Math.min(val, maxWidth)) }));
+                                                }}
+                                                className="w-16 bg-gray-100 border-none rounded-md px-2 py-1 text-xs font-bold text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-black text-gray-400 uppercase">Height</span>
+                                            <input
+                                                type="number"
+                                                value={Math.round(cropRect.height)}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    const maxHeight = imageRef.current.naturalHeight - cropRect.y;
+                                                    setCropRect(prev => ({ ...prev, height: Math.max(20, Math.min(val, maxHeight)) }));
+                                                }}
+                                                className="w-16 bg-gray-100 border-none rounded-md px-2 py-1 text-xs font-bold text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="w-px h-8 bg-gray-200" />
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
+                                            className="px-3 py-2 text-[10px] font-black uppercase text-gray-500 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); applyCrop(); }}
+                                            className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:shadow-lg hover:shadow-purple-500/30 transition-all flex items-center gap-1.5 active:scale-95"
+                                        >
+                                            <Check className="w-3.5 h-3.5" />
+                                            Apply
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                             {/* LAYERS */}
@@ -2002,6 +2792,14 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                 <div
                                     key={layer.id}
                                     onMouseDown={(e) => handleMouseDown(e, layer)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveLayerId(layer.id);
+                                        setLayers(prev => prev.map(l => ({
+                                            ...l,
+                                            isSelected: l.id === layer.id
+                                        })));
+                                    }}
                                     onDoubleClick={(e) => {
                                         e.stopPropagation();
                                         if (layer.type === 'text') setEditingLayerId(layer.id);
@@ -2016,7 +2814,165 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                         padding: '0px'
                                     }}
                                 >
-                                    {layer.type === 'text' ? (
+                                    {layer.type === 'frame' ? (
+                                        <div
+                                            className="w-full h-full overflow-hidden pointer-events-auto relative group/frame"
+                                            style={{
+                                                width: `${layer.width}px`,
+                                                height: `${layer.height}px`,
+                                                clipPath: layer.frameProps?.clipPath,
+                                                ...(layer.frameProps?.style || {}),
+                                                backgroundColor: layer.backgroundColor || '#f3f4f6'
+                                            }}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                e.currentTarget.style.opacity = '0.8';
+                                            }}
+                                            onDragLeave={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                e.currentTarget.style.opacity = '1';
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                e.currentTarget.style.opacity = '1';
+
+                                                let imageUrl = null;
+
+                                                // Handle File Drop
+                                                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                    const file = e.dataTransfer.files[0];
+                                                    if (file.type.startsWith('image/')) {
+                                                        imageUrl = URL.createObjectURL(file);
+                                                    }
+                                                }
+                                                // Handle Sidebar Image Drop (if data transfer has src)
+                                                else {
+                                                    const draggedUrl = e.dataTransfer.getData('text/plain');
+                                                    if (draggedUrl && (draggedUrl.startsWith('http') || draggedUrl.startsWith('blob:'))) {
+                                                        imageUrl = draggedUrl;
+                                                    }
+                                                }
+
+                                                if (imageUrl) {
+                                                    setLayers(prev => prev.map(l =>
+                                                        l.id === layer.id ? { ...l, content: imageUrl } : l
+                                                    ));
+                                                }
+                                            }}
+                                        >
+                                            {(layer.content || layer.placeholder) && (
+                                                <img
+                                                    src={layer.content || layer.placeholder}
+                                                    alt="Frame content"
+                                                    className="w-full h-full object-cover pointer-events-none"
+                                                    draggable={false}
+                                                />
+                                            )}
+
+                                            {/* Film Perforations (DOM) */}
+                                            {layer.frameProps?.frameStyle === 'paper' && layer.frameProps?.thumb && (
+                                                <div
+                                                    className="absolute inset-0 w-full h-full pointer-events-none z-20"
+                                                    style={{
+                                                        backgroundImage: `url(${layer.frameProps.thumb})`,
+                                                        backgroundSize: '100% 100%',
+                                                        backgroundPosition: 'center',
+                                                        mixBlendMode: 'multiply'
+                                                    }}
+                                                />
+                                            )}
+
+                                            {layer.frameProps?.frameStyle === 'film' && (
+                                                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                                                    {layer.frameProps?.orientation === 'horizontal' ? (
+                                                        <>
+                                                            <div className="absolute top-0 left-0 right-0 h-[20px] flex justify-around items-center px-1">
+                                                                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[10px] h-[10px] bg-white opacity-20 rounded-sm" />)}
+                                                            </div>
+                                                            <div className="absolute bottom-0 left-0 right-0 h-[20px] flex justify-around items-center px-1">
+                                                                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[10px] h-[10px] bg-white opacity-20 rounded-sm" />)}
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="absolute top-0 bottom-0 left-0 w-[20px] flex flex-col justify-around items-center py-1">
+                                                                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[10px] h-[10px] bg-white opacity-20 rounded-sm" />)}
+                                                            </div>
+                                                            <div className="absolute top-0 bottom-0 right-0 w-[20px] flex flex-col justify-around items-center py-1">
+                                                                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[10px] h-[10px] bg-white opacity-20 rounded-sm" />)}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Tape Overlay (DOM) */}
+                                            {layer.frameProps?.hasTape && (
+                                                <div
+                                                    className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/3 h-8 bg-[#e8e4db] opacity-80 shadow-sm pointer-events-none"
+                                                    style={{ transform: `translateX(-50%) translateY(-50%) rotate(${(layer.id % 10) - 5}deg)` }}
+                                                />
+                                            )}
+
+                                            {/* Browser Controls Overlay */}
+                                            {layer.frameProps?.frameStyle === 'browser' && (
+                                                <div className="absolute top-[-30px] left-3 flex gap-1.5 pointer-events-none">
+                                                    <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] shadow-sm" />
+                                                    <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] shadow-sm" />
+                                                    <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f] shadow-sm" />
+                                                </div>
+                                            )}
+
+                                            {/* Phone/Tablet Decorations */}
+                                            {(layer.frameProps?.frameStyle === 'phone' || layer.frameProps?.frameStyle === 'tablet') && (
+                                                <>
+                                                    {layer.frameProps?.hasNotch && (
+                                                        <div className="absolute top-[-1px] left-1/2 -translate-x-1/2 w-[40%] h-[25px] bg-[#1a1a1a] rounded-b-xl pointer-events-none z-10" />
+                                                    )}
+                                                    {layer.frameProps?.hasHolePunch && (
+                                                        <div className="absolute top-[15px] left-1/2 -translate-x-1/2 w-4 h-4 bg-[#1a1a1a] rounded-full shadow-inner pointer-events-none z-10" />
+                                                    )}
+                                                    {layer.frameProps?.hasButtons && (
+                                                        <>
+                                                            <div className="absolute top-[20%] right-[-14px] w-[5px] h-[40px] bg-[#1a1a1a] rounded-r-sm pointer-events-none" />
+                                                            <div className="absolute top-[18%] left-[-14px] w-[5px] h-[30px] bg-[#1a1a1a] rounded-l-sm pointer-events-none" />
+                                                            <div className="absolute top-[28%] left-[-14px] w-[5px] h-[30px] bg-[#1a1a1a] rounded-l-sm pointer-events-none" />
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {/* Watch Decorations */}
+                                            {layer.frameProps?.frameStyle === 'watch' && layer.frameProps?.hasCrown && (
+                                                <>
+                                                    <div className="absolute top-[30%] right-[-15px] w-[10px] h-[25px] bg-[#222] rounded-r-md border border-[#333] pointer-events-none z-10" />
+                                                    <div className="absolute top-[55%] right-[-13px] w-[5px] h-[30px] bg-[#222] rounded-r-sm pointer-events-none" />
+                                                </>
+                                            )}
+
+                                            {/* Monitor Stand Overlay */}
+                                            {(layer.frameProps?.frameStyle === 'monitor' || layer.frameProps?.frameStyle === 'laptop') && (
+                                                <div className="absolute top-full left-1/2 -translate-x-1/2 w-1/3 h-10 bg-gray-400 dark:bg-gray-600 pointer-events-none"
+                                                    style={{ clipPath: 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)', marginTop: layer.frameProps?.frameStyle === 'laptop' ? '-14px' : '-16px', zIndex: -1 }} />
+                                            )}
+                                            {layer.frameProps?.frameStyle === 'laptop' && (
+                                                <div className="absolute top-full left-1/2 -translate-x-1/2 w-[120%] h-4 bg-[#222] pointer-events-none -mt-[6px] rounded-sm" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 95% 100%, 5% 100%)' }}>
+                                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[20%] h-1.5 bg-[#111] rounded-b-sm" />
+                                                </div>
+                                            )}
+
+                                            {!layer.content && !layer.isPlaceholder && (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                    <span className="bg-black/50 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                                        Drop image here
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : layer.type === 'text' ? (
                                         <div
                                             contentEditable={editingLayerId === layer.id}
                                             suppressContentEditableWarning
@@ -2038,15 +2994,17 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                         </div>
                                     ) : layer.type === 'form' ? (
                                         <div
-                                            className="rounded-lg shadow-lg overflow-hidden flex flex-col pointer-events-none"
+                                            className="rounded-lg shadow-lg overflow-hidden flex flex-col"
                                             style={{
                                                 width: `${layer.width}px`,
                                                 height: `${layer.height}px`,
                                                 background: layer.formData?.bg || '#fff',
-                                                border: `1px solid ${layer.formData?.borderColor || '#e5e7eb'}`
+                                                border: `1px solid ${layer.formData?.borderColor || '#e5e7eb'}`,
+                                                pointerEvents: 'auto'
                                             }}
+
                                         >
-                                            <div className="p-4 flex-1">
+                                            <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
                                                 <h4
                                                     className="font-bold text-base mb-4"
                                                     style={{ color: layer.formData?.textColor || '#1f2937' }}
@@ -2060,20 +3018,37 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                                 <p className="text-xs font-semibold" style={{ color: layer.formData?.textColor || '#374151' }}>{field.text}</p>
                                                             )}
                                                             {field.type === 'input' && (
-                                                                <div className="h-10 rounded-md border bg-white/50 px-3 flex items-center text-sm opacity-70" style={{ borderColor: layer.formData?.borderColor || '#e5e7eb', color: layer.formData?.textColor || '#6b7280' }}>
-                                                                    {field.label}
-                                                                </div>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder={field.label}
+                                                                    value={layer.formData.values?.[fIdx] || ''}
+                                                                    onChange={(e) => updateFormFieldValue(layer.id, fIdx, e.target.value)}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    className="w-full h-10 rounded-md border bg-white/50 px-3 flex items-center text-sm outline-none focus:ring-2 focus:ring-purple-500/50"
+                                                                    style={{ borderColor: layer.formData?.borderColor || '#e5e7eb', color: layer.formData?.textColor || '#1f2937' }}
+                                                                />
                                                             )}
                                                             {field.type === 'textarea' && (
-                                                                <div className="h-20 rounded-md border bg-white/50 px-3 pt-2 text-sm opacity-70" style={{ borderColor: layer.formData?.borderColor || '#e5e7eb', color: layer.formData?.textColor || '#6b7280' }}>
-                                                                    {field.label}
-                                                                </div>
+                                                                <textarea
+                                                                    placeholder={field.label}
+                                                                    value={layer.formData.values?.[fIdx] || ''}
+                                                                    onChange={(e) => updateFormFieldValue(layer.id, fIdx, e.target.value)}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    className="w-full h-20 rounded-md border bg-white/50 px-3 pt-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+                                                                    style={{ borderColor: layer.formData?.borderColor || '#e5e7eb', color: layer.formData?.textColor || '#1f2937' }}
+                                                                />
                                                             )}
                                                             {field.type === 'radio' && (
                                                                 <div className="flex flex-col gap-2">
                                                                     {field.options?.map((opt, oIdx) => (
-                                                                        <div key={oIdx} className="flex items-center gap-2 text-sm" style={{ color: layer.formData?.textColor || '#374151' }}>
-                                                                            <div className="w-4 h-4 rounded-full border bg-white/50" style={{ borderColor: layer.formData?.borderColor || '#d1d5db' }} />
+                                                                        <div
+                                                                            key={oIdx}
+                                                                            className="flex items-center gap-2 text-sm cursor-pointer"
+                                                                            style={{ color: layer.formData?.textColor || '#374151' }} onMouseDown={(e) => e.stopPropagation()} onClick={() => updateFormFieldValue(layer.id, fIdx, opt)}
+                                                                        >
+                                                                            <div className="w-4 h-4 rounded-full border bg-white/50 flex items-center justify-center" style={{ borderColor: layer.formData?.borderColor || '#d1d5db' }}>
+                                                                                {layer.formData.values?.[fIdx] === opt && <div className="w-2 h-2 rounded-full bg-purple-600" />}
+                                                                            </div>
                                                                             {opt}
                                                                         </div>
                                                                     ))}
@@ -2081,18 +3056,36 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                             )}
                                                             {field.type === 'checkbox' && (
                                                                 <div className="flex flex-col gap-2">
-                                                                    {field.options?.map((opt, oIdx) => (
-                                                                        <div key={oIdx} className="flex items-center gap-2 text-sm" style={{ color: layer.formData?.textColor || '#374151' }}>
-                                                                            <div className="w-4 h-4 rounded-sm border bg-white/50" style={{ borderColor: layer.formData?.borderColor || '#d1d5db' }} />
-                                                                            {opt}
-                                                                        </div>
-                                                                    ))}
+                                                                    {field.options?.map((opt, oIdx) => {
+                                                                        const currentVal = layer.formData.values?.[fIdx] || [];
+                                                                        const isChecked = currentVal.includes(opt);
+                                                                        return (
+                                                                            <div
+                                                                                key={oIdx}
+                                                                                className="flex items-center gap-2 text-sm cursor-pointer"
+                                                                                style={{ color: layer.formData?.textColor || '#374151' }} onMouseDown={(e) => e.stopPropagation()} onClick={() => {
+                                                                                    const newVal = isChecked ? currentVal.filter(v => v !== opt) : [...currentVal, opt];
+                                                                                    updateFormFieldValue(layer.id, fIdx, newVal);
+                                                                                }}
+                                                                            >
+                                                                                <div className="w-4 h-4 rounded-sm border bg-white/50 flex items-center justify-center" style={{ borderColor: layer.formData?.borderColor || '#d1d5db' }}>
+                                                                                    {isChecked && <Check className="w-3 h-3 text-purple-600" />}
+                                                                                </div>
+                                                                                {opt}
+                                                                            </div>
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             )}
                                                             {field.type === 'rating' && (
-                                                                <div className="flex gap-1.5">
+                                                                <div className="flex gap-1.5" onMouseDown={(e) => e.stopPropagation()}>
                                                                     {[...Array(field.max || 5)].map((_, sIdx) => (
-                                                                        <Star key={sIdx} className="w-5 h-5" style={{ color: layer.formData?.accentColor || '#fbbf24' }} />
+                                                                        <Star
+                                                                            key={sIdx}
+                                                                            className={`w-6 h-6 cursor-pointer ${(layer.formData.values?.[fIdx] || 0) > sIdx ? 'fill-current' : ''}`}
+                                                                            style={{ color: (layer.formData.values?.[fIdx] || 0) > sIdx ? (layer.formData?.accentColor || '#fbbf24') : '#d1d5db' }}
+                                                                            onClick={() => updateFormFieldValue(layer.id, fIdx, sIdx + 1)}
+                                                                        />
                                                                     ))}
                                                                 </div>
                                                             )}
@@ -2101,13 +3094,17 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 </div>
                                                 {layer.formData?.buttonText && (
                                                     <div
-                                                        className="mt-6 py-3 px-6 rounded-lg text-sm font-black text-center shadow-lg"
-                                                        style={{
+                                                        className={`mt-6 py-3 px-6 rounded-lg text-sm font-black text-center shadow-lg transition-all ${layer.formData.values?.isSubmitted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'}`} onMouseDown={(e) => e.stopPropagation()} style={{
                                                             backgroundColor: layer.formData?.buttonStyle?.bg || '#1f2937',
                                                             color: layer.formData?.buttonStyle?.color || '#ffffff'
                                                         }}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (layer.formData.values?.isSubmitted) return;
+                                                            updateFormFieldValue(layer.id, 'isSubmitted', true);
+                                                        }}
                                                     >
-                                                        {layer.formData?.buttonText}
+                                                        {layer.formData.values?.isSubmitted ? 'Submitted' : layer.formData.buttonText}
                                                     </div>
                                                 )}
                                             </div>
@@ -2135,7 +3132,9 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 if (layer.shapeType === 'octagon') style.clipPath = 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
                                                 if (layer.shapeType === 'parallelogram') { style.transform = 'skewX(-20deg)'; style.width = '80%'; } // visual approximation
                                                 if (layer.shapeType === 'star-5') style.clipPath = 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
-                                                // Icons
+
+                                                const isTextableShape = ['square', 'square-rounded', 'circle', 'triangle', 'pentagon', 'hexagon', 'octagon', 'parallelogram', 'star-5'].includes(layer.shapeType);
+
                                                 if (layer.shapeType === 'icon') {
                                                     return (
                                                         <span style={{ fontSize: `${Math.min(layer.width, layer.height) * 0.6}px` }}>
@@ -2175,14 +3174,43 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 if (layer.shapeType === 'image') {
                                                     return (
                                                         <img
+                                                            ref={layer.id === 'background-layer' ? imageRef : null}
                                                             src={layer.content}
                                                             alt=""
                                                             className="w-full h-full object-cover pointer-events-none"
                                                             draggable={false}
+                                                            style={layer.id === 'background-layer' ? {
+                                                                filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`
+                                                            } : {}}
                                                         />
                                                     );
                                                 }
-                                                return <div style={style} />;
+                                                return (
+                                                    <div style={style} className="relative flex items-center justify-center overflow-hidden">
+                                                        {isTextableShape && (
+                                                            <div
+                                                                contentEditable={layer.isSelected}
+                                                                suppressContentEditableWarning
+                                                                onBlur={(e) => {
+                                                                    setLayers(layers.map(l => l.id === layer.id ? { ...l, content: e.target.innerText } : l));
+                                                                    saveToHistory(layers.map(l => l.id === layer.id ? { ...l, content: e.target.innerText } : l));
+                                                                }}
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                className={`w-full max-h-full p-2 outline-none text-center break-words overflow-hidden ${layer.isSelected ? 'cursor-text' : 'cursor-move'}`}
+                                                                style={{
+                                                                    color: darkMode ? '#ffffff' : '#000000',
+                                                                    fontSize: `${Math.min(layer.width, layer.height) * 0.15}px`,
+                                                                    fontWeight: 'bold',
+                                                                    lineHeight: '1.2',
+                                                                    zIndex: 10,
+                                                                    transform: layer.shapeType === 'parallelogram' ? 'skewX(20deg)' : 'none'
+                                                                }}
+                                                            >
+                                                                {layer.content || ''}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
                                             })()}
                                         </div>
                                     )}
@@ -2215,84 +3243,88 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                     );
                                                 })}
                                             </div>
-                                            {/* Floating Toolbar */}
-                                            <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white dark:bg-gray-800 p-1 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 pointer-events-auto z-[100] animate-fadeIn">
-                                                <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="Duplicate">
-                                                    <Copy className="w-4 h-4" />
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleDelete(layer.id); }} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md text-red-500" title="Delete">
-                                                    <Trash className="w-4 h-4" />
-                                                </button>
-                                                <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
-                                                <button onClick={(e) => { e.stopPropagation(); handleRotate(layer.id); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="Rotate 90°">
-                                                    <RotateCw className="w-3.5 h-3.5" />
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipX ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Horizontal">
-                                                    <FlipHorizontal className="w-3.5 h-3.5" />
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
-                                                    <FlipHorizontal className="w-3.5 h-3.5 rotate-90" />
-                                                </button>
-                                                <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
-                                                <button onClick={(e) => { e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, layerId: layer.id }); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="More">
-                                                    <MoreVertical className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                            {/* Context Menu */}
-                                            {contextMenu && contextMenu.layerId === layer.id && (
-                                                <div
-                                                    className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 z-[150] w-48 py-1 overflow-hidden animate-fadeIn"
-                                                    style={{ left: contextMenu.x, top: contextMenu.y }}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    <button onClick={() => handleCopy(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                                        <Copy className="w-3.5 h-3.5" /> Copy
-                                                    </button>
-                                                    <button onClick={() => handlePaste()} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200 ${!clipboard ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                                        <Clipboard className="w-3.5 h-3.5" /> Paste
-                                                    </button>
-                                                    <button onClick={() => handleDuplicate(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                                        <Copy className="w-3.5 h-3.5" /> Duplicate
-                                                    </button>
-                                                    <button onClick={() => handleDelete(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500 flex items-center gap-2">
-                                                        <Trash className="w-3.5 h-3.5" /> Delete
-                                                    </button>
-                                                    <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
-                                                    <button onClick={() => handleLayerOrder(layer.id, 'front')} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                                        <ArrowUp className="w-3.5 h-3.5" /> Bring to Front
-                                                    </button>
-                                                    <button onClick={() => handleLayerOrder(layer.id, 'back')} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                                        <ArrowDown className="w-3.5 h-3.5" /> Send to Back
-                                                    </button>
-                                                    <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
-                                                    <button onClick={() => handleLock(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                                        {layer.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />} {layer.isLocked ? 'Unlock' : 'Lock'}
-                                                    </button>
-                                                </div>
-                                            )}
+
                                         </>
                                     )}
                                 </div>
                             ))}
+                            {/* Fixed Top Toolbar for Selected Layer */}
+                            {activeLayerId && !isCropMode && (() => {
+                                const layer = layers.find(l => l.id === activeLayerId);
+                                if (!layer) return null;
+                                return (
+                                    <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white dark:bg-gray-800 p-1 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 pointer-events-auto z-[100] animate-fadeIn">
+                                        <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="Duplicate">
+                                            <Copy className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(layer.id); }} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md text-red-500" title="Delete">
+                                            <Trash className="w-4 h-4" />
+                                        </button>
+                                        <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+                                        <button onClick={(e) => { e.stopPropagation(); handleRotate(layer.id); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="Rotate 90°">
+                                            <RotateCw className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipX ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Horizontal">
+                                            <FlipHorizontal className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
+                                            <FlipHorizontal className="w-3.5 h-3.5 rotate-90" />
+                                        </button>
+                                        <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (contextMenu && contextMenu.layerId === layer.id) {
+                                                    setContextMenu(null);
+                                                } else {
+                                                    setContextMenu({ x: 0, y: 0, layerId: layer.id });
+                                                }
+                                            }}
+                                            className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${contextMenu?.layerId === layer.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+                                            title="More"
+                                        >
+                                            <MoreVertical className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Context Menu - Relative to Toolbar */}
+                                        {contextMenu && contextMenu.layerId === layer.id && (
+                                            <div
+                                                className="absolute top-full right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 z-[150] w-48 py-1 overflow-hidden animate-fadeIn"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <button onClick={() => handleCopy(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
+                                                    <Copy className="w-3.5 h-3.5" /> Copy
+                                                </button>
+                                                <button onClick={() => handlePaste()} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200 ${!clipboard ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                    <Clipboard className="w-3.5 h-3.5" /> Paste
+                                                </button>
+                                                <button onClick={() => handleDuplicate(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
+                                                    <Copy className="w-3.5 h-3.5" /> Duplicate
+                                                </button>
+                                                <button onClick={() => handleDelete(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500 flex items-center gap-2">
+                                                    <Trash className="w-3.5 h-3.5" /> Delete
+                                                </button>
+                                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
+                                                <button onClick={() => handleLayerOrder(layer.id, 'front')} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
+                                                    <ArrowUp className="w-3.5 h-3.5" /> Bring to Front
+                                                </button>
+                                                <button onClick={() => handleLayerOrder(layer.id, 'back')} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
+                                                    <ArrowDown className="w-3.5 h-3.5" /> Send to Back
+                                                </button>
+                                                <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
+                                                <button onClick={() => handleLock(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
+                                                    {layer.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />} {layer.isLocked ? 'Unlock' : 'Lock'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div >
             </div >
 
-            {/* Saving Overlay */}
-            {isSaving && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex flex-col items-center justify-center animate-fadeIn">
-                    <div className="relative w-24 h-24 mb-6">
-                        <div className="absolute inset-0 border-4 border-purple-500/20 rounded-full" />
-                        <div className="absolute inset-0 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
-                        </div>
-                    </div>
-                    <h3 className="text-xl font-black text-white mb-2 tracking-tight">Saving Your Design</h3>
-                    <p className="text-gray-400 text-sm font-medium">Capturing every detail for conversion...</p>
-                </div>
-            )}
 
             <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -2386,52 +3418,158 @@ const ThreeDCategory = ({ sub, items, onAdd, darkMode }) => {
             current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
         }
     };
+
     return (
-        <div className="animate-fadeIn relative group/category">
-            <div className="flex items-center justify-between mb-3">
+        <div className="mb-8 animate-fadeIn relative group/category">
+            {/* Subcategory Header */}
+            <div className="flex items-center justify-between mb-3 px-1">
                 <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-purple-500`}>
+                    <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-purple-500 shadow-sm`}>
                         {sub.icon}
                     </div>
-                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{sub.title}</h4>
+                    <h4 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {sub.title}
+                    </h4>
                 </div>
-                <button className="text-[10px] hover:underline opacity-60">See all</button>
+                <button className="text-[10px] text-purple-600 font-bold hover:underline opacity-60">See all</button>
             </div>
+
+            {/* Horizontal Carousel */}
             <div className="relative">
+                {/* Left Navigation */}
                 <button
                     onClick={() => scroll('left')}
-                    className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full shadow-lg opacity-0 group-hover/category:opacity-100 transition-opacity ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'} -ml-3`}
+                    className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full shadow-lg opacity-0 group-hover/category:opacity-100 transition-all ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-800 hover:bg-gray-50'} -ml-2 border border-gray-100 dark:border-gray-700`}
                 >
                     <ChevronLeft className="w-4 h-4" />
                 </button>
+
+                {/* Items Container */}
                 <div
                     ref={scrollRef}
-                    className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x"
+                    className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide snap-x px-1"
                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                 >
-                    {items ? items.map((url, i) => (
-                        <button
-                            key={i}
-                            onClick={() => onAdd(url)}
-                            className={`flex-none w-20 h-20 rounded-xl bg-gray-100 dark:bg-gray-800 overflow-hidden relative group hover:ring-2 hover:ring-purple-500 transition-all snap-start`}
-                        >
-                            <img
-                                src={url}
-                                alt={sub.title}
-                                className="w-full h-full object-cover transition-transform group-hover:scale-110"
-                                loading="lazy"
-                            />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                <Plus className="w-5 h-5 text-white drop-shadow-lg" />
+                    {items && items.map((rawItem, i) => {
+                        const isString = typeof rawItem === 'string';
+                        const item = isString ? { thumb: rawItem, title: 'Element' } : rawItem;
+                        const url = item.thumb;
+                        const aspectRatio = item.aspectRatio || 1;
+
+                        return (
+                            <div key={i} className="flex-none w-[100px] flex flex-col items-center gap-2 group/item snap-start">
+                                <button
+                                    onClick={() => onAdd(rawItem)}
+                                    className={`w-full aspect-square bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 hover:border-purple-500 dark:hover:border-purple-500 transition-all flex items-center justify-center p-2.5 relative overflow-hidden shadow-sm hover:shadow-md active:scale-95`}
+                                    draggable={true}
+                                    onDragStart={(e) => {
+                                        if (isString) {
+                                            e.dataTransfer.setData('text/plain', rawItem);
+                                        } else {
+                                            e.dataTransfer.setData('application/json', JSON.stringify(rawItem));
+                                        }
+                                        const dragImg = new Image();
+                                        dragImg.src = url || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                                        e.dataTransfer.setDragImage(dragImg, 0, 0);
+                                    }}
+                                >
+                                    {url && !['paper', 'Paper'].includes(item.frameStyle) ? (
+                                        <img
+                                            src={url}
+                                            alt={item.title}
+                                            className="w-full h-full object-contain pointer-events-none transition-transform group-hover/item:scale-110"
+                                            style={{ clipPath: item.clipPath || 'none', objectFit: 'cover', ...(item.style || {}) }}
+                                            loading="lazy"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center pointer-events-none">
+                                            <div
+                                                className="bg-gray-400 dark:bg-gray-600 group-hover/item:bg-purple-500 transition-colors relative"
+                                                style={{
+                                                    clipPath: item.clipPath,
+                                                    ...(item.style || {}),
+                                                    width: aspectRatio > 1 ? '85%' : `${85 * aspectRatio}%`,
+                                                    height: aspectRatio > 1 ? `${85 / aspectRatio}%` : '85%',
+                                                    borderWidth: item.style?.border ? '1.5px' : '0',
+                                                    borderRadius: item.style?.borderRadius ? (parseInt(item.style.borderRadius) / 6) + 'px' : '4px',
+                                                    borderTopWidth: item.style?.borderTop ? '5px' : undefined,
+                                                    borderBottomWidth: item.style?.borderBottomWidth ? '3px' : undefined,
+                                                    boxShadow: 'none'
+                                                }}
+                                            >
+                                                {/* Mini Decorations for sidebar */}
+                                                {item.frameStyle === 'browser' && (
+                                                    <div className="absolute top-[-4px] left-0.5 flex gap-0.5 scale-[0.3] origin-top-left">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-[#ff5f56]" />
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-[#ffbd2e]" />
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-[#27c93f]" />
+                                                    </div>
+                                                )}
+                                                {/* Paper Frame Overlay */}
+                                                {item.frameStyle === 'paper' && item.thumb && (
+                                                    <div
+                                                        className="absolute inset-0 w-full h-full pointer-events-none z-20"
+                                                        style={{
+                                                            backgroundImage: `url(${item.thumb})`,
+                                                            backgroundSize: '100% 100%',
+                                                            backgroundPosition: 'center',
+                                                            mixBlendMode: 'multiply'
+                                                        }}
+                                                    />
+                                                )}
+
+                                                {/* Device Frames Decorations */}
+                                                {(item.frameStyle === 'phone' || item.frameStyle === 'tablet') && (
+                                                    <>
+                                                        {item.hasNotch && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[40%] h-[8%] bg-[#1a1a1a] rounded-b-[1px]" />}
+                                                        {item.hasHolePunch && <div className="absolute top-[5%] left-1/2 -translate-x-1/2 w-[6%] h-[6%] bg-[#1a1a1a] rounded-full shadow-inner" />}
+                                                        {item.hasButtons && (
+                                                            <>
+                                                                <div className="absolute top-[20%] right-[-2px] w-[2px] h-[15%] bg-[#1a1a1a] rounded-r-[1px]" />
+                                                                <div className="absolute top-[18%] left-[-2px] w-[2px] h-[10%] bg-[#1a1a1a] rounded-l-[1px]" />
+                                                                <div className="absolute top-[30%] left-[-2px] w-[2px] h-[10%] bg-[#1a1a1a] rounded-l-[1px]" />
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
+                                                {item.frameStyle === 'watch' && item.hasCrown && (
+                                                    <div className="absolute top-[30%] right-[-2.5px] w-[2.5px] h-[15%] bg-[#222] rounded-r-[1px]" />
+                                                )}
+                                                {(item.frameStyle === 'monitor' || item.frameStyle === 'laptop') && (
+                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 w-1/3 h-[10%] bg-gray-400 dark:bg-gray-600 pointer-events-none"
+                                                        style={{ clipPath: 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)', marginTop: item.frameStyle === 'laptop' ? '-5%' : '-8%', zIndex: -1 }} />
+                                                )}
+                                                {item.frameStyle === 'laptop' && (
+                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 w-[120%] h-[5%] bg-[#222] pointer-events-none -mt-[2%] rounded-[1px]" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 95% 100%, 5% 100%)' }}>
+                                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[20%] h-full bg-[#111] rounded-b-[1px] opacity-50" />
+                                                    </div>
+                                                )}
+                                                {item.frameStyle === 'browser' && (
+                                                    <div className="absolute top-[5%] left-[5%] flex gap-[2px]">
+                                                        <div className="w-[3px] h-[3px] rounded-full bg-[#ff5f56]" />
+                                                        <div className="w-[3px] h-[3px] rounded-full bg-[#ffbd2e]" />
+                                                        <div className="w-[3px] h-[3px] rounded-full bg-[#27c93f]" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/0 group-hover/item:bg-purple-600/5 transition-colors flex items-center justify-center opacity-0 group-hover/item:opacity-100">
+                                        <Plus className="w-5 h-5 text-purple-600 drop-shadow-sm" />
+                                    </div>
+                                </button>
+                                <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold truncate w-full text-center px-1">
+                                    {item.title || 'Element'}
+                                </span>
                             </div>
-                        </button>
-                    )) : (
-                        <div className="text-xs opacity-50 text-center py-4 w-full">No items</div>
-                    )}
+                        );
+                    })}
                 </div>
+
+                {/* Right Navigation */}
                 <button
                     onClick={() => scroll('right')}
-                    className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full shadow-lg opacity-0 group-hover/category:opacity-100 transition-opacity ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'} -mr-3`}
+                    className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full shadow-lg opacity-0 group-hover/category:opacity-100 transition-all ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-800 hover:bg-gray-50'} -mr-2 border border-gray-100 dark:border-gray-700`}
                 >
                     <ChevronRight className="w-4 h-4" />
                 </button>

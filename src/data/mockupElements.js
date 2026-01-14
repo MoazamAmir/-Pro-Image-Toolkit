@@ -24,18 +24,18 @@ export const mockupElements = [
         frames: [
             {
                 id: 'frame-1',
-                x: 33, // Moved left
-                y: 35, // Moved up
-                width: 25,
-                height: 35, // Portrait orientation
+                x: 40, // Left frame center
+                y: 38, // Vertical center
+                width: 18, // Much narrower
+                height: 21, // Reduced height
                 rotation: 0
             },
             {
                 id: 'frame-2',
-                x: 67, // Moved right
-                y: 35, // Moved up
-                width: 25,
-                height: 35, // Portrait orientation
+                x: 60, // Right frame center
+                y: 38, // Vertical center
+                width: 18,
+                height: 21, // Reduced height
                 rotation: 0
             }
         ]

@@ -2,7 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { threeDElements } from '../data/threeDElements';
 import { framesElements } from '../data/framesElements';
 import { gridTemplates } from '../data/gridTemplates';
-import {
+import * as LucideIcons from 'lucide-react';
+import { photoCategories } from '../data/photoCategories';
+import { textTemplates } from '../data/textTemplates';
+import { formTemplates } from '../data/formTemplates';
+import { mockupElements } from '../data/mockupElements';
+import { animatedElements } from '../data/animatedElements';
+import { graphicsElements } from '../data/graphicsElements';
+import lottie from 'lottie-web';
+import { saveEditorState, loadEditorState } from '../utils/editorStorage';
+
+const {
     Type,
     ImageIcon,
     Sliders,
@@ -13,7 +23,7 @@ import {
     FlipHorizontal,
     Undo,
     Redo,
-    Trash2,
+    Trash,
     Plus,
     Search,
     Check,
@@ -24,8 +34,10 @@ import {
     Maximize,
     Baseline,
     Palette,
-    Minus,
     ArrowLeft,
+
+    AlertCircle,
+    Loader2,
     ChevronDown,
     MoreHorizontal,
     Music,
@@ -41,8 +53,8 @@ import {
     Triangle,
     Hexagon,
     Star,
-    Circle as CircleIcon,
-    Square as SquareIcon,
+    Circle: CircleIcon,
+    Square: SquareIcon,
     ArrowRight,
     Heart,
     Instagram,
@@ -62,7 +74,6 @@ import {
     Clipboard,
     Unlock,
     MoreVertical,
-    Trash,
     ArrowUp,
     ArrowDown,
     AlignLeft,
@@ -70,13 +81,13 @@ import {
     AlignRight,
     AlignJustify,
     Eye,
-    EyeOff
-} from 'lucide-react';
-import { photoCategories } from '../data/photoCategories';
-import { textTemplates } from '../data/textTemplates';
-import { formTemplates, formCategories } from '../data/formTemplates';
-import { mockupElements } from '../data/mockupElements';
-import { saveEditorState, loadEditorState } from '../utils/editorStorage';
+    EyeOff,
+    ChevronUp,
+    HelpCircle,
+    ShoppingBag,
+    Wallet,
+    Map
+} = LucideIcons;
 
 const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const [activeTab, setActiveTab] = useState('text');
@@ -339,14 +350,28 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         }
     }, [layers, adjustments]);
 
-    // Load saved editor state on mount
+
+    // Load state from local storage on mount
     useEffect(() => {
         const savedState = loadEditorState();
         if (savedState) {
-            if (savedState.layers && savedState.layers.length > 0) {
-                setLayers(savedState.layers);
-                // 👈 ADDED: Restore imageSrc from background layer
-                const bgLayer = savedState.layers.find(l => l.id === 'background-layer');
+            // Sanitize layers to remove corrupted React elements
+            const sanitizedLayers = (savedState.layers || []).map(layer => {
+                // If content is an object (serialized React element) and it's an icon type, try to recover or reset
+                if (layer.shapeType === 'icon' && typeof layer.content === 'object' && layer.content !== null) {
+                    // It's likely a corrupted icon. We will try to map it back if possible, or just default to a star.
+                    // For now, let's reset it to a default string identifier if we can't determine it.
+                    // Or better, if we can't support it, we might have to filter it out or replace it.
+                    console.warn('Recovered corrupted layer:', layer);
+                    return { ...layer, content: 'Star' }; // Default fallback
+                }
+                return layer;
+            });
+
+            if (sanitizedLayers.length > 0) {
+                setLayers(sanitizedLayers);
+                // Restore imageSrc from background layer
+                const bgLayer = sanitizedLayers.find(l => l.id === 'background-layer');
                 if (bgLayer && bgLayer.content) {
                     setImageSrc(bgLayer.content);
                 }
@@ -513,7 +538,6 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
 
     const handleMouseMove = (e) => {
         if (!containerRef.current) return;
-        const rect = containerRef.current.getBoundingClientRect();
         if (isCropMode && cropRect && imageRef.current) {
             const scaleX = imageRef.current.naturalWidth / imageRef.current.width;
             const scaleY = imageRef.current.naturalHeight / imageRef.current.height;
@@ -712,51 +736,62 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         }));
     };
 
-    const addShape = (shapeType, extra = null) => {
+    const addShape = (type, content = null) => {
+        const isIcon = type === 'icon';
+        const isGradient = type === 'gradient';
+
         let width = 100;
         let height = 100;
         let color = '#9333ea';
-        if (shapeType.startsWith('line') || shapeType === 'arrow') {
+        if (type.startsWith('line') || type === 'arrow') {
             width = 200;
             height = 20; // Hit area height
             color = darkMode ? '#ffffff' : '#000000';
-        } else if (shapeType === 'icon') {
+        } else if (isIcon) {
             width = 80;
             height = 80;
-        } else if (shapeType === 'gradient') {
-            color = extra;
+            color = '#3b82f6';
+        } else if (isGradient) {
+            color = content;
         }
         const newLayer = {
             id: Date.now(),
             type: 'shape',
-            shapeType,
-            content: extra,
+            shapeType: type,
+            // Store content as string for icons (name of icon)
+            content: content || (isIcon ? 'Star' : null),
             color,
             width,
             height,
             x: 50,
             y: 50,
-            isSelected: true
+            rotation: 0,
+            isSelected: true,
+            isLocked: false
         };
         const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
         setLayers(nextLayers);
         saveToHistory(nextLayers);
         setActiveLayerId(newLayer.id);
+        setIsPanelOpen(false); // Close panel on mobile after adding
     };
 
     const addIcon = (content) => {
         addShape('icon', content);
     };
 
-    const addImageLayer = (url) => {
+    const addImageLayer = (urlOrItem) => {
+        const url = typeof urlOrItem === 'string' ? urlOrItem : urlOrItem?.thumb;
+        if (!url) return;
+
         const newLayer = {
             id: Date.now(),
             type: 'shape',
             shapeType: 'image',
             content: url,
             color: 'transparent',
-            width: 400, // Increased from 200
-            height: 600, // Increased from 300
+            width: 400,
+            height: 600,
             x: 50,
             y: 50,
             isSelected: true
@@ -768,22 +803,29 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     };
 
     const addFrame = (frameItem) => {
+        if (!frameItem) return;
+
+        // Support both direct URL string and frame item object
+        const isString = typeof frameItem === 'string';
+        const item = isString ? { thumb: frameItem, shapeType: 'basic' } : frameItem;
+
         let initialWidth = 300;
         let initialHeight = 300;
-        if (frameItem.aspectRatio) {
-            if (frameItem.aspectRatio > 1) { // Wider than tall
-                initialHeight = 300 / frameItem.aspectRatio;
+        if (item.aspectRatio) {
+            if (item.aspectRatio > 1) { // Wider than tall
+                initialHeight = 300 / item.aspectRatio;
             } else { // Taller than wide or square
-                initialWidth = 300 * frameItem.aspectRatio;
+                initialWidth = 300 * item.aspectRatio;
             }
         }
+
         const newLayer = {
             id: Date.now(),
             type: 'frame',
-            frameType: frameItem.shapeType || 'basic', // basic, complex
-            frameProps: frameItem,
+            frameType: item.shapeType || item.frameStyle || 'basic', // basic, complex
+            frameProps: item,
             content: null, // User image will go here
-            placeholder: (frameItem.frameStyle === 'Paper' || frameItem.frameStyle === 'paper') ? null : frameItem.thumb,
+            placeholder: (item.frameStyle === 'Paper' || item.frameStyle === 'paper') ? null : item.thumb,
             width: initialWidth,
             height: initialHeight,
             x: 50,
@@ -848,6 +890,48 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             brightness: 100, contrast: 100, saturation: 100, blur: 0, grayscale: 0, sepia: 0, hue: 0, invert: 0,
             ...f.filter
         });
+    };
+
+    const addLottieLayer = (itemOrUrl) => {
+        if (!itemOrUrl) return;
+
+        const isString = typeof itemOrUrl === 'string';
+        const item = isString ? { url: itemOrUrl, title: 'Animated Element', type: 'lottie' } : itemOrUrl;
+
+        const isGif = item.type === 'gif';
+        const newLayer = {
+            id: Date.now(),
+            type: isGif ? 'gif' : 'lottie',
+            content: item.url,
+            lottieItem: item,
+            name: item.title,
+            width: 200,
+            height: 200,
+            x: 50,
+            y: 50,
+            isSelected: true,
+            speed: 1
+        };
+
+        const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
+        setLayers(nextLayers);
+        saveToHistory(nextLayers);
+        setActiveLayerId(newLayer.id);
+    };
+
+    const renderPlaceholder = (ctx, w, h, text, scaleX) => {
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.strokeStyle = '#9333ea';
+        ctx.lineWidth = 2 * scaleX;
+        if (ctx.roundRect) ctx.roundRect(-w / 2, -h / 2, w, h, 10);
+        else ctx.rect(-w / 2, -h / 2, w, h);
+        ctx.stroke();
+
+        ctx.font = `${Math.min(w, h) * 0.4}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#9333ea';
+        ctx.fillText(text, 0, 0);
     };
 
     const renderFinalCanvas = async () => {
@@ -917,6 +1001,89 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                     }
                 } else {
                     ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
+                }
+            } else if (layer.type === 'lottie' || layer.type === 'gif') {
+                const targetUrl = layer.content;
+                const fallbackUrl = layer.lottieItem?.fallback;
+                const isActuallyGif = (layer.type === 'gif') || (targetUrl && (targetUrl.endsWith('.gif') || targetUrl.includes('flaticon.com')));
+                const isSvgFallback = fallbackUrl && typeof fallbackUrl === 'string' && fallbackUrl.startsWith('http') && fallbackUrl.endsWith('.svg');
+
+                const w = (layer.width || 200) * scaleX;
+                const h = (layer.height || 200) * scaleY;
+
+                // Priority 1: Use static fallback image if it's a URL (more stable for export)
+                if (isActuallyGif || isSvgFallback) {
+                    const imgToDraw = isSvgFallback ? fallbackUrl : targetUrl;
+                    const imgObj = new Image();
+                    imgObj.crossOrigin = "anonymous";
+                    imgObj.referrerPolicy = "no-referrer";
+                    imgObj.src = imgToDraw;
+
+                    await new Promise((resolve) => {
+                        imgObj.onload = resolve;
+                        imgObj.onerror = resolve;
+                        setTimeout(resolve, 3000);
+                    });
+
+                    if (imgObj.complete && imgObj.naturalWidth > 0) {
+                        ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
+                    } else {
+                        renderPlaceholder(ctx, w, h, isActuallyGif ? 'GIF' : 'ICON', scaleX);
+                    }
+                } else if (targetUrl) {
+                    // Priority 2: Try rendering Lottie frame to canvas
+                    try {
+                        const animData = await fetch(targetUrl)
+                            .then(res => res.ok ? res.json() : null)
+                            .catch(() => null);
+
+                        if (animData) {
+                            const tempCanvas = document.createElement('canvas');
+                            const rw = Math.round(w);
+                            const rh = Math.round(h);
+                            tempCanvas.width = rw || 200;
+                            tempCanvas.height = rh || 200;
+
+                            const tempDiv = document.createElement('div');
+                            tempDiv.style.width = tempCanvas.width + 'px';
+                            tempDiv.style.height = tempCanvas.height + 'px';
+
+                            const anim = lottie.loadAnimation({
+                                container: tempDiv,
+                                renderer: 'canvas',
+                                loop: false,
+                                autoplay: false,
+                                animationData: animData,
+                                rendererSettings: {
+                                    canvas: tempCanvas,
+                                    preserveAspectRatio: 'xMidYMid meet',
+                                    clearCanvas: true
+                                }
+                            });
+
+                            await new Promise(resolve => {
+                                let resolved = false;
+                                const finish = () => {
+                                    if (!resolved) {
+                                        resolved = true;
+                                        anim.goToAndStop(0, true);
+                                        setTimeout(resolve, 300);
+                                    }
+                                };
+                                anim.addEventListener('DOMLoaded', finish);
+                                anim.addEventListener('data_ready', finish);
+                                setTimeout(finish, 2000);
+                            });
+
+                            ctx.drawImage(tempCanvas, -w / 2, -h / 2, w, h);
+                            anim.destroy();
+                        } else {
+                            renderPlaceholder(ctx, w, h, 'ICON', scaleX);
+                        }
+                    } catch (err) {
+                        console.error('Lottie Export Err:', err);
+                        renderPlaceholder(ctx, w, h, 'ICON', scaleX);
+                    }
                 }
             } else if (layer.type === 'frame') {
                 const w = (layer.width || 300) * scaleX;
@@ -1139,7 +1306,6 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 if (layer.frameProps?.frameStyle === 'monitor' || layer.frameProps?.frameStyle === 'laptop') {
                     tCtx.fillStyle = style.backgroundColor || '#333';
                     const standW = w / 4;
-                    const standH = 45 * scaleY;
                     const baseX = (w - standW) / 2;
 
                     if (layer.frameProps?.frameStyle === 'monitor') {
@@ -1496,24 +1662,30 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         // Small delay to ensure UI updates before heavy canvas work
         await new Promise(r => setTimeout(r, 500));
 
-        const canvas = await renderFinalCanvas();
-        if (canvas) {
-            canvas.toBlob((blob) => {
+        try {
+            const canvas = await renderFinalCanvas();
+            if (canvas) {
+                canvas.toBlob((blob) => {
+                    setIsSaving(false);
+                    if (blob) {
+                        // Save current state to localStorage before navigating
+                        saveEditorState({ layers, adjustments });
+                        // Navigate directly to converter - no loading indicator
+                        onApply(blob);
+                    } else {
+                        console.error('Failed to create blob');
+                        onApply(null);
+                    }
+                }, 'image/png');
+            } else {
                 setIsSaving(false);
-                if (blob) {
-                    // Save current state to localStorage before navigating
-                    saveEditorState({ layers, adjustments });
-                    // Navigate directly to converter - no loading indicator
-                    onApply(blob);
-                } else {
-                    console.error('Failed to create blob');
-                    onApply(null);
-                }
-            }, 'image/png');
-        } else {
+                console.error('Failed to render canvas');
+                onCancel();
+            }
+        } catch (err) {
+            console.error('Apply error:', err);
             setIsSaving(false);
-            console.error('Failed to render canvas');
-            onCancel();
+            alert("Could not process image. A security restriction on an animation icon might be blocking the save. Try removing recently added icons.");
         }
     };
 
@@ -1521,15 +1693,21 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         setIsSaving(true);
         await new Promise(r => setTimeout(r, 500));
 
-        const canvas = await renderFinalCanvas();
-        if (canvas) {
-            const link = document.createElement('a');
-            link.download = `edited_${file.name.replace(/\.[^/.]+$/, "")}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+        try {
+            const canvas = await renderFinalCanvas();
+            if (canvas) {
+                const link = document.createElement('a');
+                link.download = `edited_${file.name.replace(/\.[^/.]+$/, "")}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                setIsSaving(false);
+            } else {
+                setIsSaving(false);
+            }
+        } catch (err) {
+            console.error('Download error:', err);
             setIsSaving(false);
-        } else {
-            setIsSaving(false);
+            alert("Download failed. A security restriction on an animation icon is blocking the export. Please try removing the icon and try again.");
         }
     };
 
@@ -1590,7 +1768,6 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 id: `mockup-frame-${Date.now()}-${index}`,
                 type: 'frame',
                 frameType: 'basic',
-                frameProps: { ...frame, shapeType: 'basic' },
                 content: null,
                 placeholder: null, // Transparent to show background or maybe a semi-transparent hint?
                 // Actually, for mockups, usually the frame area is empty or specific. 
@@ -1600,35 +1777,20 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 // But wait, the previous frame implementation draws a shape.
                 // If we want it to look like it's IN the image, we should probably just have the drop zone.
                 // Let's set opacity to 0.1 or something if empty, or just rely on 'frame' logic.
-                width: frame.width * 10, // Convert % to logical width (assuming 1000 base) -> wait, width in layers is in logical units
-                // In my logic above: width = 1000. So 10% = 100.
-                // frame.width is in %. 
-                // Let's check how I used width in other places. 
-                // addShape uses width=100.
-                // In handleGlobalMouseMove: newX is %. 
-                // Wait, width/height in layer state seems to be logical pixels relative to 1000? 
-                // No, let's look at `handleGlobalMouseMove`:
-                // const halfWidthPercent = (layerWidth / 2 / rect.width) * 100;
-                // It seems width is just a number, but how is it rendered?
-                // I need to check the rendering part (not shown in previous view_file).
-                // Let's assume standard logic: 
-                // If the background is 1000 wide, then a 10% width frame should be 100 wide.
-                // Yes.
                 width: frame.width * 10,
-                height: frame.height * (1000 * (img.height / img.width) / 100), // Height relative to aspect ratio?
-                // OR: simply frame.height * 10 if we assume square 1000x1000 canvas?
-                // No, canvas height depends on aspect ratio.
-                // frame.height is % of HEIGHT.
-                // So if total height is H, then frame height is (frame.height/100) * H.
-                // canvas height = 1000 * (img.height / img.width).
-                // So: frame.height * (1000 * (img.height / img.width)) / 100.
-                x: frame.x, // %
-                y: frame.y, // %
+                height: frame.height * 10,
+                x: frame.x,
+                y: frame.y,
                 rotation: frame.rotation || 0,
                 isSelected: false,
-                isLocked: true, // Lock validation: Prevents selection border and moving
+                isLocked: false, // Unlocked to allow user adjustment
                 isPlaceholder: true, // Flag to indicate this is a drop zone
-                backgroundColor: 'transparent' // Explicitly set transparent background
+                backgroundColor: 'rgba(0, 0, 0, 0.05)', // Slight tint to make it visible
+                frameProps: {
+                    ...frame,
+                    shapeType: 'basic',
+                    // style property removed to prevent dashed border in export. Overlay handles UI visibility.
+                }
             }));
 
             setLayers([bgLayer, ...frameLayers]);
@@ -1638,9 +1800,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         img.src = mockup.image;
     };
 
-    return (
-        // ... (start of return)
 
+    return (
         <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
             {/* TOP NAVIGATION BAR */}
             <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
@@ -1699,13 +1860,13 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             <div className="flex flex-1 overflow-hidden relative">
                 {/* LEFT SIDEBAR */}
                 <div className={`w-[72px] sm:w-[64px] h-full flex-shrink-0 flex flex-col items-center py-2 border-r ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-50`}>
-                    <TabButton id="design" icon={Layout} label="Design" />
+                    {/* <TabButton id="design" icon={Layout} label="Design" /> */}
                     <TabButton id="elements" icon={Grid} label="Elements" />
                     <TabButton id="text" icon={Type} label="Text" />
                     <TabButton id="layers" icon={Layers} label="Layers" />
                     <TabButton id="filters" icon={Palette} label="Filters" />
-                    {/* <TabButton id="adjust" icon={Sliders} label="Adjust" />
-                    <TabButton id="brand" icon={Box} label="Brand" premium /> */}
+                    {/* <TabButton id="adjust" icon={Sliders} label="Adjust" /> */}
+                    <TabButton id="brand" icon={Box} label="Brand" premium />
                     <TabButton id="forms" icon={FileText} label="Forms" />
                     <button
                         onClick={enterCropMode}
@@ -1778,8 +1939,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 <div className="grid grid-cols-3 gap-2">
                                                     {[
                                                         { id: 'shapes', name: 'Shapes', icon: <div className="flex gap-0.5"><SquareIcon className="w-3 h-3 fill-current" /><CircleIcon className="w-3 h-3 fill-current" /></div>, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
-                                                        // { id: 'graphics', name: 'Graphics', icon: <Sun className="w-5 h-5" />, color: 'text-amber-500', bg: 'bg-amber-500/10' },
-                                                        { id: 'Animations', name: 'Animations', icon: <Smile className="w-5 h-5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                                                        { id: 'graphics', name: 'Graphics', icon: <Sun className="w-5 h-5" />, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+                                                        { id: 'Animations', name: 'Animations', icon: <Play className="w-5 h-5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                                                         { id: 'photos', name: 'Photos', icon: <ImageIcon className="w-5 h-5" />, color: 'text-purple-500', bg: 'bg-purple-500/10' },
                                                         { id: 'videos', name: 'Videos', icon: <Video className="w-5 h-5" />, color: 'text-pink-500', bg: 'bg-pink-500/10' },
                                                         { id: 'audio', name: 'Audio', icon: <Music className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-500/10' },
@@ -1806,7 +1967,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 </div>
                                             </div>
                                             {/* Featured Section (example) */}
-                                            <div>
+                                            {/* <div>
                                                 <div className="flex items-center justify-between mb-3">
                                                     <h3 className={`text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Featured</h3>
                                                     <button className="text-[10px] text-purple-600 font-bold hover:underline">See all</button>
@@ -1819,7 +1980,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                         <Heart className="w-6 h-6 text-red-500" />
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </div> */}
                                         </div>
                                     )}
                                     {elementsView === 'shapes' && (
@@ -1925,46 +2086,6 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 </button>
                                                 <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Graphics</h3>
                                             </div>
-                                            {/* Magic Recommendation */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
-                                                        Magic Recommendation <Sparkles className="w-3 h-3 text-purple-500" />
-                                                    </h4>
-                                                    <button className="text-[10px] hover:underline opacity-60 text-purple-500 font-bold">See all</button>
-                                                </div>
-                                                <div className="grid grid-cols-4 gap-3">
-                                                    {['✨', '🔥', '💎', '🎉'].map((emoji, i) => (
-                                                        <button
-                                                            key={i}
-                                                            onClick={() => addIcon(emoji)}
-                                                            className="aspect-square flex items-center justify-center text-2xl hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border-2 border-transparent hover:border-purple-200"
-                                                        >
-                                                            {emoji}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            {/* Featured */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Featured</h4>
-                                                    <button className="text-[10px] hover:underline opacity-60">See all</button>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {[
-                                                        { name: 'Summer', gradient: 'from-orange-400 to-rose-400' },
-                                                        { name: 'Tech', gradient: 'from-blue-400 to-cyan-400' }
-                                                    ].map((item) => (
-                                                        <button
-                                                            key={item.name}
-                                                            className={`h-20 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-lg hover:scale-105 transition-transform`}
-                                                        >
-                                                            <span className="text-white font-bold text-xs drop-shadow-md">{item.name}</span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
                                             {/* Gradients */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-3">
@@ -1987,77 +2108,49 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                     ))}
                                                 </div>
                                             </div>
-                                            {/* Stickers */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Animations</h4>
-                                                    <button onClick={() => setElementsView('Animations')} className="text-[10px] hover:underline opacity-60">See all</button>
+
+                                            {/* Dynamic Graphics Categories */}
+                                            {Object.entries(graphicsElements).map(([category, items]) => (
+                                                <div key={category}>
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
+                                                            {category} {category === 'Magic Recommendations' && <Sparkles className="w-3 h-3 text-purple-500" />}
+                                                        </h4>
+                                                        <button className={`text-[10px] hover:underline opacity-60 ${category === 'Magic Recommendations' ? 'text-purple-500 font-bold' : ''}`}>See all</button>
+                                                    </div>
+                                                    <div className="grid grid-cols-4 gap-x-2 gap-y-4">
+                                                        {items.slice(0, 12).map((item, i) => (
+                                                            <button
+                                                                key={i}
+                                                                onClick={() => item.type === 'icon' ? addShape('icon', item.icon) : addImageLayer(item.url)}
+                                                                className="flex flex-col items-center gap-1.5 group w-full"
+                                                                title={item.title}
+                                                            >
+                                                                <div className="w-full aspect-square flex items-center justify-center p-2.5 rounded-2xl bg-gray-50 dark:bg-gray-800/80 group-hover:bg-purple-50 dark:group-hover:bg-purple-900/20 group-hover:scale-105 transition-all shadow-sm border border-transparent group-hover:border-purple-200 dark:group-hover:border-purple-500/30">
+                                                                    {item.type === 'icon' ? (
+                                                                        (() => {
+                                                                            const IconCmp = LucideIcons[item.icon] || LucideIcons.HelpCircle;
+                                                                            return <IconCmp className="w-8 h-8 text-gray-600 dark:text-gray-300 group-hover:text-purple-600 transition-colors" />;
+                                                                        })()
+                                                                    ) : (
+                                                                        <img
+                                                                            src={item.thumbnail || item.url}
+                                                                            alt={item.title}
+                                                                            className="w-full h-full object-contain pointer-events-none drop-shadow-sm"
+                                                                            referrerPolicy="no-referrer"
+                                                                            crossOrigin="anonymous"
+                                                                            loading="lazy"
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                                <span className={`text-[10px] font-semibold w-full text-center truncate px-0.5 leading-tight ${darkMode ? 'text-gray-400 group-hover:text-blue-300' : 'text-gray-500 group-hover:text-purple-600'} transition-colors`}>
+                                                                    {item.title}
+                                                                </span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                                <div className="grid grid-cols-3 gap-3">
-                                                    {['🚀', '🎁', '👀'].map((emoji, i) => (
-                                                        <button
-                                                            key={i}
-                                                            onClick={() => addIcon(emoji)}
-                                                            className="aspect-square flex items-center justify-center text-3xl hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
-                                                        >
-                                                            {emoji}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            {/* Social Media */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Social Media</h4>
-                                                    <button className="text-[10px] hover:underline opacity-60">See all</button>
-                                                </div>
-                                                <div className="grid grid-cols-4 gap-3">
-                                                    {[
-                                                        { name: 'Instagram', icon: <Instagram className="w-6 h-6" />, color: '#E1306C' },
-                                                        { name: 'Twitter', icon: <Twitter className="w-6 h-6" />, color: '#1DA1F2' },
-                                                        { name: 'Facebook', icon: <Facebook className="w-6 h-6" />, color: '#1877F2' },
-                                                        { name: 'Youtube', icon: <Youtube className="w-6 h-6" />, color: '#FF0000' }
-                                                    ].map((social) => (
-                                                        <button
-                                                            key={social.name}
-                                                            onClick={() => addShape('icon', social.icon)}
-                                                            className="aspect-square flex items-center justify-center rounded-xl bg-gray-50 dark:bg-gray-800 hover:bg-white dark:hover:bg-gray-700 shadow-sm transition-all group"
-                                                            style={{ color: social.color }}
-                                                        >
-                                                            {social.icon}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            {/* Icons */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Icons</h4>
-                                                    <button className="text-[10px] hover:underline opacity-60">See all</button>
-                                                </div>
-                                                <div className="grid grid-cols-5 gap-2">
-                                                    {[
-                                                        <Heart className="w-5 h-5" />,
-                                                        <Star className="w-5 h-5" />,
-                                                        <Bell className="w-5 h-5" />,
-                                                        <Mail className="w-5 h-5" />,
-                                                        <MapPin className="w-5 h-5" />,
-                                                        <Phone className="w-5 h-5" />,
-                                                        <Camera className="w-5 h-5" />,
-                                                        <Globe className="w-5 h-5" />,
-                                                        <Lock className="w-5 h-5" />,
-                                                        <User className="w-5 h-5" />
-                                                    ].map((icon, i) => (
-                                                        <button
-                                                            key={i}
-                                                            onClick={() => addShape('icon', icon)}
-                                                            className={`aspect-square flex items-center justify-center rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-600'} transition-colors`}
-                                                        >
-                                                            {icon}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                            ))}
                                         </div>
                                     )}
                                     {elementsView === 'photos' && (
@@ -2121,13 +2214,10 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                             </div>
                                             {/* Subcategories */}
                                             {[
-                                                { title: 'Icons & Stickers', icon: <Smile className="w-5 h-5" /> },
-                                                { title: 'Characters & Emojis', icon: <User className="w-5 h-5" /> },
-                                                { title: 'Food & Lifestyle', icon: <Heart className="w-5 h-5" /> },
-                                                { title: 'Creative & Abstract', icon: <Hexagon className="w-5 h-5" /> },
-                                                { title: 'Animals & Nature', icon: <Sun className="w-5 h-5" /> },
-                                                { title: 'Work & Education', icon: <FileText className="w-5 h-5" /> },
-                                                { title: 'Seasonal & Events', icon: <Sparkles className="w-5 h-5" /> }
+                                                { title: 'Trending', icon: <Sparkles className="w-5 h-5" /> },
+                                                { title: 'Business & Office', icon: <Wallet className="w-5 h-5" /> },
+                                                { title: 'Activity & Objects', icon: <Box className="w-5 h-5" /> },
+                                                { title: 'Holiday & Festive', icon: <Sun className="w-5 h-5" /> }
                                             ].map((sub, index) => (
                                                 <ThreeDCategory
                                                     key={index}
@@ -2245,8 +2335,47 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                         </div>
                                     )}
 
+                                    {elementsView === 'Animations' && (
+                                        <div className="animate-fadeIn space-y-6">
+                                            <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                <button
+                                                    onClick={() => setElementsView('home')}
+                                                    className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Animations</h3>
+                                            </div>
+
+                                            <div className="pb-4 space-y-6">
+                                                {[
+                                                    { title: 'Emojis', icon: <Smile className="w-5 h-5" /> },
+                                                    { title: 'Arrows', icon: <ArrowRight className="w-5 h-5" /> },
+                                                    { title: 'Interface', icon: <Grid className="w-5 h-5" /> },
+                                                    { title: 'Nature', icon: <Sun className="w-5 h-5" /> },
+                                                    { title: 'Business', icon: <FileText className="w-5 h-5" /> },
+                                                    { title: 'Social', icon: <Instagram className="w-5 h-5" /> },
+                                                    { title: 'Food', icon: <Heart className="w-5 h-5" /> },
+                                                    { title: 'Travel', icon: <MapPin className="w-5 h-5" /> },
+                                                    { title: 'Festive', icon: <Sparkles className="w-5 h-5" /> },
+                                                    { title: 'Words', icon: <Type className="w-5 h-5" /> }
+                                                ].map((sub, index) => (
+                                                    <LottieCategory
+                                                        key={index}
+                                                        sub={sub}
+                                                        loop={true}
+                                                        autoplay={true}
+                                                        items={animatedElements[sub.title]}
+                                                        onAdd={addLottieLayer}
+                                                        darkMode={darkMode}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Default view for other categories (Placeholder) */}
-                                    {elementsView !== 'home' && elementsView !== 'shapes' && elementsView !== 'graphics' && elementsView !== 'photos' && elementsView !== '3d' && elementsView !== 'frames' && elementsView !== 'grids' && elementsView !== 'mockups' && (
+                                    {elementsView !== 'home' && elementsView !== 'shapes' && elementsView !== 'graphics' && elementsView !== 'photos' && elementsView !== '3d' && elementsView !== 'frames' && elementsView !== 'grids' && elementsView !== 'mockups' && elementsView !== 'Animations' && (
                                         <div className="animate-fadeIn space-y-4">
                                             <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
                                                 <button
@@ -2296,8 +2425,17 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                             layer.shapeType === 'image' ? (
                                                                 <img src={layer.content} className="w-full h-full object-cover" alt="" />
                                                             ) : (
-                                                                layer.shapeType === 'icon' ? <Smile className="w-5 h-5 text-blue-600" /> : <div className="w-5 h-5 rounded-sm bg-blue-500/20 border-2 border-blue-500" />
+                                                                layer.shapeType === 'icon' ? (
+                                                                    (() => {
+                                                                        const IconCmp = LucideIcons[layer.content] || Smile;
+                                                                        return <IconCmp className="w-5 h-5 text-blue-600" />;
+                                                                    })()
+                                                                ) : <div className="w-5 h-5 rounded-sm bg-blue-500/20 border-2 border-blue-500" />
                                                             )
+                                                        ) : layer.type === 'lottie' ? (
+                                                            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                                                <Play className="w-4 h-4 text-emerald-600" />
+                                                            </div>
                                                         ) :
                                                             layer.type === 'form' ? <FileText className="w-5 h-5 text-orange-600" /> :
                                                                 <ImageIcon className="w-5 h-5 text-gray-400" />}
@@ -2306,7 +2444,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 {/* Layer Info */}
                                                 <div className="flex-1 min-w-0">
                                                     <p className={`text-xs font-bold truncate ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                                                        {layer.id === 'background-layer' ? 'Background Image' : (layer.content?.substring(0, 20) || layer.type)}
+                                                        {layer.id === 'background-layer' ? 'Background Image' : (layer.name || (layer.type === 'lottie' ? 'Animation' : (layer.content?.substring(0, 20) || layer.type)))}
                                                     </p>
                                                     <p className="text-[9px] text-gray-500 capitalize tracking-wider">{layer.type}{layer.shapeType ? ` • ${layer.shapeType}` : ''}</p>
                                                 </div>
@@ -2356,7 +2494,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                     </div>
                                                 )}
                                             </div>
-                                        );
+                                        )
                                     })}
                                 </div>
                             </div>
@@ -2471,16 +2609,21 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                             <div className="animate-fadeIn space-y-5">
                                 <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Adjust</h3>
                                 {[
-                                    { label: 'Brightness', key: 'brightness', min: 0, max: 200 },
-                                    { label: 'Contrast', key: 'contrast', min: 0, max: 200 },
-                                    { label: 'Saturation', key: 'saturation', min: 0, max: 200 },
-                                    { label: 'Highlights', key: 'highlights', min: -100, max: 100 },
-                                    { label: 'Shadows', key: 'shadows', min: -100, max: 100 },
-                                    { label: 'Blur', key: 'blur', min: 0, max: 20 }
+                                    { label: 'Brightness', key: 'brightness', min: 0, max: 200, icon: <Sun className="w-3.5 h-3.5" /> },
+                                    { label: 'Contrast', key: 'contrast', min: 0, max: 200, icon: <Sliders className="w-3.5 h-3.5" /> },
+                                    { label: 'Saturation', key: 'saturation', min: 0, max: 200, icon: <Palette className="w-3.5 h-3.5" /> },
+                                    { label: 'Blur', key: 'blur', min: 0, max: 20, icon: <Maximize className="w-3.5 h-3.5" /> },
+                                    { label: 'Grayscale', key: 'grayscale', min: 0, max: 100, icon: <Baseline className="w-3.5 h-3.5" /> },
+                                    { label: 'Sepia', key: 'sepia', min: 0, max: 100, icon: <Sun className="w-3.5 h-3.5" /> },
+                                    { label: 'Hue Rotate', key: 'hue', min: 0, max: 360, icon: <RotateCw className="w-3.5 h-3.5" /> },
+                                    { label: 'Invert', key: 'invert', min: 0, max: 100, icon: <Check className="w-3.5 h-3.5" /> }
                                 ].map(adj => (
                                     <div key={adj.key} className="space-y-1.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{adj.label}</span>
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <div className="flex items-center gap-1.5 font-bold">
+                                                <span className="text-purple-500">{adj.icon}</span>
+                                                <span className={`${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{adj.label}</span>
+                                            </div>
                                             <span className="text-purple-600 font-bold">{adjustments[adj.key]}</span>
                                         </div>
                                         <input
@@ -2821,7 +2964,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 width: `${layer.width}px`,
                                                 height: `${layer.height}px`,
                                                 clipPath: layer.frameProps?.clipPath,
-                                                ...(layer.frameProps?.style || {}),
+                                                // Removed border from here to avoid clipping and permanent export
+                                                ...(layer.frameProps?.style && { ...layer.frameProps.style, border: undefined }),
                                                 backgroundColor: layer.backgroundColor || '#f3f4f6'
                                             }}
                                             onDragOver={(e) => {
@@ -2867,7 +3011,8 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 <img
                                                     src={layer.content || layer.placeholder}
                                                     alt="Frame content"
-                                                    className="w-full h-full object-cover pointer-events-none"
+                                                    className="w-full h-full pointer-events-none"
+                                                    style={{ objectFit: 'fill', width: '100%', height: '100%' }}
                                                     draggable={false}
                                                 />
                                             )}
@@ -2964,12 +3109,20 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 </div>
                                             )}
 
-                                            {!layer.content && !layer.isPlaceholder && (
+                                            {!layer.content && (
                                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                                     <span className="bg-black/50 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
                                                         Drop image here
                                                     </span>
                                                 </div>
+                                            )}
+
+                                            {/* Alignment Overlay: Visible ONLY ONLY when NOT saving */}
+                                            {layer.frameProps?.shapeType === 'basic' && layer.isPlaceholder && !isSaving && (
+                                                <div
+                                                    className="absolute inset-0 pointer-events-none z-50 border-4 border-cyan-400 border-dashed opacity-80"
+                                                    style={{ width: '100%', height: '100%' }}
+                                                />
                                             )}
                                         </div>
                                     ) : layer.type === 'text' ? (
@@ -3109,7 +3262,18 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 )}
                                             </div>
                                         </div>
+                                    ) : (layer.type === 'lottie' || layer.type === 'gif') ? (
+                                        <div
+                                            className="pointer-events-none overflow-hidden"
+                                            style={{
+                                                width: `${layer.width}px`,
+                                                height: `${layer.height}px`,
+                                            }}
+                                        >
+                                            <LottiePreview item={layer.lottieItem} url={layer.content} />
+                                        </div>
                                     ) : (
+
                                         <div
                                             className={`flex items-center justify-center ${layer.shapeType?.startsWith('line') || layer.shapeType === 'arrow' ? '' : 'overflow-hidden'}`}
                                             style={{
@@ -3136,10 +3300,11 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 const isTextableShape = ['square', 'square-rounded', 'circle', 'triangle', 'pentagon', 'hexagon', 'octagon', 'parallelogram', 'star-5'].includes(layer.shapeType);
 
                                                 if (layer.shapeType === 'icon') {
+                                                    const IconCmp = LucideIcons[layer.content] || LucideIcons.HelpCircle;
                                                     return (
-                                                        <span style={{ fontSize: `${Math.min(layer.width, layer.height) * 0.6}px` }}>
-                                                            {layer.content}
-                                                        </span>
+                                                        <div style={{ width: `${Math.min(layer.width, layer.height) * 0.6}px`, height: `${Math.min(layer.width, layer.height) * 0.6}px` }}>
+                                                            <IconCmp className="w-full h-full" />
+                                                        </div>
                                                     );
                                                 }
                                                 // Lines
@@ -3177,11 +3342,16 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                             ref={layer.id === 'background-layer' ? imageRef : null}
                                                             src={layer.content}
                                                             alt=""
-                                                            className="w-full h-full object-cover pointer-events-none"
+                                                            className="w-full h-full pointer-events-none"
                                                             draggable={false}
-                                                            style={layer.id === 'background-layer' ? {
-                                                                filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`
-                                                            } : {}}
+                                                            referrerPolicy="no-referrer"
+                                                            crossOrigin="anonymous"
+                                                            style={{
+                                                                objectFit: 'contain',
+                                                                ...(layer.id === 'background-layer' ? {
+                                                                    filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`
+                                                                } : {})
+                                                            }}
                                                         />
                                                     );
                                                 }
@@ -3459,7 +3629,7 @@ const ThreeDCategory = ({ sub, items, onAdd, darkMode }) => {
                         return (
                             <div key={i} className="flex-none w-[100px] flex flex-col items-center gap-2 group/item snap-start">
                                 <button
-                                    onClick={() => onAdd(rawItem)}
+                                    onClick={() => onAdd(item)}
                                     className={`w-full aspect-square bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 hover:border-purple-500 dark:hover:border-purple-500 transition-all flex items-center justify-center p-2.5 relative overflow-hidden shadow-sm hover:shadow-md active:scale-95`}
                                     draggable={true}
                                     onDragStart={(e) => {
@@ -3467,6 +3637,7 @@ const ThreeDCategory = ({ sub, items, onAdd, darkMode }) => {
                                             e.dataTransfer.setData('text/plain', rawItem);
                                         } else {
                                             e.dataTransfer.setData('application/json', JSON.stringify(rawItem));
+                                            e.dataTransfer.setData('text/plain', item.thumb);
                                         }
                                         const dragImg = new Image();
                                         dragImg.src = url || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -3477,8 +3648,10 @@ const ThreeDCategory = ({ sub, items, onAdd, darkMode }) => {
                                         <img
                                             src={url}
                                             alt={item.title}
-                                            className="w-full h-full object-contain pointer-events-none transition-transform group-hover/item:scale-110"
-                                            style={{ clipPath: item.clipPath || 'none', objectFit: 'cover', ...(item.style || {}) }}
+                                            className="w-full h-full pointer-events-none transition-transform group-hover/item:scale-110"
+                                            style={{ clipPath: item.clipPath || 'none', objectFit: 'contain', ...(item.style || {}) }}
+                                            referrerPolicy="no-referrer"
+                                            crossOrigin="anonymous"
                                             loading="lazy"
                                         />
                                     ) : (
@@ -3573,6 +3746,220 @@ const ThreeDCategory = ({ sub, items, onAdd, darkMode }) => {
                 >
                     <ChevronRight className="w-4 h-4" />
                 </button>
+            </div>
+        </div>
+    );
+};
+
+// Helper component for previews with hybrid loading (SVG/Icon -> Lottie)
+const LottiePreview = ({ item, url }) => {
+    const container = useRef(null);
+    const [status, setStatus] = useState('loading'); // 'loading' | 'success' | 'failed'
+
+    useEffect(() => {
+        const targetUrl = item?.url || url;
+        const isActuallyGif = (item?.type === 'gif') || (targetUrl && (targetUrl.endsWith('.gif') || targetUrl.includes('flaticon.com')));
+
+        if (!container.current || !targetUrl || isActuallyGif) return;
+
+        let anim = null;
+        let isCancelled = false;
+
+        const loadLottie = () => {
+            setStatus('loading');
+            try {
+                if (isCancelled) return;
+
+                anim = lottie.loadAnimation({
+                    container: container.current,
+                    renderer: 'svg',
+                    loop: true,
+                    autoplay: true,
+                    path: targetUrl,
+                    rendererSettings: {
+                        preserveAspectRatio: 'xMidYMid meet'
+                    }
+                });
+
+                anim.addEventListener('DOMLoaded', () => {
+                    if (!isCancelled) setStatus('success');
+                });
+
+                anim.addEventListener('data_failed', () => {
+                    console.error('Lottie data failed:', targetUrl);
+                    if (!isCancelled) setStatus('failed');
+                });
+
+                anim.addEventListener('error', (e) => {
+                    console.error('Lottie internal error:', targetUrl, e);
+                    if (!isCancelled) setStatus('failed');
+                });
+
+            } catch (error) {
+                console.error('Lottie init error:', targetUrl, error);
+                if (!isCancelled) setStatus('failed');
+            }
+        };
+
+        loadLottie();
+
+        return () => {
+            isCancelled = true;
+            if (anim) anim.destroy();
+        };
+    }, [item?.url, url, item?.type]);
+
+
+    const renderFallback = () => {
+        const targetUrl = item?.url || url;
+        const targetTitle = item?.title || 'Animation';
+        const isActuallyGif = (item?.type === 'gif') || (targetUrl && (targetUrl.endsWith('.gif') || targetUrl.includes('flaticon.com')));
+
+        if (isActuallyGif) {
+            return (
+                <div className="relative w-full h-full flex items-center justify-center">
+                    <img
+                        src={targetUrl}
+                        alt={targetTitle}
+                        className="relative z-10 w-full h-full object-contain p-1"
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        loading="eager"
+                        onError={(e) => {
+                            console.error("GIF fail:", targetUrl);
+                            setStatus('failed');
+                            // e.target.style.display = 'none';
+                        }}
+                    />
+                </div>
+            );
+        }
+
+        if (item?.type === 'noto') {
+            return (
+                <img
+                    src={item.fallback}
+                    alt={item.title}
+                    className="w-full h-full object-contain p-2"
+                />
+            );
+        }
+
+        if ((item?.type === 'lordicon' || item?.type === 'local-arrow') && item.fallbackIcon) {
+            const IconComponent = LucideIcons[item.fallbackIcon] || LucideIcons.HelpCircle;
+            return <IconComponent className="w-8 h-8 text-gray-300 dark:text-gray-600" />;
+        }
+
+        return <LucideIcons.Sparkles className="w-8 h-8 text-gray-200" />;
+    };
+
+
+    const targetUrl = item?.url || url;
+    const isActuallyGif = (item?.type === 'gif') || (targetUrl && (targetUrl.endsWith('.gif') || targetUrl.includes('flaticon.com')));
+
+    if (isActuallyGif) {
+        return (
+            <div className="w-full h-full relative flex items-center justify-center p-1 overflow-hidden">
+                <img
+                    src={targetUrl}
+                    alt={item?.title || 'GIF Animation'}
+                    className="relative z-10 w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
+                    loading="eager"
+                    onError={(e) => {
+                        console.error("GIF preview/layer fail:", targetUrl);
+                        setStatus('failed');
+                        // e.target.style.display = 'none';
+                    }}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
+
+            {/* Fallback Layer - only if failed or really loading and it's not a gif */}
+            {status !== 'success' && (
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-500 ${status === 'success' ? 'opacity-0' : 'opacity-100'}`}>
+                    {renderFallback()}
+                </div>
+            )}
+
+            {/* Lottie Animation Layer */}
+            <div
+                ref={container}
+                className={`w-full h-full transition-opacity duration-300 z-10 ${status === 'failed' ? 'opacity-0' : 'opacity-100'}`}
+            />
+
+            {/* Subtle Loading Spinner only if it's REALLY taking time or failed */}
+            {status === 'loading' && (
+                <div className="absolute top-1 right-1">
+                    <LucideIcons.Loader2 className="w-3 h-3 text-purple-500 animate-spin opacity-20" />
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+const LottieCategory = ({ sub, items, onAdd, darkMode }) => {
+    const scrollRef = useRef(null);
+    const scroll = (direction) => {
+        if (scrollRef.current) {
+            const scrollAmount = 240;
+            scrollRef.current.scrollBy({
+                left: direction === 'left' ? -scrollAmount : scrollAmount,
+                behavior: 'smooth'
+            });
+        }
+    };
+
+    if (!items || items.length === 0) return null;
+
+    return (
+        <div className="mb-6 group/cat">
+            <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-gray-800 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                        {sub.icon}
+                    </div>
+                    <h4 className={`text-xs font-bold tracking-tight ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                        {sub.title}
+                    </h4>
+                </div>
+                <div className="flex items-center gap-2 opacity-0 group-hover/cat:opacity-100 transition-opacity">
+                    <button onClick={() => scroll('left')} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors">
+                        <ChevronLeft className="w-3 h-3" />
+                    </button>
+                    <button onClick={() => scroll('right')} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors">
+                        <ChevronRight className="w-3 h-3" />
+                    </button>
+                </div>
+            </div>
+
+            <div
+                ref={scrollRef}
+                className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-hide no-scrollbar"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+                {items.map((item, i) => (
+                    <button
+                        key={i}
+                        onClick={() => onAdd(item)}
+                        title={item.title}
+                        className={`flex-shrink-0 w-24 aspect-square relative flex items-center justify-center rounded-2xl ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-white'} border-2 border-transparent hover:border-purple-500/30 transition-all group overflow-hidden shadow-sm hover:shadow-md`}
+                    >
+                        <div className="w-full h-full p-2 pointer-events-none">
+                            <LottiePreview item={item} />
+                        </div>
+                        <div className="absolute inset-0 bg-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute bottom-1 right-1 p-1 bg-purple-500 text-white rounded-lg scale-0 group-hover:scale-100 transition-transform shadow-lg z-20">
+                            <Plus className="w-3 h-3" />
+                        </div>
+                    </button>
+                ))}
             </div>
         </div>
     );

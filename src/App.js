@@ -78,6 +78,11 @@ const App = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [editedFile, setEditedFile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Container management
+  const [containers, setContainers] = useState([{ id: 1, selected: true, convertedFile: null }]);
+  const [selectedContainerId, setSelectedContainerId] = useState(1);
+  const [selectedDownloadType, setSelectedDownloadType] = useState(null); // For MP4/GIF selection
   // Watermark
   const [watermarkText, setWatermarkText] = useState('Pro Image Toolkit');
   const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');
@@ -671,7 +676,7 @@ const App = () => {
     setPreviewUrl(url);
 
     // Set auto-download flag and trigger conversion
-    setShouldAutoDownload(true);
+    // setShouldAutoDownload(true); // Disable auto-download: User must click download manually
     handleConvert(newFile);
   };
 
@@ -819,6 +824,15 @@ const App = () => {
       const [conversionResult] = await Promise.all([conversionPromise, simulationPromise]);
       setConversionProgress(100);
       await new Promise(r => setTimeout(r, 600));
+
+      // Update the selected container with the converted file
+      setContainers(prevContainers =>
+        prevContainers.map(container =>
+          container.id === selectedContainerId
+            ? { ...container, convertedFile: conversionResult }
+            : container
+        )
+      );
       setConvertedFile(conversionResult);
 
       // Auto-download if triggered from editor
@@ -843,14 +857,33 @@ const App = () => {
   };
 
   const handleDownload = () => {
-    if (!convertedFile) return;
+    // Find the selected container
+    const selectedContainer = containers.find(container => container.id === selectedContainerId);
+    if (!selectedContainer || !selectedContainer.convertedFile) return;
+
+    const fileToDownload = selectedContainer.convertedFile;
     const a = document.createElement('a');
-    a.href = convertedFile.url;
-    const ext = convertedFile.name.split('.').pop();
-    let name = customFileName.trim() || convertedFile.name;
+    a.href = fileToDownload.url;
+    const ext = selectedDownloadType || fileToDownload.name.split('.').pop();
+    let name = customFileName.trim() || fileToDownload.name;
     if (customFileName.trim() && !customFileName.includes('.')) name = `${customFileName.trim()}.${ext}`;
     a.download = name;
     a.click();
+
+    // Reset the selected download type after download
+    setSelectedDownloadType(null);
+  };
+
+  const addContainer = () => {
+    const newId = Math.max(...containers.map(c => c.id)) + 1;
+    const newContainer = {
+      id: newId,
+      selected: false,
+      convertedFile: null
+    };
+    setContainers([...containers, newContainer]);
+    // Optionally select the new container
+    setSelectedContainerId(newId);
   };
 
   return (
@@ -960,6 +993,12 @@ const App = () => {
           setGifCompression={setGifCompression}
           gifOptimizeBackground={gifOptimizeBackground}
           setGifOptimizeBackground={setGifOptimizeBackground}
+          containers={containers}
+          selectedContainerId={selectedContainerId}
+          setSelectedContainerId={setSelectedContainerId}
+          addContainer={addContainer}
+          selectedDownloadType={selectedDownloadType}
+          setSelectedDownloadType={setSelectedDownloadType}
         />
       </main>
       {!isEditing && <Footer darkMode={darkMode} />}

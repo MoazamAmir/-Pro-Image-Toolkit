@@ -115,55 +115,84 @@ const ExportManager = ({
                     await ffmpeg.load();
                 }
 
-                const gif = fileType === 'GIF' ? new GIF({
-                    workers: 2,
-                    quality: 10,
-                    width: (pagesToExport[0]?.width || 1080) * size,
-                    height: (pagesToExport[0]?.height || 720) * size,
-                    workerScript: '/gif.worker.js'
-                }) : null;
+                const generateForPage = async (page) => {
+                    const gif = fileType === 'GIF' ? new GIF({
+                        workers: 2,
+                        quality: 10,
+                        width: (page.width || 1080) * size,
+                        height: (page.height || 720) * size,
+                        workerScript: '/gif.worker.js'
+                    }) : null;
 
-                const duration = 3; // 3 seconds animation
-                const fps = 15; // 15 fps balance between quality and speed
-                const totalFrames = duration * fps;
-                const page = pagesToExport[0]; // Export first selected page as animation
+                    const duration = 3;
+                    const fps = 15;
+                    const totalFrames = duration * fps;
 
-                for (let i = 0; i < totalFrames; i++) {
-                    const frameTime = (i / totalFrames) * duration;
-                    const canvas = await renderFinalCanvas(page.layers, null, {
-                        scale: size,
-                        transparent: transparentBg,
-                        frameTime,
-                        duration,
-                        useOriginalResolution: true // Ensure high quality base even for video
-                    });
+                    for (let i = 0; i < totalFrames; i++) {
+                        const frameTime = (i / totalFrames) * duration;
+                        const canvas = await renderFinalCanvas(page.layers, null, {
+                            scale: size,
+                            transparent: transparentBg,
+                            frameTime,
+                            duration,
+                            useOriginalResolution: true
+                        });
 
-                    if (fileType === 'MP4' && ffmpeg) {
-                        const frameData = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-                        await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(frameData));
-                    } else if (fileType === 'GIF' && gif) {
-                        gif.addFrame(canvas, { copy: true, delay: 1000 / fps });
+                        if (fileType === 'MP4' && ffmpeg) {
+                            const frameData = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                            await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(frameData));
+                        } else if (fileType === 'GIF' && gif) {
+                            gif.addFrame(canvas, { copy: true, delay: 1000 / fps });
+                        }
                     }
 
-                    setExportProgress(Math.round((i / totalFrames) * 80)); // 0-80% for capturing
-                }
+                    if (fileType === 'MP4' && ffmpeg) {
+                        await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', 'output.mp4']);
+                        const data = await ffmpeg.readFile('output.mp4');
 
-                if (fileType === 'MP4' && ffmpeg) {
-                    setExportProgress(85);
-                    await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', 'output.mp4']);
-                    const data = await ffmpeg.readFile('output.mp4');
-                    saveAs(new Blob([data.buffer], { type: 'video/mp4' }), `${baseFileName}.mp4`);
-                } else if (fileType === 'GIF' && gif) {
-                    setExportProgress(85);
-                    gif.on('finished', (blob) => {
-                        saveAs(blob, `${baseFileName}.gif`);
-                        setExportProgress(100);
-                        setIsExporting(false);
-                    });
-                    gif.render();
-                    return; // exit early as gif.on('finished') handles the end
+                        // Cleanup
+                        try {
+                            await ffmpeg.deleteFile('output.mp4');
+                            for (let i = 0; i < totalFrames; i++) {
+                                await ffmpeg.deleteFile(`frame_${i.toString().padStart(3, '0')}.png`);
+                            }
+                        } catch (e) {
+                            console.warn("FFmpeg cleanup error:", e);
+                        }
+
+                        return new Blob([data.buffer], { type: 'video/mp4' });
+                    } else if (fileType === 'GIF' && gif) {
+                        return new Promise((resolve) => {
+                            gif.on('finished', (blob) => resolve(blob));
+                            gif.render();
+                        });
+                    }
+                    return null;
+                };
+
+                if (pagesToExport.length > 1) {
+                    for (let i = 0; i < pagesToExport.length; i++) {
+                        setExportProgress(Math.round((i / pagesToExport.length) * 100));
+                        try {
+                            const blob = await generateForPage(pagesToExport[i]);
+                            if (blob) {
+                                zip.file(`page_${i + 1}.${fileType === 'MP4' ? 'mp4' : 'gif'}`, blob);
+                            }
+                        } catch (e) {
+                            console.error(`Error generating media for page ${i + 1}:`, e);
+                        }
+                    }
+                    setExportProgress(95);
+                    const content = await zip.generateAsync({ type: 'blob' });
+                    saveAs(content, `${baseFileName}.zip`);
+                } else {
+                    setExportProgress(10);
+                    const blob = await generateForPage(pagesToExport[0]);
+                    setExportProgress(100);
+                    if (blob) {
+                        saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`);
+                    }
                 }
-                setExportProgress(100);
             } else if (fileType === 'PDF_STD' || fileType === 'PDF_PRINT') {
                 let pdf = null;
                 // PDF Logic: Always ZIP

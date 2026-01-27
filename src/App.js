@@ -1,7 +1,7 @@
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, Film, Grid3x3, X, Download, CheckCircle, Music, Zap, Moon, Sun, Edit2 } from 'lucide-react';
+import { CheckCircle, Music, Zap, Moon, Sun, Edit2 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import Header from './components/Header';
@@ -128,6 +128,15 @@ const App = () => {
       setCustomFileName(nameWithoutExt);
     }
   }, [convertedFile]);
+
+  // Global Error Handler for diagnostics
+  useEffect(() => {
+    const handleError = (e) => {
+      console.error('GLOBAL ERROR:', e.message || 'Script Error (CORS)');
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
   // Load converter from URL on mount
   useEffect(() => {

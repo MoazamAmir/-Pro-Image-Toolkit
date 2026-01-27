@@ -1,6 +1,6 @@
 // src/components/ConverterUI.js
 import React, { useState, useEffect } from 'react';
-import { Upload, FileText, X, Download, CheckCircle, Settings, Zap, Edit2, Grid3x3 } from 'lucide-react';
+import { Upload, FileText, X, Download, CheckCircle, Settings, Zap, Edit2 } from 'lucide-react';
 import CropImageTool from './CropImageTool';
 import ToolDetailsPanel from './ToolDetailsPanel';
 import ImageEditor from './ImageEditor';
@@ -102,140 +102,28 @@ const ConverterUI = ({
 
     const to = activeConverter?.to;
     // State for live preview
-    const [livePreview, setLivePreview] = useState(null);
     const [showComparison, setShowComparison] = useState(false);
     const [framePreviews, setFramePreviews] = useState([]);
 
+    // Check for project ID in URL and auto-open editor
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('project')) {
+            // Trigger edit mode with a placeholder file to bypass checks
+            const dummyFile = new File([""], "Project", { type: "image/project" });
+            setSelectedFile(dummyFile);
+            setIsEditing(true);
+        }
+    }, [setSelectedFile, setIsEditing]);
+
     // Apply brightness/contrast to create live preview
-    useEffect(() => {
-        if (to === 'brightness' && previewUrl && selectedFile) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
+    // Apply filter effects (Removed: livePreview state no longer used)
 
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
 
-                // Convert percentage values
-                const brightnessVal = (brightness - 100) * 1.28;
-                const contrastVal = contrast / 100;
 
-                for (let i = 0; i < data.length; i += 4) {
-                    data[i] = Math.min(255, Math.max(0, ((data[i] - 128) * contrastVal + 128) + brightnessVal));
-                    data[i + 1] = Math.min(255, Math.max(0, ((data[i + 1] - 128) * contrastVal + 128) + brightnessVal));
-                    data[i + 2] = Math.min(255, Math.max(0, ((data[i + 2] - 128) * contrastVal + 128) + brightnessVal));
-                }
 
-                ctx.putImageData(imageData, 0, 0);
-                setLivePreview(canvas.toDataURL('image/png'));
-            };
-            img.src = previewUrl;
-        }
-    }, [brightness, contrast, previewUrl, selectedFile, to]);
 
-    // Apply sharpen effect to create live preview
-    useEffect(() => {
-        if (to === 'sharpen' && previewUrl && selectedFile) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
 
-                // Sharpen kernel
-                const centerWeight = 1 + (4 * sharpenIntensity);
-                const edgeWeight = -1 * sharpenIntensity;
-                const weights = [0, edgeWeight, 0, edgeWeight, centerWeight, edgeWeight, 0, edgeWeight, 0];
-                const side = 3;
-                const halfSide = 1;
-                const w = canvas.width;
-                const h = canvas.height;
-                const output = ctx.createImageData(w, h);
-
-                for (let y = 0; y < h; y++) {
-                    for (let x = 0; x < w; x++) {
-                        const dstOff = (y * w + x) * 4;
-                        let r = 0, g = 0, b = 0;
-                        for (let cy = 0; cy < side; cy++) {
-                            for (let cx = 0; cx < side; cx++) {
-                                const scy = y + cy - halfSide;
-                                const scx = x + cx - halfSide;
-                                if (scy >= 0 && scy < h && scx >= 0 && scx < w) {
-                                    const srcOff = (scy * w + scx) * 4;
-                                    const wt = weights[cy * side + cx];
-                                    r += data[srcOff] * wt;
-                                    g += data[srcOff + 1] * wt;
-                                    b += data[srcOff + 2] * wt;
-                                }
-                            }
-                        }
-                        output.data[dstOff] = Math.min(255, Math.max(0, r));
-                        output.data[dstOff + 1] = Math.min(255, Math.max(0, g));
-                        output.data[dstOff + 2] = Math.min(255, Math.max(0, b));
-                        output.data[dstOff + 3] = data[dstOff + 3];
-                    }
-                }
-                ctx.putImageData(output, 0, 0);
-                setLivePreview(canvas.toDataURL('image/png'));
-            };
-            img.src = previewUrl;
-        }
-    }, [sharpenIntensity, previewUrl, selectedFile, to]);
-
-    // Apply blur effect to create live preview
-    useEffect(() => {
-        if (to === 'blur' && previewUrl && selectedFile) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.filter = 'blur(5px)';
-                ctx.drawImage(img, 0, 0);
-                setLivePreview(canvas.toDataURL('image/png'));
-            };
-            img.src = previewUrl;
-        }
-    }, [previewUrl, selectedFile, to]);
-
-    // Apply grayscale effect to create live preview
-    useEffect(() => {
-        if (to === 'grayscale' && previewUrl && selectedFile) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-
-                for (let i = 0; i < data.length; i += 4) {
-                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    data[i] = avg;
-                    data[i + 1] = avg;
-                    data[i + 2] = avg;
-                }
-                ctx.putImageData(imageData, 0, 0);
-                setLivePreview(canvas.toDataURL('image/png'));
-            };
-            img.src = previewUrl;
-        }
-    }, [previewUrl, selectedFile, to]);
 
     // Generate frame previews for video thumbnail
     useEffect(() => {
@@ -278,7 +166,7 @@ const ConverterUI = ({
 
             generateFrames();
         }
-    }, [previewUrl, selectedFile, to, videoDuration]);
+    }, [previewUrl, selectedFile, to, videoDuration, activeConverter]);
 
     // Theme classes based on darkMode
     const theme = {

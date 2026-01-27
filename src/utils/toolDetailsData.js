@@ -1,7 +1,7 @@
 
 // src/utils/toolDetailsData.js
 import React from 'react';
-import { Check, Award, Shield, BookOpen, FileText, Globe, Zap } from 'lucide-react';
+import { Check, Award, Shield, BookOpen, FileText, Zap } from 'lucide-react';
 
 export const toolDetails = {
     'PNG to JPG': {

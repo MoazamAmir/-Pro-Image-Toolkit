@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { threeDElements } from '../data/threeDElements';
 import { framesElements } from '../data/framesElements';
 import { gridTemplates } from '../data/gridTemplates';
@@ -13,6 +13,8 @@ import lottie from 'lottie-web';
 import { saveEditorState, loadEditorState, saveRecentlyUsedAnimations, loadRecentlyUsedAnimations } from '../utils/editorStorage';
 import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
+import p2pService from '../services/P2PService';
+import imageCompression from 'browser-image-compression';
 
 const {
     Type,
@@ -140,14 +142,102 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const [zoom, setZoom] = useState(0.8); // 80% default zoom
     const [isGridView, setIsGridView] = useState(false);
     const [recentlyUsedAnimations, setRecentlyUsedAnimations] = useState([]);
+    const [hasInteracted, setHasInteracted] = useState(false);
+
+    // Everyone is an owner/editor now
+    const isReadOnly = false;
+    const isOwner = true;
+    const shareAccess = 'edit';
 
     // Canvas Size State
     const [canvasSize, setCanvasSize] = useState({ width: 1080, height: 720 });
     const [isResizingCanvas, setIsResizingCanvas] = useState(false); // { handle: 'e' | 's' | 'se' }
 
+    // P2P Sync State
+    const [isP2PConnected, setIsP2PConnected] = useState(false);
+    const [projectId, setProjectId] = useState(null);
+    const [peerCount, setPeerCount] = useState(0);
+    const syncTimeoutRef = useRef(null);
+    const isReceivingSync = useRef(false); // Flag to prevent sync loops
+
     useEffect(() => {
         setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers } : p));
     }, [layers]);
+
+    // P2P Sync - Initialize on mount
+    useEffect(() => {
+        const initP2P = async () => {
+            try {
+                const result = await p2pService.init((incomingState, source) => {
+                    console.log('[P2P] Received state from:', source);
+                    isReceivingSync.current = true;
+
+                    if (incomingState.pages) {
+                        setPages(incomingState.pages);
+                        // Set layers from active page
+                        const activePage = incomingState.pages.find(p => p.id === (incomingState.activePageId || 1));
+                        if (activePage) {
+                            setLayers(activePage.layers || []);
+                        }
+                    }
+                    if (incomingState.activePageId) {
+                        setActivePageId(incomingState.activePageId);
+                    }
+                    if (incomingState.canvasSize) {
+                        setCanvasSize(incomingState.canvasSize);
+                    }
+                    if (incomingState.adjustments) {
+                        setAdjustments(prev => ({ ...prev, ...incomingState.adjustments }));
+                    }
+
+                    // Reset flag after short delay
+                    setTimeout(() => {
+                        isReceivingSync.current = false;
+                    }, 100);
+                });
+
+                setProjectId(result.projectId);
+                setIsP2PConnected(true);
+                console.log('[P2P] Initialized, project ID:', result.projectId, 'isHost:', result.isHost);
+            } catch (err) {
+                console.error('[P2P] Init failed:', err);
+            }
+        };
+
+        initP2P();
+
+        // Cleanup on unmount
+        return () => {
+            p2pService.destroy();
+        };
+    }, []);
+
+    // P2P Sync - Broadcast state changes to peers (debounced)
+    useEffect(() => {
+        // Skip if we're receiving sync to prevent loops
+        if (isReceivingSync.current || !isP2PConnected) return;
+
+        // Debounce syncing to avoid flooding
+        if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+        }
+
+        syncTimeoutRef.current = setTimeout(() => {
+            const state = {
+                pages,
+                activePageId,
+                canvasSize,
+                adjustments
+            };
+            p2pService.syncState(state);
+        }, 150); // 150ms debounce
+
+        return () => {
+            if (syncTimeoutRef.current) {
+                clearTimeout(syncTimeoutRef.current);
+            }
+        };
+    }, [pages, activePageId, canvasSize, adjustments, isP2PConnected]);
 
     // Load recently used animations on mount
     useEffect(() => {
@@ -465,60 +555,85 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const resizeRef = useRef({ resizing: null });
 
     useEffect(() => {
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const src = e.target.result;
-                const img = new Image();
-                img.onload = () => {
-                    // Set canvas size to match image exactly (or scaled down if too huge, but keeping aspect ratio)
-                    // Also consider viewport constraints to avoid covering the bottom bar initially
-                    let width = img.width;
-                    let height = img.height;
-                    const maxInitialWidth = 1500;
-                    const maxInitialHeight = window.innerHeight * 0.8; // Leave 20% space for UI
-
-                    // First scale by width
-                    if (width > maxInitialWidth) {
-                        const ratio = maxInitialWidth / width;
-                        width = maxInitialWidth;
-                        height = height * ratio;
-                    }
-
-                    // Then check height
-                    if (height > maxInitialHeight) {
-                        const ratio = maxInitialHeight / height;
-                        height = maxInitialHeight;
-                        width = width * ratio;
-                    }
-
-                    // Update canvas size state
-                    setCanvasSize({ width, height });
-
-                    const newLayer = {
-                        id: 'background-layer',
-                        type: 'shape',
-                        shapeType: 'image',
-                        content: src,
-                        color: 'transparent',
-                        width: width,
-                        height: height,
-                        x: 50,
-                        y: 50,
-                        isSelected: true,
-                        isLocked: false, // Allow background to be selected
-                        isBackground: true
+        const processFile = async () => {
+            if (file) {
+                try {
+                    // Compress image before loading to ensure P2P sync works reliably
+                    const options = {
+                        maxSizeMB: 1,
+                        maxWidthOrHeight: 1920,
+                        useWebWorker: true,
+                        fileType: 'image/jpeg'
                     };
 
-                    const nextLayers = [newLayer]; // Start fresh with background
-                    setLayers(nextLayers);
-                    saveToHistory(nextLayers);
-                    setImageSrc(src);
-                };
-                img.src = src;
-            };
-            reader.readAsDataURL(file);
-        }
+                    let processedFile = file;
+                    // Only compress if image
+                    if (file.type.startsWith('image/')) {
+                        try {
+                            processedFile = await imageCompression(file, options);
+                        } catch (e) {
+                            console.warn('Image compression failed, using original:', e);
+                        }
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const src = e.target.result;
+                        const img = new Image();
+                        img.onload = () => {
+                            // Set canvas size to match image exactly (or scaled down if too huge, but keeping aspect ratio)
+                            // Also consider viewport constraints to avoid covering the bottom bar initially
+                            let width = img.width;
+                            let height = img.height;
+                            const maxInitialWidth = 1500;
+                            const maxInitialHeight = window.innerHeight * 0.8; // Leave 20% space for UI
+
+                            // First scale by width
+                            if (width > maxInitialWidth) {
+                                const ratio = maxInitialWidth / width;
+                                width = maxInitialWidth;
+                                height = height * ratio;
+                            }
+
+                            // Then check height
+                            if (height > maxInitialHeight) {
+                                const ratio = maxInitialHeight / height;
+                                height = maxInitialHeight;
+                                width = width * ratio;
+                            }
+
+                            // Update canvas size state
+                            setCanvasSize({ width, height });
+
+                            const newLayer = {
+                                id: 'background-layer',
+                                type: 'shape',
+                                shapeType: 'image',
+                                content: src,
+                                color: 'transparent',
+                                width: width,
+                                height: height,
+                                x: 50,
+                                y: 50,
+                                isSelected: true,
+                                isLocked: false, // Allow background to be selected
+                                isBackground: true
+                            };
+
+                            const nextLayers = [newLayer]; // Start fresh with background
+                            setLayers(nextLayers);
+                            saveToHistory(nextLayers);
+                            setImageSrc(src);
+                        };
+                        img.src = src;
+                    };
+                    reader.readAsDataURL(processedFile);
+                } catch (err) {
+                    console.error("Error processing file:", err);
+                }
+            }
+        };
+        processFile();
     }, [file]);
 
     // Auto-save layers and adjustments to localStorage whenever they change
@@ -1085,9 +1200,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         setIsPanelOpen(false); // Close panel on mobile after adding
     };
 
-    const addIcon = (content) => {
-        addShape('icon', content);
-    };
+
 
     const addImageLayer = (urlOrItem) => {
         const url = typeof urlOrItem === 'string' ? urlOrItem : urlOrItem?.thumb;
@@ -1247,7 +1360,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const lottieCache = useRef({});
 
     const renderFinalCanvas = async (customLayers = null, customAdjustments = null, options = {}) => {
-        const { scale = 1, transparent = false, frameTime = 0, duration = 3, useOriginalResolution = false } = options;
+        const { scale = 1, transparent = false, frameTime = 0, useOriginalResolution = false } = options;
         const canvas = document.createElement('canvas');
         const targetLayers = customLayers || layers;
         const targetAdjustments = customAdjustments || adjustments;

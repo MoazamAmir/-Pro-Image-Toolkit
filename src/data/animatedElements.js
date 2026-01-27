@@ -9,14 +9,6 @@ const noto = (id, title, unicode) => ({
 });
 
 // LottieFiles CDN - Verified working animations
-const lottiefiles = (id, title, animationId) => ({
-    id,
-    title,
-    type: 'lottiefiles',
-    url: `https://lottie.host/${animationId}.json`,
-    fallback: 'ArrowRight'
-});
-
 const lordicon = (id, title, animationId) => ({
     id,
     title,

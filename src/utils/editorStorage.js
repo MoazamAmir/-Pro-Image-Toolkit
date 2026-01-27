@@ -13,7 +13,7 @@ const sanitizeLayersForStorage = (layers) => {
     return layers.map(layer => {
         // Create a clean copy of the layer without functions or complex references
         let cleanedLayer = { ...layer };
-        
+
         // Ensure content is properly serializable
         if (typeof layer.content === 'object' && layer.content !== null) {
             if (layer.type === 'lottie' || layer.type === 'gif') {
@@ -28,12 +28,12 @@ const sanitizeLayersForStorage = (layers) => {
                 cleanedLayer.content = layer.content.toString ? layer.content.toString() : JSON.stringify(layer.content);
             }
         }
-        
+
         // Ensure lottieItem is a plain object without functions
         if (layer.lottieItem && typeof layer.lottieItem === 'object') {
             cleanedLayer.lottieItem = { ...layer.lottieItem };
         }
-        
+
         // Ensure all properties are serializable
         ['width', 'height', 'x', 'y', 'rotation', 'fontSize', 'speed'].forEach(prop => {
             if (typeof layer[prop] !== 'number' && layer[prop] !== undefined) {
@@ -44,7 +44,7 @@ const sanitizeLayersForStorage = (layers) => {
                 }
             }
         });
-        
+
         return cleanedLayer;
     });
 };
@@ -54,15 +54,16 @@ const sanitizeLayersForStorage = (layers) => {
  * @param {Object} state - The state to save
  * @param {Array} state.layers - Array of layer objects
  * @param {Object} state.adjustments - Adjustments object
+ * @param {string} [key] - Optional custom storage key
  */
-export const saveEditorState = (state) => {
+export const saveEditorState = (state, key = STORAGE_KEY) => {
     try {
         const cleanedState = {
             ...state,
             layers: sanitizeLayersForStorage(state.layers)
         };
         const serialized = JSON.stringify(cleanedState);
-        localStorage.setItem(STORAGE_KEY, serialized);
+        localStorage.setItem(key, serialized);
     } catch (error) {
         console.warn('Failed to save editor state:', error);
     }
@@ -70,11 +71,12 @@ export const saveEditorState = (state) => {
 
 /**
  * Loads the editor state from localStorage
+ * @param {string} [key] - Optional custom storage key
  * @returns {Object|null} The saved state or null if none exists
  */
-export const loadEditorState = () => {
+export const loadEditorState = (key = STORAGE_KEY) => {
     try {
-        const serialized = localStorage.getItem(STORAGE_KEY);
+        const serialized = localStorage.getItem(key);
         if (serialized === null) {
             return null;
         }

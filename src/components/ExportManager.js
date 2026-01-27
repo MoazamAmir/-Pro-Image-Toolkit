@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-    X, Download, Link, Share2, Settings, Users, Lock, ChevronDown,
-    ChevronLeft, Image as ImageIcon, FileText, Smartphone, Monitor,
-    Play, Music, Video, Sparkles, Check, Copy, Clipboard, MoreHorizontal,
-    ArrowRight, Presentation, Instagram, ExternalLink, Info, CheckSquare, Square
+    Image as ImageIcon, FileText, Video,
+    Play, Check, ChevronDown, Monitor,
+    Link2, Globe, Lock, User, ArrowLeft, Instagram, LayoutGrid, Clipboard, MoreHorizontal
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import html2canvas from 'html2canvas';
+// import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import pptxgen from 'pptxgenjs';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
@@ -24,12 +23,14 @@ const ExportManager = ({
     renderFinalCanvas,
     generateSVG,
     canvasSize,
-    darkMode
+    darkMode,
+    projectId,
+    adjustments
 }) => {
-    const [view, setView] = useState('share'); // 'share' or 'download'
+    const [view, setView] = useState('download'); // Default to download view now
     const [fileType, setFileType] = useState('PNG');
     const [size, setSize] = useState(1);
-    const [limitFileSize, setLimitFileSize] = useState(false);
+    // const [limitFileSize, setLimitFileSize] = useState(false);
     const [compressFile, setCompressFile] = useState(false);
     const [transparentBg, setTransparentBg] = useState(false);
     const [selectedPages, setSelectedPages] = useState(['all']); // ['all'], ['current'], or [pageIds]
@@ -39,6 +40,10 @@ const ExportManager = ({
     const [showPageSelector, setShowPageSelector] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
+    const [isCopying, setIsCopying] = useState(false);
+
+    // Share link - just use current URL (project ID added automatically by P2P service)
+    const shareUrl = window.location.href.split('#')[0]; // Remove any hash
 
     // Load preferences from localStorage
     useEffect(() => {
@@ -80,8 +85,6 @@ const ExportManager = ({
         { id: 'PPTX', label: 'PPTX', desc: 'Microsoft PowerPoint document', icon: <Monitor className="w-4 h-4" /> },
     ];
 
-    const handleBackToShare = () => setView('share');
-    const handleOpenDownload = () => setView('download');
 
     const handleExport = async () => {
         setIsExporting(true);
@@ -135,10 +138,13 @@ const ExportManager = ({
                             transparent: transparentBg,
                             frameTime,
                             duration,
-                            useOriginalResolution: true
+                            useOriginalResolution: true,
+                            limitResolution: true, // CAP FOR VIDEO
+                            isFrame: true // Optimization hint
                         });
 
                         if (fileType === 'MP4' && ffmpeg) {
+                            // Ensure dimensions are even (required by some encoders)
                             const frameData = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
                             await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(frameData));
                         } else if (fileType === 'GIF' && gif) {
@@ -147,7 +153,16 @@ const ExportManager = ({
                     }
 
                     if (fileType === 'MP4' && ffmpeg) {
-                        await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', 'output.mp4']);
+                        // Use libx264 with yuv420p and ensure even dimensions via scale filter if needed
+                        await ffmpeg.exec([
+                            '-framerate', fps.toString(),
+                            '-i', 'frame_%03d.png',
+                            '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', // Ensure even dimensions
+                            '-c:v', 'libx264',
+                            '-pix_fmt', 'yuv420p',
+                            '-movflags', '+faststart',
+                            'output.mp4'
+                        ]);
                         const data = await ffmpeg.readFile('output.mp4');
 
                         // Cleanup
@@ -309,96 +324,77 @@ const ExportManager = ({
         }
     };
 
-    const renderShareView = () => (
-        <div className="flex flex-col h-full animate-fadeIn">
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b dark:border-gray-800">
-                <div className="flex items-center gap-2">
-                    <h2 className="font-bold text-sm dark:text-white">Share design</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 text-[9px] text-gray-500">
-                        <Monitor className="w-3 h-3" />
-                        <span>0 visitors</span>
+
+    const handleCopyLink = () => {
+        // Just copy the current URL which contains the project ID
+        // P2P service handles the real-time sync
+        navigator.clipboard.writeText(window.location.href);
+        setIsCopying(true);
+        setTimeout(() => setIsCopying(false), 2000);
+    };
+
+    const renderShareView = () => {
+        return (
+            <div className="flex flex-col h-full animate-fadeIn">
+                <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800">
+                    <h2 className="font-bold text-lg dark:text-white">Collaborate</h2>
+                    <div className="flex items-center gap-1 text-gray-500 text-xs">
+                        <Globe className="w-4 h-4 text-green-500" />
+                        <span>Real-time</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                        <X className="w-4 h-4 text-gray-500" />
-                    </button>
                 </div>
-            </div>
 
-            <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar">
-                {/* Access Level */}
-                <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-gray-700 dark:text-gray-300 uppercase">Access level</label>
-                    <button className="w-full flex items-center justify-between p-2 border rounded-lg dark:bg-gray-900 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                        <div className="flex items-center gap-2">
-                            <div className="p-1 bg-gray-100 dark:bg-gray-800 rounded-full">
-                                <Lock className="w-3 h-3 text-gray-600" />
+                <div className="p-5 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
+                    {/* Info Box */}
+                    <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/20">
+                        <div className="flex gap-3">
+                            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg h-fit">
+                                <Globe className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                             </div>
-                            <span className="text-[11px] dark:text-white">Only you can access</span>
+                            <div>
+                                <h3 className="font-bold text-sm text-gray-900 dark:text-white mb-1">Collaborate in Real-Time</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                                    Share the link below to let others edit this design with you in real-time. Changes sync instantly across devices.
+                                </p>
+                            </div>
                         </div>
-                        <ChevronDown className="w-3 h-3 text-gray-400" />
+                    </div>
+
+                    {/* Copy Link Button */}
+                    <button
+                        onClick={handleCopyLink}
+                        className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl flex items-center justify-center gap-3 shadow-lg shadow-purple-600/30 active:scale-[0.98] transition-all group"
+                    >
+                        {isCopying ? <Check className="w-5 h-5" /> : <Link2 className="w-5 h-5 group-hover:scale-110 transition-transform" />}
+                        <span className="text-sm">{isCopying ? 'Link copied to clipboard!' : 'Copy collaboration link'}</span>
                     </button>
-                </div>
 
-                {/* Big purple button */}
-                <button
-                    onClick={() => {
-                        navigator.clipboard.writeText(window.location.href);
-                        alert("Link copied to clipboard!");
-                    }}
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-all text-xs"
-                >
-                    <Link className="w-3 h-3" />
-                    <span>Copy link</span>
-                </button>
-
-                <div className="h-px bg-gray-100 dark:bg-gray-800" />
-
-                {/* Grid of actions */}
-                <div className="grid grid-cols-4 gap-1 pb-1">
-                    {[
-                        { icon: <Download className="w-3.5 h-3.5" />, label: 'Download', onClick: handleOpenDownload },
-                        { icon: <ExternalLink className="w-3.5 h-3.5" />, label: 'Public view link' },
-                        { icon: <Instagram className="w-3.5 h-3.5" />, label: 'Instagram' },
-                        { icon: <div className="relative"><ImageIcon className="w-3.5 h-3.5" /><Sparkles className="w-1.5 h-1.5 text-amber-500 absolute -top-1 -right-1" /></div>, label: 'Template link' },
-                        { icon: <Presentation className="w-3.5 h-3.5" />, label: 'Present' },
-                        { icon: <Video className="w-3.5 h-3.5" />, label: 'Present and record' },
-                        {
-                            icon: <Clipboard className="w-3.5 h-3.5" />, label: 'Copy to clipboard', onClick: () => {
-                                navigator.clipboard.writeText("Design Content Placeholder");
-                                alert("Copied to clipboard!");
-                            }
-                        },
-                        { icon: <MoreHorizontal className="w-3.5 h-3.5" />, label: 'See all' },
-                    ].map((item, idx) => (
-                        <button
-                            key={idx}
-                            onClick={item.onClick}
-                            className="flex flex-col items-center gap-1 group py-1"
-                        >
-                            <div className="w-9 h-9 rounded-full border dark:border-gray-800 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group-hover:scale-105">
-                                {item.icon}
-                            </div>
-                            <span className="text-[8px] text-center text-gray-600 dark:text-gray-400 font-medium leading-tight">
-                                {item.label}
-                            </span>
-                        </button>
-                    ))}
+                    <div className="text-center">
+                        <p className="text-[10px] text-gray-400">
+                            Anyone with this link can view and edit this design.
+                        </p>
+                    </div>
                 </div>
             </div>
-        </div>
+        );
+    };
+
+    const ShareTool = ({ icon, label, onClick }) => (
+        <button
+            onClick={onClick}
+            className="flex flex-col items-center gap-2 group p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        >
+            <div className="w-10 h-10 flex items-center justify-center text-gray-600 dark:text-gray-400 group-hover:text-purple-600 transition-colors">
+                {React.cloneElement(icon, { className: "w-5 h-5" })}
+            </div>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">{label}</span>
+        </button>
     );
 
     const renderDownloadView = () => (
         <div className="flex flex-col h-full animate-fadeIn">
-            {/* Header */}
             <div className="flex items-center px-1.5 py-1.5 border-b dark:border-gray-800">
-                <button onClick={handleBackToShare} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                    <ChevronLeft className="w-5 h-5" />
-                </button>
-                <h2 className="font-bold text-base dark:text-white ml-1">Download</h2>
+                <h2 className="font-bold text-base dark:text-white ml-3">Download</h2>
             </div>
 
             <div className="p-3 space-y-3 overflow-y-auto flex-1 custom-scrollbar">
@@ -440,7 +436,6 @@ const ExportManager = ({
                                             <p className="text-[8px] text-gray-500 leading-tight">{type.desc}</p>
                                         </div>
                                     </div>
-                                    {fileType === type.id && <Check className="w-3 h-3 text-purple-600" />}
                                 </button>
                             ))}
                         </div>

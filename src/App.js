@@ -961,23 +961,27 @@ const App = () => {
     );
   }
 
+  const handleLandingPageLogin = (userData, pendingTool) => {
+    setUser(userData);
+    if (pendingTool) {
+      console.log("Auto-redirecting to tool:", pendingTool);
+      const allConverters = Object.values(converters).flat();
+      const foundConverter = allConverters.find(
+        c => c.name.toLowerCase() === pendingTool.toLowerCase() ||
+          c.name.toLowerCase().replace(/[^a-z0-9]/g, '-') === pendingTool.toLowerCase().replace(/[^a-z0-9]/g, '-')
+      );
+      if (foundConverter) {
+        handleSetActiveConverter(foundConverter);
+      }
+    }
+  };
+
   // If no user is logged in, show Landing Page
   if (!user) {
     return (
-      <>
-        <LandingPage
-          onSignupClick={() => setAuthModalOpen(true)}
-          onLoginClick={() => setAuthModalOpen(true)}
-        />
-        <AuthModal
-          isOpen={authModalOpen}
-          onClose={() => setAuthModalOpen(false)}
-          onAuthSuccess={(userData) => {
-            setUser(userData);
-            setAuthModalOpen(false);
-          }}
-        />
-      </>
+      <LandingPage
+        onLoginSuccess={handleLandingPageLogin}
+      />
     );
   }
 

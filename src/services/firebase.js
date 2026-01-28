@@ -11,20 +11,22 @@ import {
     setPersistence,
     browserLocalPersistence
 } from 'firebase/auth';
+import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBI0cB_xjCGBdGAft8p_4xVIwWts6DI4qo",
-    authDomain: "pro-image-toolkit.firebaseapp.com",
-    projectId: "pro-image-toolkit",
-    storageBucket: "pro-image-toolkit.firebasestorage.app",
-    messagingSenderId: "612265861601",
-    appId: "1:612265861601:web:7aea4a3db2bcda879b32a0",
-    measurementId: "G-PCDN1DQ1G4"
+    apiKey: "AIzaSyAU3nW4QEqW5rMo5kS5P0FitjxFVqn5nHc",
+    authDomain: "pro-image-toolkit-1.firebaseapp.com",
+    projectId: "pro-image-toolkit-1",
+    storageBucket: "pro-image-toolkit-1.firebasestorage.app",
+    messagingSenderId: "963291465289",
+    appId: "1:963291465289:web:0a6786dc286adc2ca76198",
+    measurementId: "G-WEYXB4TTSY"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const analytics = getAnalytics(app);
 
 // Set persistence as default
 setPersistence(auth, browserLocalPersistence).catch((error) => {
@@ -171,11 +173,13 @@ export const signInWithEmail = async (email, password) => {
         let friendlyError = "Login failed.";
         switch (error.code) {
             case 'auth/user-not-found':
-                friendlyError = "No account found with this email.";
+            case 'auth/invalid-credential':
+                friendlyError = "Invalid email or password. Please check your credentials or sign up if you don't have an account.";
                 break;
             case 'auth/wrong-password':
                 friendlyError = "Incorrect password.";
                 break;
+
             case 'auth/invalid-email':
                 friendlyError = "Invalid email address.";
                 break;

@@ -173,7 +173,7 @@ class P2PSyncService {
     }
 
     // Helper to send data in chunks
-    sendChunked(conn, data) {
+    async sendChunked(conn, data) {
         try {
             const json = JSON.stringify(data);
             const totalChunks = Math.ceil(json.length / this.CHUNK_SIZE);
@@ -188,6 +188,12 @@ class P2PSyncService {
                     total: totalChunks,
                     payload: chunk
                 });
+
+                // Throttle to prevent WebRTC buffer overflow
+                // This is critical for large image data transfer reliability
+                if (i % 5 === 0) { // Slight optimization: wait every 5 chunks
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
             }
         } catch (e) {
             console.error('[P2P] Failed to send chunked data:', e);

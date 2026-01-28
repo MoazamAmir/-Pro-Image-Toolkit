@@ -1,7 +1,7 @@
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Music, Zap, Moon, Sun, Edit2 } from 'lucide-react';
+import { Moon, Sun, Edit2 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import Header from './components/Header';
@@ -10,6 +10,9 @@ import ConverterUI from './components/ConverterUI';
 import CropImageTool from './components/CropImageTool';
 import ToolDetailsPanel from './components/ToolDetailsPanel';
 import ImageEditor from './components/ImageEditor';
+import { AuthModal } from './components/Auth';
+import LandingPage from './components/LandingPage/LandingPage';
+import { onAuthChange, logOut, getGoogleRedirectResult, auth } from './services/firebase';
 
 import {
   convertImage,
@@ -119,8 +122,41 @@ const App = () => {
   const [conversionProgress, setConversionProgress] = useState(0);
   const [error, setError] = useState(null);
 
+  // Auth State
+  const [user, setUser] = useState(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const fileInputRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
+
+  // Auth State Listener
+  useEffect(() => {
+    console.log("Auth System: Initializing...");
+
+    // Safety timeout to clear loading screen
+    const safetyTimeout = setTimeout(() => {
+      setAuthLoading(prev => {
+        if (prev) {
+          console.warn("Auth System: Timeout reached. Forcing ready state.");
+          return false;
+        }
+        return prev;
+      });
+    }, 4000);
+
+    const unsubscribe = onAuthChange((currentUser) => {
+      console.log("Auth System: User status received ->", currentUser ? currentUser.email : "Guest");
+      setUser(currentUser);
+      setAuthLoading(false);
+      clearTimeout(safetyTimeout);
+    });
+
+    return () => {
+      unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
+  }, []);
 
   useEffect(() => {
     if (convertedFile?.name) {
@@ -895,6 +931,57 @@ const App = () => {
     setSelectedContainerId(newId);
   };
 
+  // If auth is loading, show a simple loading state
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(180deg, #8b5cf6 0%, #06b6d4 100%)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 40,
+            height: 40,
+            border: '3px solid rgba(255,255,255,0.3)',
+            borderTopColor: 'white',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 16px'
+          }} />
+          {error && (
+            <div style={{ color: 'white', background: 'rgba(255,0,0,0.3)', padding: '12px', borderRadius: '8px', maxWidth: '300px' }}>
+              <p style={{ margin: 0, fontSize: '14px' }}>{error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // If no user is logged in, show Landing Page
+  if (!user) {
+    return (
+      <>
+        <LandingPage
+          onSignupClick={() => setAuthModalOpen(true)}
+          onLoginClick={() => setAuthModalOpen(true)}
+        />
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onAuthSuccess={(userData) => {
+            setUser(userData);
+            setAuthModalOpen(false);
+          }}
+        />
+      </>
+    );
+  }
+
+  // User is logged in, show main app
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-purple-50 to-blue-50'} flex flex-col transition-all duration-500`}>
       {!isEditing && (
@@ -908,6 +995,8 @@ const App = () => {
           conversionQuality={conversionQuality}
           setConversionQuality={setConversionQuality}
           setPreviewUrl={setPreviewUrl}
+          user={user}
+          onLogout={async () => { await logOut(); setUser(null); }}
         />
       )}
       <main className={!isEditing ? "flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full" : "w-screen h-screen"}>

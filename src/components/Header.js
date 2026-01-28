@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Zap, Moon, Sun, ChevronDown, Sparkles, Search, ArrowLeft } from 'lucide-react';
+import { Zap, Moon, Sun, ChevronDown, Sparkles, Search, ArrowLeft, LogOut, User } from 'lucide-react';
 
 const Header = ({
     darkMode,
@@ -9,6 +9,8 @@ const Header = ({
     setSelectedFile,
     setConvertedFile,
     setPreviewUrl,
+    user,
+    onLogout,
 }) => {
     const [activeDropdown, setActiveDropdown] = useState(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -318,12 +320,52 @@ const Header = ({
                                 <Moon className="w-5 h-5 sm:w-5 sm:h-5 text-white relative z-10 drop-shadow-lg" />
                             )}
                         </button>
-                        {/* <span
-                            className={`hidden sm:inline text-xs font-bold ${darkMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white border-purple-500/30' : 'bg-gradient-to-r from-yellow-400 to-orange-400 text-white border-yellow-500/30'} px-4 py-2 rounded-full backdrop-blur-sm shadow-xl border-2 flex items-center gap-1.5`}
-                        >
-                            <Zap className="w-3.5 h-3.5 animate-pulse" />
-                            Fast & Free
-                        </span> */}
+
+                        {/* User Profile & Logout */}
+                        {user && (
+                            <div className="relative" ref={(el) => (dropdownRefs.current['user'] = el)}>
+                                <button
+                                    onClick={() => setActiveDropdown(activeDropdown === 'user' ? null : 'user')}
+                                    className={`flex items-center gap-2 p-1.5 sm:p-2 pr-3 rounded-xl ${darkMode ? 'bg-gray-800/60 hover:bg-gray-700/60 border-purple-700/30' : 'bg-white/25 hover:bg-white/35 border-white/30'} transition-all duration-300 backdrop-blur-md shadow-xl border-2`}
+                                >
+                                    {user.photoURL ? (
+                                        <img
+                                            src={user.photoURL}
+                                            alt="Profile"
+                                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover"
+                                        />
+                                    ) : (
+                                        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${darkMode ? 'bg-purple-600' : 'bg-purple-500'} flex items-center justify-center`}>
+                                            <User className="w-4 h-4 text-white" />
+                                        </div>
+                                    )}
+                                    <ChevronDown className={`w-3.5 h-3.5 text-white transition-transform duration-300 ${activeDropdown === 'user' ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {activeDropdown === 'user' && (
+                                    <div className={`absolute top-full right-0 mt-2 ${darkMode ? 'bg-gray-900/95 border-purple-700/50' : 'bg-white/95 border-purple-300/50'} shadow-2xl rounded-xl border-2 z-50 backdrop-blur-xl overflow-hidden min-w-[200px]`}>
+                                        <div className={`px-4 py-3 ${darkMode ? 'border-b border-purple-700/30' : 'border-b border-purple-200'}`}>
+                                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} truncate`}>
+                                                {user.displayName || 'User'}
+                                            </p>
+                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} truncate`}>
+                                                {user.email}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setActiveDropdown(null);
+                                                onLogout && onLogout();
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all ${darkMode ? 'text-red-400 hover:bg-red-900/30' : 'text-red-600 hover:bg-red-50'}`}
+                                        >
+                                            <LogOut className="w-4 h-4" />
+                                            Log out
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

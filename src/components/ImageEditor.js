@@ -164,6 +164,56 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers } : p));
     }, [layers]);
 
+    // Broadcast state changes to P2P service
+    useEffect(() => {
+        if (isReceivingSync.current) return;
+
+        if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+        }
+
+        syncTimeoutRef.current = setTimeout(() => {
+            const currentState = {
+                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), // Ensure current layers are in pages
+                activePageId,
+                canvasSize,
+                adjustments
+            };
+            p2pService.syncState(currentState);
+        }, 500);
+
+        return () => {
+            if (syncTimeoutRef.current) {
+                clearTimeout(syncTimeoutRef.current);
+            }
+        };
+    }, [pages, activePageId, canvasSize, adjustments, layers]);
+
+    // Broadcast state changes to P2P service
+    useEffect(() => {
+        if (isReceivingSync.current) return;
+
+        if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+        }
+
+        syncTimeoutRef.current = setTimeout(() => {
+            const currentState = {
+                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), // Ensure current layers are in pages
+                activePageId,
+                canvasSize,
+                adjustments
+            };
+            p2pService.syncState(currentState);
+        }, 500);
+
+        return () => {
+            if (syncTimeoutRef.current) {
+                clearTimeout(syncTimeoutRef.current);
+            }
+        };
+    }, [pages, activePageId, canvasSize, adjustments, layers]);
+
     // P2P Sync - Initialize on mount
     useEffect(() => {
         const initP2P = async () => {
@@ -279,13 +329,27 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     // Page Management functionality
     const addPage = () => {
         const newPageId = pages.length > 0 ? Math.max(...pages.map(p => p.id)) + 1 : 1;
+
+        // Calculate dimensions to fit the screen
+        let newWidth = canvasSize.width;
+        let newHeight = canvasSize.height;
+
+        if (containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            // Use 90% of the container size to ensure it fits nicely within the screen
+            // We use a fixed aspect ratio or just fill the available space minus padding
+            newWidth = rect.width * 0.9;
+            newHeight = rect.height * 0.9;
+            setCanvasSize({ width: newWidth, height: newHeight });
+        }
+
         const newBgLayer = {
             id: 'background-layer',
             type: 'shape',
             shapeType: 'rectangle', // Default to a white rectangle background
             color: '#ffffff',
-            width: canvasSize.width,
-            height: canvasSize.height,
+            width: newWidth,
+            height: newHeight,
             x: 50,
             y: 50,
             isSelected: true,
@@ -557,6 +621,12 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     useEffect(() => {
         const processFile = async () => {
             if (file) {
+                // Skip processing for dummy project file used for P2P connection
+                if (file.name === 'Project' && file.type === 'image/project') {
+                    console.log('Opened in Project Mode, waiting for P2P state...');
+                    return;
+                }
+
                 try {
                     // Compress image before loading to ensure P2P sync works reliably
                     const options = {
@@ -2437,7 +2507,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                             </div>
 
                                             <div className="pb-4 space-y-6">
-                                                {recentlyUsedAnimations.length > 0 && (
+                                                {/* {recentlyUsedAnimations.length > 0 && (
                                                     <div className="animate-fadeIn">
                                                         <h4 className={`text-[10px] font-black uppercase mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Recently Used</h4>
                                                         <div className="grid grid-cols-4 gap-x-2 gap-y-4">
@@ -2458,7 +2528,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                             ))}
                                                         </div>
                                                     </div>
-                                                )}
+                                                )} */}
                                                 {[
                                                     { title: 'Emojis', icon: <Smile className="w-5 h-5" /> },
                                                     { title: 'Arrows', icon: <ArrowRight className="w-5 h-5" /> },

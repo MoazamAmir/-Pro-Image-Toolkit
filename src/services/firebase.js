@@ -9,9 +9,8 @@ import {
     signOut,
     onAuthStateChanged,
     setPersistence,
-    browserLocalPersistence,
-    browserPopupRedirectResolver // پاپ اپ کے مسائل حل کرنے کے لیے
-} from 'firebase/auth'; // 'firebase/app-auth' کی جگہ 'firebase/auth' استعمال کریں
+    browserLocalPersistence
+} from 'firebase/auth';
 
 const firebaseConfig = {
     apiKey: "AIzaSyBI0cB_xjCGBdGAft8p_4xVIwWts6DI4qo",
@@ -29,22 +28,29 @@ const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
 // Google Sign In Configuration
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
 googleProvider.setCustomParameters({
     prompt: 'select_account'
 });
 
 export const signInWithGoogle = async () => {
     try {
-        // Persistence set karna takay user login rahay
+        // persistence set karna takay user login rahay - set persistence once or use default
         await setPersistence(auth, browserLocalPersistence);
 
-        // Popup open karein resolver ke sath
-        const result = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
+        console.log(">>> DIAGNOSTIC: Google Popup Initiated");
+        const result = await signInWithPopup(auth, googleProvider);
 
         if (result && result.user) {
-            console.log("Login Success:", result.user.email);
+            console.log(">>> DIAGNOSTIC: Login Success!");
+            console.log(">>> USER_OBJECT:", result.user);
+            console.log(">>> USER_EMAIL:", result.user.email || "NO_EMAIL_FOUND");
             return { user: result.user, error: null };
         }
+
+        console.warn(">>> DIAGNOSTIC: result object exists but user is missing", result);
+        return { user: null, error: "Authenticated but user data is missing." };
     } catch (error) {
         console.error("Firebase Error:", error.code);
 
@@ -94,6 +100,11 @@ export const onAuthChange = (callback) => {
     return onAuthStateChanged(auth, (user) => {
         callback(user);
     });
+};
+
+// Fallback for redirect flow if needed by App.js
+export const getGoogleRedirectResult = async () => {
+    return { user: null, error: null };
 };
 
 export { auth };

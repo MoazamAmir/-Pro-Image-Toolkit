@@ -2,17 +2,20 @@ import React, { useState, useEffect } from 'react';
 import {
     Image as ImageIcon, FileText, Video,
     Play, Check, ChevronDown, Monitor,
-    Link2, Globe, Lock, User, ArrowLeft, Instagram, LayoutGrid, Clipboard, MoreHorizontal
+    Link2, Globe, Lock, User, ArrowLeft, Instagram, LayoutGrid, Clipboard, MoreHorizontal,
+    Search, Settings, Users, Link, Download as DownloadIcon, Eye, Instagram as InstagramIcon,
+    Video as VideoIcon, Layout as LayoutIcon, Presentation, Copy as CopyIcon, MoreHorizontal as MoreHorizontalIcon,
+    Plus, Sparkles
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-// import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import pptxgen from 'pptxgenjs';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import GIF from 'gif.js';
 import PageThumbnail from './PageThumbnail';
+import FirebaseSyncService from '../services/FirebaseSyncService';
 
 const ExportManager = ({
     isOpen,
@@ -24,13 +27,16 @@ const ExportManager = ({
     generateSVG,
     canvasSize,
     darkMode,
-    projectId,
+    designId,
+    onDesignIdGenerated,
+    canvasPreviewRef,
     adjustments
 }) => {
-    const [view, setView] = useState('download'); // Default to download view now
+    const [view, setView] = useState('share_design'); // Default to share_design view
+    const [publicViewStatus, setPublicViewStatus] = useState('idle'); // 'idle', 'creating', 'live'
+    const [publicLink, setPublicLink] = useState('');
     const [fileType, setFileType] = useState('PNG');
     const [size, setSize] = useState(1);
-    // const [limitFileSize, setLimitFileSize] = useState(false);
     const [compressFile, setCompressFile] = useState(false);
     const [transparentBg, setTransparentBg] = useState(false);
     const [selectedPages, setSelectedPages] = useState(['all']); // ['all'], ['current'], or [pageIds]
@@ -41,9 +47,32 @@ const ExportManager = ({
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
     const [isCopying, setIsCopying] = useState(false);
+    const [previewSrc, setPreviewSrc] = useState(null);
 
-    // Share link - just use current URL (project ID added automatically by P2P service)
-    const shareUrl = window.location.href.split('#')[0]; // Remove any hash
+    // Share link - point to the collaboration (edit) link
+    const shareUrl = designId
+        ? `${window.location.origin}/edit/${designId}`
+        : window.location.href.split('#')[0];
+
+    // Generate preview when opening public link view
+    useEffect(() => {
+        if (view === 'public_view_link' && !previewSrc) {
+            const generatePreview = async () => {
+                try {
+                    if (canvasPreviewRef?.current) {
+                        const src = canvasPreviewRef.current.toDataURL('image/jpeg', 0.5);
+                        setPreviewSrc(src);
+                    } else if (renderFinalCanvas) {
+                        const canvas = await renderFinalCanvas(layers, adjustments, { scale: 0.5, transparent: false });
+                        setPreviewSrc(canvas.toDataURL('image/jpeg', 0.5));
+                    }
+                } catch (e) {
+                    console.error("Failed to generate preview", e);
+                }
+            };
+            generatePreview();
+        }
+    }, [view, canvasPreviewRef, renderFinalCanvas, layers, adjustments, previewSrc]);
 
     // Load preferences from localStorage
     useEffect(() => {
@@ -85,7 +114,6 @@ const ExportManager = ({
         { id: 'PPTX', label: 'PPTX', desc: 'Microsoft PowerPoint document', icon: <Monitor className="w-4 h-4" /> },
     ];
 
-
     const handleExport = async () => {
         setIsExporting(true);
         try {
@@ -93,7 +121,6 @@ const ExportManager = ({
             const date = new Date().toISOString().split('T')[0];
             const baseFileName = `design_${date}`;
 
-            // Determine which pages to export
             let pagesToExport = [];
             if (selectedPages.includes('all')) {
                 pagesToExport = pages;
@@ -114,14 +141,11 @@ const ExportManager = ({
 
             if (fileType === 'MP4' || fileType === 'GIF') {
                 const ffmpeg = fileType === 'MP4' ? new FFmpeg() : null;
-                if (ffmpeg) {
-                    await ffmpeg.load();
-                }
+                if (ffmpeg) await ffmpeg.load();
 
                 const generateForPage = async (page) => {
                     const gif = fileType === 'GIF' ? new GIF({
-                        workers: 2,
-                        quality: 10,
+                        workers: 2, quality: 10,
                         width: (page.width || 1080) * size,
                         height: (page.height || 720) * size,
                         workerScript: '/gif.worker.js'
@@ -134,17 +158,11 @@ const ExportManager = ({
                     for (let i = 0; i < totalFrames; i++) {
                         const frameTime = (i / totalFrames) * duration;
                         const canvas = await renderFinalCanvas(page.layers, null, {
-                            scale: size,
-                            transparent: transparentBg,
-                            frameTime,
-                            duration,
-                            useOriginalResolution: true,
-                            limitResolution: true, // CAP FOR VIDEO
-                            isFrame: true // Optimization hint
+                            scale: size, transparent: transparentBg, frameTime, duration,
+                            useOriginalResolution: true, limitResolution: true, isFrame: true
                         });
 
                         if (fileType === 'MP4' && ffmpeg) {
-                            // Ensure dimensions are even (required by some encoders)
                             const frameData = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
                             await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(frameData));
                         } else if (fileType === 'GIF' && gif) {
@@ -153,28 +171,8 @@ const ExportManager = ({
                     }
 
                     if (fileType === 'MP4' && ffmpeg) {
-                        // Use libx264 with yuv420p and ensure even dimensions via scale filter if needed
-                        await ffmpeg.exec([
-                            '-framerate', fps.toString(),
-                            '-i', 'frame_%03d.png',
-                            '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', // Ensure even dimensions
-                            '-c:v', 'libx264',
-                            '-pix_fmt', 'yuv420p',
-                            '-movflags', '+faststart',
-                            'output.mp4'
-                        ]);
+                        await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'output.mp4']);
                         const data = await ffmpeg.readFile('output.mp4');
-
-                        // Cleanup
-                        try {
-                            await ffmpeg.deleteFile('output.mp4');
-                            for (let i = 0; i < totalFrames; i++) {
-                                await ffmpeg.deleteFile(`frame_${i.toString().padStart(3, '0')}.png`);
-                            }
-                        } catch (e) {
-                            console.warn("FFmpeg cleanup error:", e);
-                        }
-
                         return new Blob([data.buffer], { type: 'video/mp4' });
                     } else if (fileType === 'GIF' && gif) {
                         return new Promise((resolve) => {
@@ -188,87 +186,49 @@ const ExportManager = ({
                 if (pagesToExport.length > 1) {
                     for (let i = 0; i < pagesToExport.length; i++) {
                         setExportProgress(Math.round((i / pagesToExport.length) * 100));
-                        try {
-                            const blob = await generateForPage(pagesToExport[i]);
-                            if (blob) {
-                                zip.file(`page_${i + 1}.${fileType === 'MP4' ? 'mp4' : 'gif'}`, blob);
-                            }
-                        } catch (e) {
-                            console.error(`Error generating media for page ${i + 1}:`, e);
-                        }
+                        const blob = await generateForPage(pagesToExport[i]);
+                        if (blob) zip.file(`page_${i + 1}.${fileType === 'MP4' ? 'mp4' : 'gif'}`, blob);
                     }
-                    setExportProgress(95);
                     const content = await zip.generateAsync({ type: 'blob' });
                     saveAs(content, `${baseFileName}.zip`);
                 } else {
-                    setExportProgress(10);
                     const blob = await generateForPage(pagesToExport[0]);
-                    setExportProgress(100);
-                    if (blob) {
-                        saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`);
-                    }
+                    if (blob) saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`);
                 }
             } else if (fileType === 'PDF_STD' || fileType === 'PDF_PRINT') {
                 let pdf = null;
-                // PDF Logic: Always ZIP
-                // Iterate through selected pages
                 for (let i = 0; i < pagesToExport.length; i++) {
-                    // Use original resolution for highest quality
-                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, {
-                        scale: size,
-                        transparent: transparentBg,
-                        useOriginalResolution: true
-                    });
-
+                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
                     if (canvas) {
                         if (!pdf) {
-                            pdf = new jsPDF({
-                                orientation: canvas.width > canvas.height ? 'l' : 'p',
-                                unit: 'px',
-                                format: [canvas.width, canvas.height]
-                            });
+                            pdf = new jsPDF({ orientation: canvas.width > canvas.height ? 'l' : 'p', unit: 'px', format: [canvas.width, canvas.height] });
                         } else {
                             pdf.addPage([canvas.width, canvas.height], canvas.width > canvas.height ? 'l' : 'p');
                         }
-
-                        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                        pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+                        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, canvas.width, canvas.height);
                     }
                 }
-
                 if (pdf) {
                     const pdfBlob = pdf.output('blob');
-                    // ALWAYS put PDF in ZIP as requested
                     zip.file(`${baseFileName}.pdf`, pdfBlob);
                     const content = await zip.generateAsync({ type: 'blob' });
                     saveAs(content, `${baseFileName}.zip`);
                 }
             } else if (fileType === 'SVG') {
                 if (pagesToExport.length > 1) {
-                    for (let i = 0; i < pagesToExport.length; i++) {
-                        const svgData = generateSVG(pagesToExport[i].layers);
-                        zip.file(`page_${i + 1}.svg`, svgData);
-                    }
+                    for (let i = 0; i < pagesToExport.length; i++) zip.file(`page_${i + 1}.svg`, generateSVG(pagesToExport[i].layers));
                     const content = await zip.generateAsync({ type: 'blob' });
                     saveAs(content, `${baseFileName}.zip`);
                 } else {
-                    const svgData = generateSVG(pagesToExport[0].layers);
-                    const blob = new Blob([svgData], { type: 'image/svg+xml' });
-                    saveAs(blob, `${baseFileName}.svg`);
+                    saveAs(new Blob([generateSVG(pagesToExport[0].layers)], { type: 'image/svg+xml' }), `${baseFileName}.svg`);
                 }
             } else if (shouldZip) {
-                // ZIP of images
                 for (let i = 0; i < pagesToExport.length; i++) {
-                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, {
-                        scale: size,
-                        transparent: transparentBg,
-                        useOriginalResolution: true
-                    });
+                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
                     if (canvas) {
-                        const ext = fileType === 'JPG' ? 'jpg' : 'png';
                         const mime = fileType === 'JPG' ? 'image/jpeg' : 'image/png';
                         const blob = await new Promise(resolve => canvas.toBlob(resolve, mime, fileType === 'JPG' ? 0.9 : 1));
-                        zip.file(`page_${i + 1}.${ext}`, blob);
+                        zip.file(`page_${i + 1}.${fileType === 'JPG' ? 'jpg' : 'png'}`, blob);
                     }
                 }
                 const content = await zip.generateAsync({ type: 'blob' });
@@ -276,356 +236,246 @@ const ExportManager = ({
             } else if (fileType === 'PPTX') {
                 const pptx = new pptxgen();
                 for (let i = 0; i < pagesToExport.length; i++) {
-                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, {
-                        scale: size,
-                        transparent: transparentBg,
-                        useOriginalResolution: true
-                    });
+                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
                     if (canvas) {
                         const slide = pptx.addSlide();
-                        slide.addImage({
-                            data: canvas.toDataURL('image/png'),
-                            x: 0, y: 0,
-                            w: '100%', h: '100%'
-                        });
+                        slide.addImage({ data: canvas.toDataURL('image/png'), x: 0, y: 0, w: '100%', h: '100%' });
                     }
                 }
                 const pptxBlob = await pptx.write('blob');
-                // Wrap PPTX in ZIP for consistency if user desires, but prompt didn't explicitly ask for PPTX in zip, 
-                // only "jo pdf ha wo zip ka ander he downlode honi chay". 
-                // Sticking to standard download for PPTX for now unless "shouldZip" is true (multi-page).
-                // Actually, "User: ...method bas mp4 vedio and gift ka laya ha baki sara usi tara he downlode ho"
-                // meaning others should follow similar logic. But "zip ka ander jab pdf ma type select kar" implies specific rule for PDF.
                 saveAs(pptxBlob, `${baseFileName}.pptx`);
             } else {
-                // Single image export
-                const page = pagesToExport[0];
-                const canvas = await renderFinalCanvas(page.layers, null, {
-                    scale: size,
-                    transparent: transparentBg,
-                    useOriginalResolution: true
-                });
+                const canvas = await renderFinalCanvas(pagesToExport[0].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
                 if (canvas) {
-                    const ext = fileType === 'JPG' ? 'jpg' : 'png';
-                    const mime = fileType === 'JPG' ? 'image/jpeg' : 'image/png';
                     const link = document.createElement('a');
-                    link.download = `${baseFileName}.${ext}`;
-                    link.href = canvas.toDataURL(mime, fileType === 'JPG' ? 0.9 : 1);
+                    link.download = `${baseFileName}.${fileType === 'JPG' ? 'jpg' : 'png'}`;
+                    link.href = canvas.toDataURL(fileType === 'JPG' ? 'image/jpeg' : 'image/png', fileType === 'JPG' ? 0.9 : 1);
                     link.click();
                 }
             }
-
             setIsExporting(false);
             onClose();
         } catch (err) {
             console.error('Export fail:', err);
-            alert(`Export failed: ${err.message || 'Unknown error'}. Please check if all images are loaded correctly.`);
+            alert(`Export failed: ${err.message}.`);
             setIsExporting(false);
         }
     };
 
-
-    const handleCopyLink = () => {
-        // Just copy the current URL which contains the project ID
-        // P2P service handles the real-time sync
-        navigator.clipboard.writeText(window.location.href);
+    const handleCopyLink = async () => {
         setIsCopying(true);
+        let urlToCopy = shareUrl;
+
+        // If no designId, we need to create one first to share
+        if (!designId) {
+            try {
+                const currentState = {
+                    pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
+                    activePageId,
+                    canvasSize,
+                    adjustments,
+                    lastModified: Date.now()
+                };
+                const newDesignId = await FirebaseSyncService.createDesign(currentState);
+                onDesignIdGenerated(newDesignId);
+                urlToCopy = `${window.location.origin}/edit/${newDesignId}`;
+            } catch (err) {
+                console.error('Failed to create design for sharing:', err);
+                setIsCopying(false);
+                alert("Failed to create share link. Please try again.");
+                return;
+            }
+        }
+
+        navigator.clipboard.writeText(urlToCopy);
         setTimeout(() => setIsCopying(false), 2000);
     };
 
-    const renderShareView = () => {
+    const handleCreatePublicLink = async () => {
+        setPublicViewStatus('creating');
+        try {
+            // Use current designId if it exists, otherwise create new
+            let currentDesignId = designId;
+
+            if (!currentDesignId) {
+                // Prepare state for initial save
+                const currentState = {
+                    pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
+                    activePageId,
+                    canvasSize,
+                    adjustments,
+                    lastModified: Date.now()
+                };
+
+                // Save to cloud for the first time
+                currentDesignId = await FirebaseSyncService.createDesign(currentState);
+                onDesignIdGenerated(currentDesignId);
+            }
+
+            if (currentDesignId) {
+                const link = `${window.location.origin}/view/${currentDesignId}`;
+                setPublicLink(link);
+                setPublicViewStatus('live');
+            }
+        } catch (error) {
+            console.error('Failed to create public link:', error);
+            setPublicViewStatus('idle');
+            alert("Failed to create public link. Please check your connection.");
+        }
+    };
+
+    const ShareAction = ({ icon: Icon, label, onClick, badge }) => (
+        <button onClick={onClick} className="flex flex-col items-center gap-1.5 group p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-all active:scale-95">
+            <div className="w-11 h-11 flex items-center justify-center rounded-full border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 group-hover:bg-purple-50 dark:group-hover:bg-purple-900/10 group-hover:border-purple-200 dark:group-hover:border-purple-900/30 group-hover:text-purple-600 transition-all relative">
+                <Icon className="w-5 h-5" />
+                {badge && <div className="absolute -top-1 -right-1">{badge}</div>}
+            </div>
+            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 text-center leading-tight group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{label}</span>
+        </button>
+    );
+
+    const renderShareDesignView = () => (
+        <div className="flex flex-col h-full animate-fadeIn">
+            <div className="flex items-center justify-between px-5 py-3 border-b dark:border-gray-800">
+                <h2 className="font-bold text-lg dark:text-white">Share design</h2>
+                <div className="flex items-center gap-4 text-gray-600 dark:text-gray-400">
+                    <div className="flex items-center gap-1.5"><Users className="w-4 h-4" /><span className="text-sm font-medium">0 visitors</span></div>
+                    <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><Settings className="w-5 h-5" /></button>
+                </div>
+            </div>
+            <div className="px-5 space-y-4 pb-4 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="space-y-2">
+                    <label className="text-sm font-bold dark:text-white">People with access</label>
+                    <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" placeholder="Add people or groups" className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-950 border dark:border-gray-800 rounded-xl text-sm" /></div>
+                </div>
+                <button onClick={handleCopyLink} className="w-full py-2.5 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
+                    {isCopying ? <Check className="w-5 h-5" /> : <Link className="w-5 h-5" />}
+                    <span>{isCopying ? 'Copied!' : 'Copy link'}</span>
+                </button>
+                <div className="h-px bg-gray-100 dark:bg-gray-800" />
+                <div className="grid grid-cols-4 gap-2">
+                    <ShareAction icon={DownloadIcon} label="Download" onClick={() => setView('download')} />
+                    <ShareAction icon={Link} label="Public link" onClick={() => setView('public_view_link')} />
+                    <ShareAction icon={InstagramIcon} label="Instagram" onClick={() => { }} />
+                    <ShareAction icon={VideoIcon} label="Present" onClick={() => { }} />
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderShareView = () => (
+        <div className="flex flex-col h-full animate-fadeIn">
+            <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
+                <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                <h2 className="font-bold text-lg dark:text-white">Collaborate</h2>
+            </div>
+            <div className="p-5 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
+                <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/20">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">Share this link to let others edit this design with you in real-time.</p>
+                </div>
+                <button onClick={handleCopyLink} className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl flex items-center justify-center gap-3">
+                    {isCopying ? <Check className="w-5 h-5" /> : <Link2 className="w-5 h-5" />}
+                    <span>{isCopying ? 'Link copied!' : 'Copy collaboration link'}</span>
+                </button>
+            </div>
+        </div>
+    );
+
+    const renderPublicViewLinkView = () => {
         return (
             <div className="flex flex-col h-full animate-fadeIn">
-                <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800">
-                    <h2 className="font-bold text-lg dark:text-white">Collaborate</h2>
-                    <div className="flex items-center gap-1 text-gray-500 text-xs">
-                        <Globe className="w-4 h-4 text-green-500" />
-                        <span>Real-time</span>
-                    </div>
+                <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
+                    <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                    <h2 className="font-bold text-lg dark:text-white">Public view link {publicViewStatus === 'live' && <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-600 text-[10px] rounded-full uppercase">Live</span>}</h2>
                 </div>
-
-                <div className="p-5 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
-                    {/* Info Box */}
-                    <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/20">
-                        <div className="flex gap-3">
-                            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg h-fit">
-                                <Globe className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <div className="p-5 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
+                    {publicViewStatus !== 'live' ? (
+                        <>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Create a public view link for a view-only version of this design.</p>
+                            <div className="aspect-[3/2] w-full bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700">
+                                {previewSrc ? <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-12 h-12 opacity-20" /></div>}
                             </div>
-                            <div>
-                                <h3 className="font-bold text-sm text-gray-900 dark:text-white mb-1">Collaborate in Real-Time</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                                    Share the link below to let others edit this design with you in real-time. Changes sync instantly across devices.
-                                </p>
+                            <button onClick={handleCreatePublicLink} disabled={publicViewStatus === 'creating'} className="w-full py-3 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2">
+                                {publicViewStatus === 'creating' ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Create public view link'}
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="aspect-[3/2] w-full bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700">
+                                {previewSrc && <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" />}
                             </div>
-                        </div>
-                    </div>
-
-                    {/* Copy Link Button */}
-                    <button
-                        onClick={handleCopyLink}
-                        className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl flex items-center justify-center gap-3 shadow-lg shadow-purple-600/30 active:scale-[0.98] transition-all group"
-                    >
-                        {isCopying ? <Check className="w-5 h-5" /> : <Link2 className="w-5 h-5 group-hover:scale-110 transition-transform" />}
-                        <span className="text-sm">{isCopying ? 'Link copied to clipboard!' : 'Copy collaboration link'}</span>
-                    </button>
-
-                    <div className="text-center">
-                        <p className="text-[10px] text-gray-400">
-                            Anyone with this link can view and edit this design.
-                        </p>
-                    </div>
+                            <div className="space-y-3">
+                                <label className="text-sm font-bold dark:text-white">Public view link</label>
+                                <div className="flex gap-2">
+                                    <input type="text" readOnly value={publicLink} className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-950 border dark:border-gray-800 rounded-xl text-sm" />
+                                    <button onClick={() => { navigator.clipboard.writeText(publicLink); setIsCopying(true); setTimeout(() => setIsCopying(false), 2000); }} className="px-4 py-2 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl text-sm">
+                                        {isCopying ? <Check className="w-4 h-4" /> : 'Copy'}
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         );
     };
 
-    const ShareTool = ({ icon, label, onClick }) => (
-        <button
-            onClick={onClick}
-            className="flex flex-col items-center gap-2 group p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        >
-            <div className="w-10 h-10 flex items-center justify-center text-gray-600 dark:text-gray-400 group-hover:text-purple-600 transition-colors">
-                {React.cloneElement(icon, { className: "w-5 h-5" })}
-            </div>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">{label}</span>
-        </button>
-    );
-
     const renderDownloadView = () => (
         <div className="flex flex-col h-full animate-fadeIn">
-            <div className="flex items-center px-1.5 py-1.5 border-b dark:border-gray-800">
-                <h2 className="font-bold text-base dark:text-white ml-3">Download</h2>
+            <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
+                <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                <h2 className="font-bold text-lg dark:text-white">Download</h2>
             </div>
-
-            <div className="p-3 space-y-3 overflow-y-auto flex-1 custom-scrollbar">
-                {/* File Type */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
                 <div className="space-y-1 relative">
-                    <label className="text-[9px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">File type</label>
-                    <button
-                        onClick={() => setShowFileTypeDropdown(!showFileTypeDropdown)}
-                        className="w-full flex items-center justify-between p-1.5 border rounded-lg dark:bg-gray-900 dark:border-gray-800 hover:border-purple-500 transition-all text-xs"
-                    >
-                        <div className="flex items-center gap-2">
-                            {fileTypes.find(t => t.id === fileType)?.icon}
-                            <span className="dark:text-white font-medium">{fileTypes.find(t => t.id === fileType)?.label}</span>
-                            {fileTypes.find(t => t.id === fileType)?.suggested && (
-                                <span className="bg-blue-600 text-white text-[7px] px-1.5 py-0.5 rounded-full font-bold">Recommended</span>
-                            )}
-                        </div>
-                        <ChevronDown className={`w-3 h-3 text-gray-500 transition-transform ${showFileTypeDropdown ? 'rotate-180' : ''}`} />
+                    <label className="text-[10px] font-bold uppercase tracking-wider dark:text-gray-400">File type</label>
+                    <button onClick={() => setShowFileTypeDropdown(!showFileTypeDropdown)} className="w-full flex items-center justify-between p-2.5 border dark:border-gray-800 rounded-xl hover:border-purple-500 transition-all">
+                        <span className="text-sm dark:text-white">{fileTypes.find(t => t.id === fileType)?.label}</span>
+                        <ChevronDown className="w-4 h-4" />
                     </button>
-
                     {showFileTypeDropdown && (
-                        <div
-                            className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-slideUp"
-                            style={{ maxHeight: '180px', overflowY: 'auto' }}
-                        >
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
                             {fileTypes.map(type => (
-                                <button
-                                    key={type.id}
-                                    onClick={() => {
-                                        setFileType(type.id);
-                                        setShowFileTypeDropdown(false);
-                                    }}
-                                    className={`w-full flex items-center justify-between p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-left transition-colors ${fileType === type.id ? 'bg-purple-50 dark:bg-purple-900/10' : ''}`}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <div className="text-gray-600 dark:text-gray-400">{type.icon}</div>
-                                        <div>
-                                            <span className="text-[11px] font-bold dark:text-white">{type.label}</span>
-                                            <p className="text-[8px] text-gray-500 leading-tight">{type.desc}</p>
-                                        </div>
-                                    </div>
+                                <button key={type.id} onClick={() => { setFileType(type.id); setShowFileTypeDropdown(false); }} className={`w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${fileType === type.id ? 'bg-purple-50 dark:bg-purple-900/10' : ''}`}>
+                                    <div className="text-sm font-bold dark:text-white">{type.label}</div>
+                                    <div className="text-[10px] text-gray-500">{type.desc}</div>
                                 </button>
                             ))}
                         </div>
                     )}
                 </div>
-
-                {/* Size Slider */}
-                {(['PNG', 'JPG', 'SVG'].includes(fileType)) && (
-                    <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                            <label className="text-[9px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Size <span className="text-gray-400">×</span></label>
-                            <div className="px-1.5 py-0.5 border rounded-lg dark:bg-gray-900 dark:border-gray-800 text-[9px] font-bold w-8 text-center">
-                                {size}
-                            </div>
-                        </div>
-                        <input
-                            type="range"
-                            min="0.5"
-                            max="3"
-                            step="0.5"
-                            value={size}
-                            onChange={(e) => setSize(parseFloat(e.target.value))}
-                            className="w-full accent-purple-600 h-1 bg-gray-200 dark:bg-gray-800 rounded-lg cursor-pointer"
-                        />
-                        <p className="text-[8px] text-gray-400 text-center">1,344 × 768 px</p>
-                    </div>
-                )}
-
-                {/* Checkbox Options */}
-                <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setTransparentBg(!transparentBg)}>
-                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${transparentBg ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-700'}`}>
-                            {transparentBg && <Check className="w-2.5 h-2.5 text-white" />}
-                        </div>
-                        <span className="text-[11px] dark:text-gray-200">Transparent background</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setCompressFile(!compressFile)}>
-                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${compressFile ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-700'}`}>
-                            {compressFile && <Check className="w-2.5 h-2.5 text-white" />}
-                        </div>
-                        <span className="text-[11px] dark:text-gray-200">Compress file</span>
-                    </div>
+                <div className="space-y-2">
+                    <div className="flex justify-between items-center"><label className="text-[10px] font-bold uppercase tracking-wider dark:text-gray-400">Size</label><span className="text-xs font-bold dark:text-white">{size}x</span></div>
+                    <input type="range" min="0.5" max="3" step="0.5" value={size} onChange={(e) => setSize(parseFloat(e.target.value))} className="w-full accent-purple-600 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer" />
                 </div>
-
-                {/* Select Pages */}
-                <div className="space-y-1 relative">
-                    <label className="text-[9px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Select pages</label>
-                    <button
-                        onClick={() => setShowPageSelector(!showPageSelector)}
-                        className="w-full flex items-center justify-between p-1.5 border rounded-lg dark:bg-gray-900 dark:border-gray-800 hover:border-purple-500 transition-all text-xs"
-                    >
-                        <span className="dark:text-white font-medium">
-                            {selectedPages.includes('all') ? `All Pages (${(pages || []).length})` :
-                                selectedPages.includes('current') ? `Current Page (${(pages || []).findIndex(p => p.id === activePageId) + 1})` :
-                                    `${selectedPages.length} selected`}
-                        </span>
-                        <ChevronDown className={`w-3 h-3 text-gray-500 transition-transform ${showPageSelector ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {showPageSelector && (
-                        <div className="absolute top-0 left-0 right-0 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-2xl z-[60] overflow-hidden animate-slideUp">
-                            <div className="flex items-center justify-between px-3 py-2 border-b dark:border-gray-700">
-                                <span className="text-xs font-bold dark:text-white">Select pages</span>
-                                <button onClick={() => setShowPageSelector(false)} className="text-[10px] text-purple-600 font-bold hover:underline">Done</button>
-                            </div>
-                            <div className="p-2 space-y-2 overflow-y-auto" style={{ maxHeight: '220px' }}>
-                                <div
-                                    className="flex items-center gap-2 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer border-b dark:border-gray-800 pb-2"
-                                    onClick={() => setSelectedPages(['all'])}
-                                >
-                                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedPages.includes('all') ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-600'}`}>
-                                        {selectedPages.includes('all') && <Check className="w-3 h-3 text-white" />}
-                                    </div>
-                                    <span className="text-xs font-medium dark:text-white">All pages ({(pages || []).length})</span>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-1 pt-1">
-                                    {(pages || []).map((page, index) => {
-                                        const isSelected = selectedPages.includes('all') || selectedPages.includes(page.id) || (selectedPages.includes('current') && page.id === activePageId);
-                                        return (
-                                            <div
-                                                key={page.id}
-                                                className={`flex items-center gap-3 p-1.5 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-purple-50 dark:bg-purple-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-                                                onClick={() => {
-                                                    let newSelected;
-                                                    if (selectedPages.includes('all')) {
-                                                        newSelected = pages.filter(p => p.id !== page.id).map(p => p.id);
-                                                    } else if (selectedPages.includes('current')) {
-                                                        if (page.id === activePageId) {
-                                                            newSelected = [];
-                                                        } else {
-                                                            newSelected = [activePageId, page.id];
-                                                        }
-                                                    } else if (selectedPages.includes(page.id)) {
-                                                        newSelected = selectedPages.filter(id => id !== page.id);
-                                                    } else {
-                                                        newSelected = [...selectedPages, page.id];
-                                                    }
-
-                                                    if (newSelected.length === pages.length) {
-                                                        setSelectedPages(['all']);
-                                                    } else {
-                                                        setSelectedPages(newSelected);
-                                                    }
-                                                }}
-                                            >
-                                                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-600'}`}>
-                                                    {isSelected && <Check className="w-3 h-3 text-white" />}
-                                                </div>
-                                                <div className="w-10 h-7 rounded border dark:border-gray-700 overflow-hidden bg-gray-50 shrink-0">
-                                                    <PageThumbnail layers={page.layers || []} canvasSize={{ width: page.width, height: page.height }} />
-                                                </div>
-                                                <span className="text-xs dark:text-white truncate">Page {index + 1}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTransparentBg(!transparentBg)}><div className={`w-4 h-4 rounded border flex items-center justify-center ${transparentBg ? 'bg-purple-600 border-purple-600' : 'border-gray-300'}`}>{transparentBg && <Check className="w-3 h-3 text-white" />}</div><span className="text-sm dark:text-gray-200">Transparent background</span></div>
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCompressFile(!compressFile)}><div className={`w-4 h-4 rounded border flex items-center justify-center ${compressFile ? 'bg-purple-600 border-purple-600' : 'border-gray-300'}`}>{compressFile && <Check className="w-3 h-3 text-white" />}</div><span className="text-sm dark:text-gray-200">Compress file</span></div>
                 </div>
-
-                {/* Save Preferences */}
-                <div className="flex items-center gap-2.5 group cursor-pointer" onClick={() => setSavePreferences(!savePreferences)}>
-                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${savePreferences ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-700'}`}>
-                        {savePreferences && <Check className="w-2.5 h-2.5 text-white" />}
-                    </div>
-                    <span className="text-[11px] dark:text-gray-200">Save download settings</span>
-                </div>
-
-                {/* Download Button */}
-                <button
-                    onClick={handleExport}
-                    disabled={isExporting}
-                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold py-2 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-all text-sm mt-1"
-                >
-                    {isExporting ? (
-                        <>
-                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            <span>{exportProgress > 0 ? `Exporting ${exportProgress}%` : 'Exporting...'}</span>
-                        </>
-                    ) : (
-                        <span>Download</span>
-                    )}
+                <button onClick={handleExport} disabled={isExporting} className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-all">
+                    {isExporting ? `Exporting ${exportProgress}%` : 'Download'}
                 </button>
             </div>
         </div>
     );
 
     return (
-        <div className="fixed inset-0 z-[1000] pointer-events-none">
-            {/* Transparent backdrop to catch clicks for closing */}
-            <div
-                className="absolute inset-0 pointer-events-auto bg-black/5 sm:bg-transparent"
-                onClick={onClose}
-            />
-
-            <div
-                className="absolute top-14 right-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[340px] rounded-xl shadow-2xl overflow-hidden border dark:border-gray-800 shadow-black/20 animate-slideDown flex flex-col"
-                style={{ height: 'auto', maxHeight: 'calc(100vh - 80px)' }}
-            >
-                {view === 'share' ? renderShareView() : renderDownloadView()}
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 bg-black/5 pointer-events-auto" onClick={onClose} />
+            <div className="absolute top-14 right-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[340px] rounded-xl shadow-2xl overflow-hidden border dark:border-gray-800 shadow-black/20 animate-slideDown flex flex-col" style={{ height: 'auto', maxHeight: 'calc(100vh - 80px)' }}>
+                {view === 'share_design' ? renderShareDesignView() :
+                    view === 'share' ? renderShareView() :
+                        view === 'public_view_link' ? renderPublicViewLinkView() :
+                            renderDownloadView()}
             </div>
-
             <style>{`
-                @keyframes slideDown {
-                    from { opacity: 0; transform: translateY(-10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
+                @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
                 .animate-slideDown { animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
                 .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
-                
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 6px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: #e2e8f0;
-                    border-radius: 10px;
-                }
-                .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: #334155;
-                }
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+                .dark.custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
             `}</style>
         </div>
     );

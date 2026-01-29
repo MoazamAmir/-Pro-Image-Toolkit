@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { threeDElements } from '../data/threeDElements';
 import { framesElements } from '../data/framesElements';
 import { gridTemplates } from '../data/gridTemplates';
@@ -14,7 +14,9 @@ import { saveEditorState, loadEditorState, saveRecentlyUsedAnimations, loadRecen
 import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
 import p2pService from '../services/P2PService';
+import FirebaseSyncService from '../services/FirebaseSyncService';
 import imageCompression from 'browser-image-compression';
+import { uploadToCloudinary } from '../services/cloudinary';
 
 const {
     Type,
@@ -92,12 +94,20 @@ const {
     HelpCircle,
     ShoppingBag,
     Wallet,
-    Map
+    Map,
+    Share2
 } = LucideIcons;
 
 // ImageEditor component continues...
 
-const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
+const ImageEditor = ({
+    file,
+    onApply,
+    onCancel,
+    darkMode,
+    isViewOnly = false,
+    initialDesignId = null
+}) => {
     const [activeTab, setActiveTab] = useState('text');
     const [imageSrc, setImageSrc] = useState(null);
     const [layers, setLayers] = useState([]);
@@ -129,6 +139,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [isSaving, setIsSaving] = useState(false);
     const [showExportPopup, setShowExportPopup] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [extractedColors, setExtractedColors] = useState([]);
     const [colorSearchQuery, setColorSearchQuery] = useState('');
@@ -153,141 +164,111 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     const [canvasSize, setCanvasSize] = useState({ width: 1080, height: 720 });
     const [isResizingCanvas, setIsResizingCanvas] = useState(false); // { handle: 'e' | 's' | 'se' }
 
-    // P2P Sync State
-    const [isP2PConnected, setIsP2PConnected] = useState(false);
-    const [projectId, setProjectId] = useState(null);
-    const [peerCount, setPeerCount] = useState(0);
+    const [designId, setDesignId] = useState(initialDesignId);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const isReceivingSync = useRef(false);
     const syncTimeoutRef = useRef(null);
-    const isReceivingSync = useRef(false); // Flag to prevent sync loops
+
+    const hasLoadedInitialData = useRef(!initialDesignId);
 
     useEffect(() => {
         setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers } : p));
     }, [layers]);
 
-    // Broadcast state changes to P2P service
+    // Initialize Firebase Sync
     useEffect(() => {
-        if (isReceivingSync.current) return;
-
-        if (syncTimeoutRef.current) {
-            clearTimeout(syncTimeoutRef.current);
-        }
-
-        syncTimeoutRef.current = setTimeout(() => {
-            const currentState = {
-                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), // Ensure current layers are in pages
-                activePageId,
-                canvasSize,
-                adjustments
-            };
-            p2pService.syncState(currentState);
-        }, 500);
-
-        return () => {
-            if (syncTimeoutRef.current) {
-                clearTimeout(syncTimeoutRef.current);
+        const initFirebaseSync = async () => {
+            if (!designId && !initialDesignId) {
+                // Not in sync mode yet, maybe create a design later
+                return;
             }
-        };
-    }, [pages, activePageId, canvasSize, adjustments, layers]);
 
-    // Broadcast state changes to P2P service
-    useEffect(() => {
-        if (isReceivingSync.current) return;
+            const activeDesignId = designId || initialDesignId;
+            setIsSyncing(true);
 
-        if (syncTimeoutRef.current) {
-            clearTimeout(syncTimeoutRef.current);
-        }
-
-        syncTimeoutRef.current = setTimeout(() => {
-            const currentState = {
-                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), // Ensure current layers are in pages
-                activePageId,
-                canvasSize,
-                adjustments
-            };
-            p2pService.syncState(currentState);
-        }, 500);
-
-        return () => {
-            if (syncTimeoutRef.current) {
-                clearTimeout(syncTimeoutRef.current);
-            }
-        };
-    }, [pages, activePageId, canvasSize, adjustments, layers]);
-
-    // P2P Sync - Initialize on mount
-    useEffect(() => {
-        const initP2P = async () => {
             try {
-                const result = await p2pService.init((incomingState, source) => {
-                    console.log('[P2P] Received state from:', source);
-                    isReceivingSync.current = true;
+                // Initialize sync with callback for remote updates
+                await FirebaseSyncService.initSync(activeDesignId, (remoteData) => {
+                    if (isReceivingSync.current) return;
 
-                    if (incomingState.pages) {
-                        setPages(incomingState.pages);
-                        // Set layers from active page
-                        const activePage = incomingState.pages.find(p => p.id === (incomingState.activePageId || 1));
+                    isReceivingSync.current = true;
+                    console.log('[FirebaseSync] Received update:', remoteData);
+
+                    if (remoteData.pages) {
+                        setPages(remoteData.pages);
+                        const activePage = remoteData.pages.find(p => p.id === (remoteData.activePageId || activePageId));
                         if (activePage) {
                             setLayers(activePage.layers || []);
                         }
                     }
-                    if (incomingState.activePageId) {
-                        setActivePageId(incomingState.activePageId);
-                    }
-                    if (incomingState.canvasSize) {
-                        setCanvasSize(incomingState.canvasSize);
-                    }
-                    if (incomingState.adjustments) {
-                        setAdjustments(prev => ({ ...prev, ...incomingState.adjustments }));
-                    }
+                    if (remoteData.activePageId) setActivePageId(remoteData.activePageId);
+                    if (remoteData.canvasSize) setCanvasSize(remoteData.canvasSize);
+                    if (remoteData.adjustments) setAdjustments(prev => ({ ...prev, ...remoteData.adjustments }));
 
-                    // Reset flag after short delay
-                    setTimeout(() => {
-                        isReceivingSync.current = false;
-                    }, 100);
+                    // Mark initial data as loaded so we can start syncing back
+                    hasLoadedInitialData.current = true;
+
+                    setTimeout(() => { isReceivingSync.current = false; }, 100);
                 });
 
-                setProjectId(result.projectId);
-                setIsP2PConnected(true);
-                console.log('[P2P] Initialized, project ID:', result.projectId, 'isHost:', result.isHost);
-            } catch (err) {
-                console.error('[P2P] Init failed:', err);
+                if (initialDesignId) {
+                    setDesignId(initialDesignId);
+                }
+            } catch (error) {
+                console.error('[FirebaseSync] Initialization failed:', error);
+            } finally {
+                setIsSyncing(false);
             }
         };
 
-        initP2P();
+        initFirebaseSync();
 
-        // Cleanup on unmount
         return () => {
-            p2pService.destroy();
+            FirebaseSyncService.stopSync();
         };
-    }, []);
+    }, [initialDesignId]);
 
-    // P2P Sync - Broadcast state changes to peers (debounced)
+    // Broadcast changes to Firebase (throttled)
     useEffect(() => {
-        // Skip if we're receiving sync to prevent loops
-        if (isReceivingSync.current || !isP2PConnected) return;
+        if (isReceivingSync.current || !designId || isViewOnly) return;
 
-        // Debounce syncing to avoid flooding
-        if (syncTimeoutRef.current) {
-            clearTimeout(syncTimeoutRef.current);
-        }
+        // IMPORTANT: preventing overwriting server data with empty initial state
+        if (!hasLoadedInitialData.current) return;
 
-        syncTimeoutRef.current = setTimeout(() => {
-            const state = {
-                pages,
+        if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+
+        syncTimeoutRef.current = setTimeout(async () => {
+            const currentState = {
+                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
                 activePageId,
                 canvasSize,
-                adjustments
+                adjustments,
+                lastModified: Date.now()
             };
-            p2pService.syncState(state);
-        }, 150); // 150ms debounce
+
+            try {
+                await FirebaseSyncService.updateDesign(designId, currentState);
+            } catch (error) {
+                console.error('[FirebaseSync] Update failed:', error);
+            }
+        }, 100);
 
         return () => {
-            if (syncTimeoutRef.current) {
-                clearTimeout(syncTimeoutRef.current);
-            }
+            if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
         };
-    }, [pages, activePageId, canvasSize, adjustments, isP2PConnected]);
+    }, [pages, activePageId, canvasSize, adjustments, layers, designId, isViewOnly]);
+
+    // Update URL when designId changes for sharing/collaborating
+    useEffect(() => {
+        if (designId && !isViewOnly) {
+            const currentPath = window.location.pathname;
+            const newPath = `/edit/${designId}`;
+            if (currentPath !== newPath) {
+                window.history.replaceState(null, '', newPath);
+            }
+        }
+    }, [designId, isViewOnly]);
+
 
     // Load recently used animations on mount
     useEffect(() => {
@@ -419,6 +400,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
 
     // Canvas Resizing Logic
     const handleCanvasResizeMouseDown = (e, handle) => {
+        if (isViewOnly) return;
         e.stopPropagation();
         e.preventDefault();
         setIsResizingCanvas({ handle });
@@ -426,6 +408,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
 
     // Context Menu Actions
     const handleDuplicate = (layerId) => {
+        if (isViewOnly) return;
         const layer = layers.find(l => l.id === layerId);
         if (layer) {
             const newLayer = {
@@ -441,6 +424,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     };
 
     const handleDelete = (layerId) => {
+        if (isViewOnly) return;
         const nextLayers = layers.filter(l => l.id !== layerId).map(l => ({
             ...l,
             isSelected: l.id === 'background-layer'
@@ -454,6 +438,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     };
 
     const handleLock = (layerId) => {
+        if (isViewOnly) return;
         const nextLayers = layers.map(l => l.id === layerId ? { ...l, isLocked: !l.isLocked } : l);
         setLayers(nextLayers);
         saveToHistory(nextLayers);
@@ -461,6 +446,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     };
 
     const handleCopy = (layerId) => {
+        if (isViewOnly) return;
         const layer = layers.find(l => l.id === layerId);
         if (layer) {
             setClipboard(layer);
@@ -469,6 +455,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     };
 
     const handlePaste = () => {
+        if (isViewOnly) return;
         if (clipboard) {
             const newLayer = {
                 ...clipboard,
@@ -480,6 +467,41 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
             addLayerWithSync(newLayer);
         }
         setContextMenu(null);
+    };
+
+    /**
+     * Helper to handle image compression and Cloudinary upload
+     */
+    const handleFileUpload = async (file) => {
+        if (!file || !file.type.startsWith('image/')) return null;
+
+        setIsUploading(true);
+        try {
+            // 1. Compress image
+            const options = {
+                maxSizeMB: 1,
+                maxWidthOrHeight: 1920,
+                useWebWorker: true,
+                fileType: 'image/jpeg'
+            };
+
+            let processedFile = file;
+            try {
+                processedFile = await imageCompression(file, options);
+            } catch (e) {
+                console.warn('Compression failed, using original:', e);
+            }
+
+            // 2. Upload to Cloudinary
+            const cloudinaryUrl = await uploadToCloudinary(processedFile);
+            return cloudinaryUrl;
+        } catch (error) {
+            console.error('File upload error:', error);
+            alert('Image upload failed. Please check your connection.');
+            return null;
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const generateSVG = (customLayers = null) => {
@@ -628,76 +650,55 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 }
 
                 try {
-                    // Compress image before loading to ensure P2P sync works reliably
-                    const options = {
-                        maxSizeMB: 1,
-                        maxWidthOrHeight: 1920,
-                        useWebWorker: true,
-                        fileType: 'image/jpeg'
-                    };
+                    // Upload to Cloudinary (handles compression internally)
+                    const cloudinaryUrl = await handleFileUpload(file);
+                    if (!cloudinaryUrl) return;
 
-                    let processedFile = file;
-                    // Only compress if image
-                    if (file.type.startsWith('image/')) {
-                        try {
-                            processedFile = await imageCompression(file, options);
-                        } catch (e) {
-                            console.warn('Image compression failed, using original:', e);
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.onload = () => {
+                        // Set canvas size (scaled down if too huge, but keeping aspect ratio)
+                        let width = img.width;
+                        let height = img.height;
+                        const maxInitialWidth = 1500;
+                        const maxInitialHeight = window.innerHeight * 0.8;
+
+                        if (width > maxInitialWidth) {
+                            const ratio = maxInitialWidth / width;
+                            width = maxInitialWidth;
+                            height = height * ratio;
                         }
-                    }
 
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const src = e.target.result;
-                        const img = new Image();
-                        img.onload = () => {
-                            // Set canvas size to match image exactly (or scaled down if too huge, but keeping aspect ratio)
-                            // Also consider viewport constraints to avoid covering the bottom bar initially
-                            let width = img.width;
-                            let height = img.height;
-                            const maxInitialWidth = 1500;
-                            const maxInitialHeight = window.innerHeight * 0.8; // Leave 20% space for UI
+                        if (height > maxInitialHeight) {
+                            const ratio = maxInitialHeight / height;
+                            height = maxInitialHeight;
+                            width = width * ratio;
+                        }
 
-                            // First scale by width
-                            if (width > maxInitialWidth) {
-                                const ratio = maxInitialWidth / width;
-                                width = maxInitialWidth;
-                                height = height * ratio;
-                            }
+                        // Update canvas size state
+                        setCanvasSize({ width, height });
 
-                            // Then check height
-                            if (height > maxInitialHeight) {
-                                const ratio = maxInitialHeight / height;
-                                height = maxInitialHeight;
-                                width = width * ratio;
-                            }
-
-                            // Update canvas size state
-                            setCanvasSize({ width, height });
-
-                            const newLayer = {
-                                id: 'background-layer',
-                                type: 'shape',
-                                shapeType: 'image',
-                                content: src,
-                                color: 'transparent',
-                                width: width,
-                                height: height,
-                                x: 50,
-                                y: 50,
-                                isSelected: true,
-                                isLocked: false, // Allow background to be selected
-                                isBackground: true
-                            };
-
-                            const nextLayers = [newLayer]; // Start fresh with background
-                            setLayers(nextLayers);
-                            saveToHistory(nextLayers);
-                            setImageSrc(src);
+                        const newLayer = {
+                            id: 'background-layer',
+                            type: 'shape',
+                            shapeType: 'image',
+                            content: cloudinaryUrl,
+                            color: 'transparent',
+                            width: width,
+                            height: height,
+                            x: 50,
+                            y: 50,
+                            isSelected: true,
+                            isLocked: false,
+                            isBackground: true
                         };
-                        img.src = src;
+
+                        const nextLayers = [newLayer];
+                        setLayers(nextLayers);
+                        saveToHistory(nextLayers);
+                        setImageSrc(cloudinaryUrl);
                     };
-                    reader.readAsDataURL(processedFile);
+                    img.src = cloudinaryUrl;
                 } catch (err) {
                     console.error("Error processing file:", err);
                 }
@@ -803,6 +804,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
     }, [imageSrc]);
 
     const handleMouseDown = (e, layer) => {
+        if (isViewOnly) return;
         if (editingLayerId === layer.id || layer.isLocked) return;
 
         e.preventDefault();
@@ -1945,63 +1947,187 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
         img.src = mockup.image;
     };
 
+    const renderPresentationHeader = () => (
+        <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 bg-gray-900 border-b border-white/5 z-[100]">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg group cursor-pointer hover:scale-110 transition-all duration-300">
+                    <Sparkles className="w-6 h-6 text-white fill-white/20" />
+                </div>
+                <div className="flex flex-col">
+                    <span className="font-black text-white text-lg tracking-tight leading-tight">Pro Image <span className="text-purple-400">Toolkit</span></span>
+                    <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Presentation Mode</span>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={() => {
+                        const editUrl = window.location.href.replace('/view/', '/edit/');
+                        navigator.clipboard.writeText(editUrl);
+                        alert("Design link copied to clipboard!");
+                    }}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl border border-white/20 hover:bg-white/10 transition-all font-bold text-sm text-white"
+                >
+                    <Share2 className="w-4 h-4" />
+                    <span>Share</span>
+                </button>
+                <button
+                    onClick={onCancel}
+                    className="p-2.5 hover:bg-white/10 rounded-full transition-all text-gray-400 hover:text-white"
+                >
+                    <X className="w-6 h-6" />
+                </button>
+            </div>
+        </header>
+    );
+
+    const renderPresentationFooter = () => {
+        const currentPage = pages.findIndex(p => p.id === activePageId) + 1;
+        const totalPages = pages.length;
+
+        const goToNextPage = () => {
+            const currentIndex = pages.findIndex(p => p.id === activePageId);
+            if (currentIndex < pages.length - 1) {
+                switchPage(pages[currentIndex + 1].id);
+            }
+        };
+
+        const goToPrevPage = () => {
+            const currentIndex = pages.findIndex(p => p.id === activePageId);
+            if (currentIndex > 0) {
+                switchPage(pages[currentIndex - 1].id);
+            }
+        };
+
+        return (
+            <div className="h-20 flex-shrink-0 flex items-center justify-between px-8 bg-gray-900/80 backdrop-blur-xl border-t border-white/5 z-[100]">
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3 bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-inner">
+                        <button
+                            onClick={goToPrevPage}
+                            disabled={currentPage === 1}
+                            className={`p-2.5 rounded-xl transition-all ${currentPage === 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 text-white active:scale-95'}`}
+                        >
+                            <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <div className="font-black text-sm px-4 min-w-[70px] text-center text-white/90">
+                            {currentPage} / {totalPages}
+                        </div>
+                        <button
+                            onClick={goToNextPage}
+                            disabled={currentPage === totalPages}
+                            className={`p-2.5 rounded-xl transition-all ${currentPage === totalPages ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 text-white active:scale-95'}`}
+                        >
+                            <ChevronRight className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-4 bg-white/5 px-6 py-2.5 rounded-2xl border border-white/10 min-w-[240px] shadow-inner">
+                        <Search className="w-4 h-4 text-gray-500" />
+                        <input
+                            type="range"
+                            min="0.1"
+                            max="3"
+                            step="0.1"
+                            value={zoom}
+                            onChange={(e) => setZoom(parseFloat(e.target.value))}
+                            className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
+                        />
+                        <span className="text-xs font-black text-white/80 w-12 text-right">{Math.round(zoom * 100)}%</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button className="p-3.5 hover:bg-white/10 rounded-2xl transition-all text-gray-400 hover:text-white active:scale-95">
+                            <MoreHorizontal className="w-6 h-6" />
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (!document.fullscreenElement) {
+                                    document.documentElement.requestFullscreen();
+                                } else {
+                                    document.exitFullscreen();
+                                }
+                            }}
+                            className="p-3.5 hover:bg-white/10 rounded-2xl transition-all text-gray-400 hover:text-white active:scale-95"
+                        >
+                            <Maximize2 className="w-6 h-6" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
 
     return (
         <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
             {/* TOP NAVIGATION BAR */}
-            <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={onCancel}
-                        className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
-                        title="Cancel"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                    <div className="h-6 w-px bg-gray-700/20 mx-1" />
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
-                            <Sparkles className="w-5 h-5 text-white fill-white/20" />
+            {isViewOnly ? renderPresentationHeader() : (
+                <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={onCancel}
+                            className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
+                            title="Cancel"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                        <div className="h-6 w-px bg-gray-700/20 mx-1" />
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
+                                <Sparkles className="w-5 h-5 text-white fill-white/20" />
+                            </div>
+                            <span className="font-black tracking-tight text-sm hidden sm:block">Editor <span className="text-purple-500">PRO</span></span>
                         </div>
-                        <span className="font-black tracking-tight text-sm hidden sm:block">Editor <span className="text-purple-500">PRO</span></span>
+                        <div className="h-6 w-px bg-gray-700/20 mx-2 hidden md:block" />
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={undo}
+                                disabled={historyIndex < 0}
+                                className={`p-2 rounded-lg transition-all ${historyIndex < 0 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600')}`}
+                                title="Undo (Ctrl+Z)"
+                            >
+                                <Undo className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={redo}
+                                disabled={historyIndex >= history.length - 1}
+                                className={`p-2 rounded-lg transition-all ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600')}`}
+                                title="Redo (Ctrl+Y)"
+                            >
+                                <Redo className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
-                    <div className="h-6 w-px bg-gray-700/20 mx-2 hidden md:block" />
-                    <div className="flex items-center gap-1">
-                        <button
-                            onClick={undo}
-                            disabled={historyIndex < 0}
-                            className={`p-2 rounded-lg transition-all ${historyIndex < 0 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600')}`}
-                            title="Undo (Ctrl+Z)"
-                        >
-                            <Undo className="w-4 h-4" />
-                        </button>
-                        <button
-                            onClick={redo}
-                            disabled={historyIndex >= history.length - 1}
-                            className={`p-2 rounded-lg transition-all ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600')}`}
-                            title="Redo (Ctrl+Y)"
-                        >
-                            <Redo className="w-4 h-4" />
-                        </button>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        {!isViewOnly && (
+                            <>
+                                <button
+                                    onClick={handleDownload}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}
+                                >
+                                    <Download className="w-4 h-4" />
+                                    <span className="hidden xs:inline">Download Design</span>
+                                </button>
+                                <button
+                                    onClick={() => setShowExportPopup(true)}
+                                    className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 transform"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    <span>Save Changes</span>
+                                </button>
+                            </>
+                        )}
+                        {isViewOnly && (
+                            <div className="px-3 py-1 bg-amber-500/10 text-amber-500 rounded-full text-[10px] font-bold border border-amber-500/20">
+                                VIEW ONLY MODE
+                            </div>
+                        )}
                     </div>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3">
-                    <button
-                        onClick={handleDownload}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}
-                    >
-                        <Download className="w-4 h-4" />
-                        <span className="hidden xs:inline">Download Design</span>
-                    </button>
-                    <button
-                        onClick={() => setShowExportPopup(true)}
-                        className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 transform"
-                    >
-                        <Check className="w-4 h-4" />
-                        <span>Save Changes</span>
-                    </button>
-                </div>
-            </header>
+                </header>
+            )}
 
             {/* Export Manager Popup */}
             <ExportManager
@@ -2015,29 +2141,33 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 canvasSize={canvasSize}
                 darkMode={darkMode}
                 adjustments={adjustments}
+                designId={designId}
+                onDesignIdGenerated={setDesignId}
             />
             <div className="flex flex-1 overflow-hidden relative">
                 {/* LEFT SIDEBAR */}
-                <div className={`w-[72px] sm:w-[64px] h-full flex-shrink-0 flex flex-col items-center py-2 border-r ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-50`}>
-                    {/* <TabButton id="design" icon={Layout} label="Design" /> */}
-                    <TabButton id="elements" icon={Grid} label="Elements" />
-                    <TabButton id="text" icon={Type} label="Text" />
-                    <TabButton id="layers" icon={Layers} label="Layers" />
-                    <TabButton id="filters" icon={Palette} label="Filters" />
-                    {/* <TabButton id="adjust" icon={Sliders} label="Adjust" /> */}
-                    <TabButton id="brand" icon={Box} label="Brand" premium />
-                    <TabButton id="forms" icon={FileText} label="Forms" />
-                    <button
-                        onClick={enterCropMode}
-                        className={`group relative flex flex-col items-center justify-center w-full py-2.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
-                    >
-                        <div className="p-1.5 rounded-lg group-hover:bg-gray-100/50">
-                            <Crop className="w-5 h-5 stroke-[1.5px]" />
-                        </div>
-                        <span className="text-[8px] mt-1 font-bold uppercase tracking-tight">Crop</span>
-                    </button>
-                    <div className="flex-1" />
-                </div>
+                {!isViewOnly && (
+                    <div className={`w-[72px] sm:w-[64px] h-full flex-shrink-0 flex flex-col items-center py-2 border-r ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-50`}>
+                        {/* <TabButton id="design" icon={Layout} label="Design" /> */}
+                        <TabButton id="elements" icon={Grid} label="Elements" />
+                        <TabButton id="text" icon={Type} label="Text" />
+                        <TabButton id="layers" icon={Layers} label="Layers" />
+                        <TabButton id="filters" icon={Palette} label="Filters" />
+                        {/* <TabButton id="adjust" icon={Sliders} label="Adjust" /> */}
+                        <TabButton id="brand" icon={Box} label="Brand" premium />
+                        <TabButton id="forms" icon={FileText} label="Forms" />
+                        <button
+                            onClick={enterCropMode}
+                            className={`group relative flex flex-col items-center justify-center w-full py-2.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
+                        >
+                            <div className="p-1.5 rounded-lg group-hover:bg-gray-100/50">
+                                <Crop className="w-5 h-5 stroke-[1.5px]" />
+                            </div>
+                            <span className="text-[8px] mt-1 font-bold uppercase tracking-tight">Crop</span>
+                        </button>
+                        <div className="flex-1" />
+                    </div>
+                )}
                 {/* DYNAMIC TOOL PANEL */}
                 <div
                     className={`${isPanelOpen
@@ -2978,20 +3108,43 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                     </div>
                 )}
 
+                {/* UPLOADING OVERLAY */}
+                {isUploading && (
+                    <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+                        <div className={`p-8 rounded-3xl ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-2 shadow-2xl flex flex-col items-center gap-4 max-w-xs w-full`}>
+                            <div className="relative">
+                                <div className="w-16 h-16 border-4 border-blue-500/20 rounded-full animate-ping absolute inset-0" />
+                                <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin relative z-10" />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <ImageIcon className="w-6 h-6 text-blue-600 animate-pulse" />
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>Uploading Image</h3>
+                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Sending your image to the cloud...</p>
+                            </div>
+                            <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden mt-2">
+                                <div className="h-full bg-gradient-to-r from-blue-600 to-purple-600 animate-shimmer" style={{ width: '75%' }} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* MAIN CANVAS AREA */}
                 <div
-                    className={`flex-1 relative flex flex-col ${darkMode ? 'bg-[#0f111a]' : 'bg-[#f4f7fa]'} transition-all overflow-hidden`}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
+                    className={`flex-1 relative flex flex-col ${isViewOnly ? 'bg-[#0f111a]' : (darkMode ? 'bg-[#0f111a]' : 'bg-[#f4f7fa]')} transition-all overflow-hidden`}
+                    onMouseMove={isViewOnly ? undefined : handleMouseMove}
+                    onMouseUp={isViewOnly ? undefined : handleMouseUp}
+                    onMouseLeave={isViewOnly ? undefined : handleMouseUp}
                     onClick={() => {
+                        if (isViewOnly) return;
                         setActiveLayerId(null);
                         setLayers(layers.map(l => ({ ...l, isSelected: false })));
                         setShowColorPicker(false);
                     }}
                 >
                     {/* Workspace (Canvas) */}
-                    <div className="flex-1 relative overflow-hidden flex items-center justify-center p-8 pb-32 bg-gray-100 dark:bg-gray-900" ref={containerRef}>
+                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-8 pb-32 bg-gray-100 dark:bg-gray-900'}`} ref={containerRef}>
                         {/* Canvas Area */}
                         <div
                             className="relative transition-all duration-300 ease-out"
@@ -3002,6 +3155,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                 transformOrigin: 'center center'
                             }}
                             onMouseDown={(e) => {
+                                if (isViewOnly) return;
                                 // Select background layer when clicking on canvas
                                 const bgLayer = layers.find(l => l.id === 'background-layer');
                                 if (bgLayer) {
@@ -3012,24 +3166,28 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                             }}
                         >
                             {/* Canvas Resize Handles */}
-                            <div
-                                onMouseDown={(e) => handleCanvasResizeMouseDown(e, 'e')}
-                                className="absolute top-1/2 -right-3 w-4 h-16 -translate-y-1/2 cursor-e-resize flex items-center justify-center hover:bg-purple-100 rounded-full group/handle"
-                            >
-                                <div className="w-1.5 h-8 bg-gray-300 rounded-full group-hover/handle:bg-purple-500 transition-colors" />
-                            </div>
-                            <div
-                                onMouseDown={(e) => handleCanvasResizeMouseDown(e, 's')}
-                                className="absolute bottom-[-12px] left-1/2 -translate-x-1/2 h-4 w-16 cursor-s-resize flex items-center justify-center hover:bg-purple-100 rounded-full group/handle"
-                            >
-                                <div className="h-1.5 w-8 bg-gray-300 rounded-full group-hover/handle:bg-purple-500 transition-colors" />
-                            </div>
-                            <div
-                                onMouseDown={(e) => handleCanvasResizeMouseDown(e, 'se')}
-                                className="absolute -bottom-3 -right-3 w-6 h-6 cursor-se-resize flex items-center justify-center bg-white rounded-full shadow-md border hover:border-purple-500 z-50"
-                            >
-                                <div className="w-2 h-2 bg-gray-400 rounded-full" />
-                            </div>
+                            {!isViewOnly && (
+                                <>
+                                    <div
+                                        onMouseDown={(e) => handleCanvasResizeMouseDown(e, 'e')}
+                                        className="absolute top-1/2 -right-3 w-4 h-16 -translate-y-1/2 cursor-e-resize flex items-center justify-center hover:bg-purple-100 rounded-full group/handle"
+                                    >
+                                        <div className="w-1.5 h-8 bg-gray-300 rounded-full group-hover/handle:bg-purple-500 transition-colors" />
+                                    </div>
+                                    <div
+                                        onMouseDown={(e) => handleCanvasResizeMouseDown(e, 's')}
+                                        className="absolute bottom-[-12px] left-1/2 -translate-x-1/2 h-4 w-16 cursor-s-resize flex items-center justify-center hover:bg-purple-100 rounded-full group/handle"
+                                    >
+                                        <div className="h-1.5 w-8 bg-gray-300 rounded-full group-hover/handle:bg-purple-500 transition-colors" />
+                                    </div>
+                                    <div
+                                        onMouseDown={(e) => handleCanvasResizeMouseDown(e, 'se')}
+                                        className="absolute -bottom-3 -right-3 w-6 h-6 cursor-se-resize flex items-center justify-center bg-white rounded-full shadow-md border hover:border-purple-500 z-50"
+                                    >
+                                        <div className="w-2 h-2 bg-gray-400 rounded-full" />
+                                    </div>
+                                </>
+                            )}
                             {imageSrc && (
                                 <div className="relative group/canvas overflow-hidden w-full h-full">
                                     {/* Background handles its own rendering as a layer below */}
@@ -3146,6 +3304,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                     key={layer.id}
                                     onMouseDown={(e) => handleMouseDown(e, layer)}
                                     onClick={(e) => {
+                                        if (isViewOnly) return;
                                         e.stopPropagation();
                                         setActiveLayerId(layer.id);
                                         setLayers(prev => prev.map(l => ({
@@ -3190,7 +3349,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 e.stopPropagation();
                                                 e.currentTarget.style.opacity = '1';
                                             }}
-                                            onDrop={(e) => {
+                                            onDrop={async (e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 e.currentTarget.style.opacity = '1';
@@ -3201,7 +3360,7 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                                                 if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                                                     const file = e.dataTransfer.files[0];
                                                     if (file.type.startsWith('image/')) {
-                                                        imageUrl = URL.createObjectURL(file);
+                                                        imageUrl = await handleFileUpload(file);
                                                     }
                                                 }
                                                 // Handle Sidebar Image Drop (if data transfer has src)
@@ -3642,204 +3801,207 @@ const ImageEditor = ({ file, onApply, onCancel, darkMode }) => {
                 </div >
 
                 {/* Floating Bottom Page Controls (Center) */}
-                < div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[80vw] flex items-end justify-center" >
-                    <div className="flex items-center gap-3 overflow-x-auto p-2 scrollbar-hide bg-transparent rounded-xl">
-                        {pages.map((page, index) => (
-                            <div key={page.id} className="relative group flex-shrink-0">
-                                <button
-                                    onClick={() => switchPage(page.id)}
-                                    className="flex flex-col items-center gap-1 group transition-all"
-                                >
-                                    <div className={`w-20 h-12 rounded-lg border-2 overflow-hidden relative bg-white transition-all ${activePageId === page.id ? 'border-purple-600 ring-2 ring-purple-600/20 shadow-lg scale-105' : 'border-gray-300 dark:border-gray-600 hover:border-purple-400'}`}>
-                                        {/* Content Preview */}
-                                        <div className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
-                                            {page.layers.length > 0 ? (
-                                                <div className="w-full h-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                                                    {page.layers.find(l => l.shapeType === 'image') ? <ImageIcon className="w-4 h-4 opacity-50" /> : <div className="flex gap-0.5 transform scale-50"><div className="w-2 h-2 bg-gray-300 rounded-full"></div></div>}
-                                                </div>
-                                            ) : 'Empty'}
-                                        </div>
-                                        {/* Page Number Badge */}
-                                        <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[9px] px-1.5 py-0.5 rounded-tr-md font-medium backdrop-blur-sm">
-                                            {index + 1}
-                                        </div>
-                                    </div>
-                                </button>
-
-                                {/* Delete Button on Hover */}
-                                {pages.length > 1 && (
+                {!isViewOnly && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[80vw] flex items-end justify-center">
+                        <div className="flex items-center gap-3 overflow-x-auto p-2 scrollbar-hide bg-transparent rounded-xl">
+                            {pages.map((page, index) => (
+                                <div key={page.id} className="relative group flex-shrink-0">
                                     <button
-                                        onClick={(e) => deletePage(e, page.id)}
-                                        className="absolute -top-1 -right-1 bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-gray-200 dark:border-gray-600 transform scale-75 hover:scale-100"
-                                        title="Delete Page"
+                                        onClick={() => switchPage(page.id)}
+                                        className="flex flex-col items-center gap-1 group transition-all"
                                     >
-                                        <X className="w-3 h-3" />
+                                        <div className={`w-20 h-12 rounded-lg border-2 overflow-hidden relative bg-white transition-all ${activePageId === page.id ? 'border-purple-600 ring-2 ring-purple-600/20 shadow-lg scale-105' : 'border-gray-300 dark:border-gray-600 hover:border-purple-400'}`}>
+                                            {/* Content Preview */}
+                                            <div className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
+                                                {page.layers.length > 0 ? (
+                                                    <div className="w-full h-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                                                        {page.layers.find(l => l.shapeType === 'image') ? <ImageIcon className="w-4 h-4 opacity-50" /> : <div className="flex gap-0.5 transform scale-50"><div className="w-2 h-2 bg-gray-300 rounded-full"></div></div>}
+                                                    </div>
+                                                ) : 'Empty'}
+                                            </div>
+                                            {/* Page Number Badge */}
+                                            <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[9px] px-1.5 py-0.5 rounded-tr-md font-medium backdrop-blur-sm">
+                                                {index + 1}
+                                            </div>
+                                        </div>
                                     </button>
-                                )}
-                            </div>
-                        ))}
 
-                        {/* Add Page Button */}
-                        <button
-                            onClick={addPage}
-                            className="w-20 h-12 flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-purple-500 bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 transition-all group"
-                        >
-                            <div className="flex items-center gap-1 text-gray-400 group-hover:text-purple-500">
-                                <Plus className="w-5 h-5" />
-                                <ChevronDown className="w-3 h-3" />
-                            </div>
-                        </button>
-                    </div>
-                </div >
+                                    {/* Delete Button on Hover */}
+                                    {pages.length > 1 && (
+                                        <button
+                                            onClick={(e) => deletePage(e, page.id)}
+                                            className="absolute -top-1 -right-1 bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-gray-200 dark:border-gray-600 transform scale-75 hover:scale-100"
+                                            title="Delete Page"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+
+                            {/* Add Page Button */}
+                            <button
+                                onClick={addPage}
+                                className="w-20 h-12 flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-purple-500 bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 transition-all group"
+                            >
+                                <div className="flex items-center gap-1 text-gray-400 group-hover:text-purple-500">
+                                    <Plus className="w-5 h-5" />
+                                    <ChevronDown className="w-3 h-3" />
+                                </div>
+                            </button>
+                        </div>
+                    </div >
+                )}
 
 
                 {/* GRID VIEW OVERLAY */}
-                {
-                    isGridView && (
-                        <div className="absolute inset-0 z-[200] bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md animate-fadeIn flex flex-col">
-                            {/* Grid View Header */}
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-                                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Pages</h2>
+                {!isViewOnly && isGridView && (
+                    <div className="absolute inset-0 z-[200] bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md animate-fadeIn flex flex-col">
+                        {/* Grid View Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+                            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Pages</h2>
+                            <button
+                                onClick={() => setIsGridView(false)}
+                                className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors ${darkMode ? 'text-white' : 'text-gray-900'}`}
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {/* Grid Content */}
+                        <div className="flex-1 overflow-y-auto p-8">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+                                {pages.map((page, index) => (
+                                    <div key={page.id} className="flex flex-col gap-2 group">
+                                        {/* Card */}
+                                        <div
+                                            onClick={() => {
+                                                switchPage(page.id);
+                                                setIsGridView(false);
+                                            }}
+                                            className={`relative aspect-video rounded-xl overflow-hidden border-2 cursor-pointer transition-all shadow-sm hover:shadow-md group-hover:scale-[1.02]
+                                            ${activePageId === page.id
+                                                    ? 'border-purple-500 ring-2 ring-purple-500/20'
+                                                    : 'border-gray-200 dark:border-gray-700 hover:border-purple-400'
+                                                } bg-white dark:bg-gray-800`}
+                                        >
+                                            {/* Live Thumbnail Preview */}
+                                            <div className="absolute inset-0 pointer-events-none">
+                                                {/* Use a container with mapped scaling for the thumbnail content */}
+                                                <div className="w-full h-full relative">
+                                                    <PageThumbnail
+                                                        layers={page.layers}
+                                                        canvasSize={canvasSize}
+                                                        darkMode={darkMode}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Page Number Badge */}
+                                            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md text-white px-2 py-0.5 rounded text-xs font-bold">
+                                                {index + 1}
+                                            </div>
+
+                                            {/* Active Indicator Check */}
+                                            {activePageId === page.id && (
+                                                <div className="absolute top-2 right-2 bg-purple-500 text-white p-1 rounded-full shadow-lg">
+                                                    <Check className="w-3 h-3" />
+                                                </div>
+                                            )}
+
+                                            {/* Delete Button (Only on Hover, not for single page) */}
+                                            {pages.length > 1 && (
+                                                <button
+                                                    onClick={(e) => deletePage(e, page.id)}
+                                                    className="absolute bottom-2 right-2 p-1.5 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                                                    title="Delete Page"
+                                                >
+                                                    <Trash className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Label */}
+                                        <div className="flex items-center justify-between px-1">
+                                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                Page {index + 1}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Add Page Button in Grid */}
                                 <button
-                                    onClick={() => setIsGridView(false)}
-                                    className={`p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors ${darkMode ? 'text-white' : 'text-gray-900'}`}
+                                    onClick={() => {
+                                        addPage();
+                                        // Optional: scroll to bottom?
+                                    }}
+                                    className={`aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all
+                                    ${darkMode
+                                            ? 'border-gray-700 hover:border-purple-500 hover:bg-gray-800'
+                                            : 'border-gray-300 hover:border-purple-500 hover:bg-purple-50'
+                                        }`}
                                 >
-                                    <X className="w-6 h-6" />
+                                    <div className={`p-3 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} group-hover:scale-110 transition-transform`}>
+                                        <Plus className={`w-6 h-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                                    </div>
+                                    <span className={`font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Add Page</span>
                                 </button>
                             </div>
-
-                            {/* Grid Content */}
-                            <div className="flex-1 overflow-y-auto p-8">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
-                                    {pages.map((page, index) => (
-                                        <div key={page.id} className="flex flex-col gap-2 group">
-                                            {/* Card */}
-                                            <div
-                                                onClick={() => {
-                                                    switchPage(page.id);
-                                                    setIsGridView(false);
-                                                }}
-                                                className={`relative aspect-video rounded-xl overflow-hidden border-2 cursor-pointer transition-all shadow-sm hover:shadow-md group-hover:scale-[1.02]
-                                                ${activePageId === page.id
-                                                        ? 'border-purple-500 ring-2 ring-purple-500/20'
-                                                        : 'border-gray-200 dark:border-gray-700 hover:border-purple-400'
-                                                    } bg-white dark:bg-gray-800`}
-                                            >
-                                                {/* Live Thumbnail Preview */}
-                                                <div className="absolute inset-0 pointer-events-none">
-                                                    {/* Use a container with mapped scaling for the thumbnail content */}
-                                                    <div className="w-full h-full relative">
-                                                        <PageThumbnail
-                                                            layers={page.layers}
-                                                            canvasSize={canvasSize}
-                                                            darkMode={darkMode}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                {/* Page Number Badge */}
-                                                <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md text-white px-2 py-0.5 rounded text-xs font-bold">
-                                                    {index + 1}
-                                                </div>
-
-                                                {/* Active Indicator Check */}
-                                                {activePageId === page.id && (
-                                                    <div className="absolute top-2 right-2 bg-purple-500 text-white p-1 rounded-full shadow-lg">
-                                                        <Check className="w-3 h-3" />
-                                                    </div>
-                                                )}
-
-                                                {/* Delete Button (Only on Hover, not for single page) */}
-                                                {pages.length > 1 && (
-                                                    <button
-                                                        onClick={(e) => deletePage(e, page.id)}
-                                                        className="absolute bottom-2 right-2 p-1.5 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                                                        title="Delete Page"
-                                                    >
-                                                        <Trash className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            {/* Label */}
-                                            <div className="flex items-center justify-between px-1">
-                                                <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                                    Page {index + 1}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-
-                                    {/* Add Page Button in Grid */}
-                                    <button
-                                        onClick={() => {
-                                            addPage();
-                                            // Optional: scroll to bottom?
-                                        }}
-                                        className={`aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all
-                                        ${darkMode
-                                                ? 'border-gray-700 hover:border-purple-500 hover:bg-gray-800'
-                                                : 'border-gray-300 hover:border-purple-500 hover:bg-purple-50'
-                                            }`}
-                                    >
-                                        <div className={`p-3 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} group-hover:scale-110 transition-transform`}>
-                                            <Plus className={`w-6 h-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                                        </div>
-                                        <span className={`font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Add Page</span>
-                                    </button>
-                                </div>
-                            </div>
                         </div>
-                    )
-                }
+                    </div>
+                )}
 
                 {/* Bottom Right Toolbar */}
-                <div className="absolute bottom-4 right-4 z-50 flex items-center gap-3 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-2 px-2">
-                        <input
-                            type="range"
-                            min="0.1"
-                            max="2"
-                            step="0.05"
-                            value={zoom}
-                            onChange={(e) => setZoom(parseFloat(e.target.value))}
-                            className="w-24 accent-purple-600 h-1 bg-gray-200 rounded-lg cursor-pointer"
-                        />
-                        <span className="text-xs font-mono w-9 text-right">{Math.round(zoom * 100)}%</span>
+                {!isViewOnly && (
+                    <div className="absolute bottom-4 right-4 z-50 flex items-center gap-3 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-2 px-2">
+                            <input
+                                type="range"
+                                min="0.1"
+                                max="2"
+                                step="0.05"
+                                value={zoom}
+                                onChange={(e) => setZoom(parseFloat(e.target.value))}
+                                className="w-24 accent-purple-600 h-1 bg-gray-200 rounded-lg cursor-pointer"
+                            />
+                            <span className="text-xs font-mono w-9 text-right">{Math.round(zoom * 100)}%</span>
+                        </div>
+
+                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
+
+                        <button
+                            onClick={() => setIsGridView(true)}
+                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
+                        >
+                            <Layers className="w-4 h-4" />
+                            <span>Pages</span>
+                            <span className="bg-gray-100 dark:bg-gray-900 px-1.5 py-0.5 rounded text-[10px]">
+                                {pages.findIndex(p => p.id === activePageId) + 1} / {pages.length}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setIsGridView(true)}
+                            className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${isGridView ? 'text-purple-600 bg-purple-50' : 'text-gray-700 dark:text-gray-300'}`}
+                            title="Grid View"
+                        >
+                            <LayoutGrid className="w-4 h-4" />
+                        </button>
+
+                        <button className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-700 dark:text-gray-300 transition-colors" title="Fullscreen">
+                            <Maximize2 className="w-4 h-4" />
+                        </button>
                     </div>
-
-                    <div className="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
-
-                    <button
-                        onClick={() => setIsGridView(true)}
-                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
-                    >
-                        <Layers className="w-4 h-4" />
-                        <span>Pages</span>
-                        <span className="bg-gray-100 dark:bg-gray-900 px-1.5 py-0.5 rounded text-[10px]">
-                            {pages.findIndex(p => p.id === activePageId) + 1} / {pages.length}
-                        </span>
-                    </button>
-
-                    <button
-                        onClick={() => setIsGridView(true)}
-                        className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${isGridView ? 'text-purple-600 bg-purple-50' : 'text-gray-700 dark:text-gray-300'}`}
-                        title="Grid View"
-                    >
-                        <LayoutGrid className="w-4 h-4" />
-                    </button>
-
-                    <button className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-700 dark:text-gray-300 transition-colors" title="Fullscreen">
-                        <Maximize2 className="w-4 h-4" />
-                    </button>
-                </div>
+                )}
 
             </div >
 
+            {isViewOnly && renderPresentationFooter()}
 
             {/* Contextual Toolbar for Selected Layer - Fixed at root level to avoid zoom issues */}
             {
-                activeLayerId && !isCropMode && (() => {
+                !isViewOnly && activeLayerId && !isCropMode && (() => {
                     const layer = layers.find(l => l.id === activeLayerId);
                     if (!layer) return null;
                     return (

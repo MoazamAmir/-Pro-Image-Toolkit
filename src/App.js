@@ -1,6 +1,6 @@
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Moon, Sun, Edit2 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
@@ -57,8 +57,9 @@ import {
 import { converters } from './utils/toolList';
 
 const App = () => {
-  const { toolSlug } = useParams();
+  const { toolSlug, designId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeConverter, setActiveConverter] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [convertedFile, setConvertedFile] = useState(null);
@@ -81,6 +82,7 @@ const App = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [editedFile, setEditedFile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isViewOnly, setIsViewOnly] = useState(false);
 
   // Container management
   const [containers, setContainers] = useState([{ id: 1, selected: true, convertedFile: null }]);
@@ -186,7 +188,17 @@ const App = () => {
         setActiveConverter(foundConverter);
       }
     }
-  }, [toolSlug]);
+
+    // Handle view/edit route
+    if (designId && !isEditing) {
+      setIsEditing(true);
+      const viewOnly = location.pathname.includes('/view/');
+      setIsViewOnly(viewOnly);
+
+      // Create a dummy file object for the editor to initialize
+      setSelectedFile({ name: 'Project', type: 'image/project' });
+    }
+  }, [toolSlug, designId, location.pathname, isEditing]);
 
   // Update URL when converter changes
   const handleSetActiveConverter = (converter) => {
@@ -1040,6 +1052,8 @@ const App = () => {
           setEditedFile={setEditedFile}
           isEditing={isEditing}
           setIsEditing={setIsEditing}
+          isViewOnly={isViewOnly}
+          initialDesignId={designId}
           handleDragEnter={handleDragEnter}
           handleDragLeave={handleDragLeave}
           handleDragOver={handleDragOver}

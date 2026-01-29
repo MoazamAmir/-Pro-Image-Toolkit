@@ -11,6 +11,8 @@ root.render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App />} />
+        <Route path="/view/:designId" element={<App />} />
+        <Route path="/edit/:designId" element={<App />} />
         <Route path="/:toolSlug" element={<App />} />
       </Routes>
     </BrowserRouter>

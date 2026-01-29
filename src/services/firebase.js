@@ -12,21 +12,23 @@ import {
     browserLocalPersistence
 } from 'firebase/auth';
 import { getAnalytics } from "firebase/analytics";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAU3nW4QEqW5rMo5kS5P0FitjxFVqn5nHc",
-    authDomain: "pro-image-toolkit-1.firebaseapp.com",
-    projectId: "pro-image-toolkit-1",
-    storageBucket: "pro-image-toolkit-1.firebasestorage.app",
-    messagingSenderId: "963291465289",
-    appId: "1:963291465289:web:0a6786dc286adc2ca76198",
-    measurementId: "G-WEYXB4TTSY"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const analytics = getAnalytics(app);
+const db = getFirestore(app);
 
 // Set persistence as default
 setPersistence(auth, browserLocalPersistence).catch((error) => {
@@ -224,4 +226,4 @@ export const getGoogleRedirectResult = async () => {
     return { user: null, error: null };
 };
 
-export { auth };
+export { auth, db };

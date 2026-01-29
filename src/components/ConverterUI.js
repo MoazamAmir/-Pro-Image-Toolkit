@@ -96,7 +96,9 @@ const ConverterUI = ({
     currentStep,
     setCurrentStep,
     isEditing,
-    setIsEditing
+    setIsEditing,
+    isViewOnly,
+    initialDesignId
 }) => {
     // State for live preview
 
@@ -180,7 +182,7 @@ const ConverterUI = ({
         accent: darkMode ? 'text-purple-400' : 'text-purple-500',
     };
 
-    if (!activeConverter) {
+    if (!activeConverter && !isEditing) {
         return (
             <div className="text-center py-10 sm:py-16 md:py-20 animate-fadeIn">
                 <h1 className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2 sm:mb-3 tracking-tight px-4`}>
@@ -205,7 +207,7 @@ const ConverterUI = ({
         );
     }
 
-    if (activeConverter.to === 'crop') {
+    if (activeConverter?.to === 'crop') {
         return <CropImageTool isDarkMode={darkMode} />;
     }
 
@@ -217,7 +219,7 @@ const ConverterUI = ({
                 <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold 
 ${darkMode ? 'text-white' : 'text-gray-900'} 
 mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
-                    {activeConverter.name}
+                    {activeConverter?.name}
                 </h1>
             )}
             {/* <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-6 sm:mb-8 text-base sm:text-lg md:text-xl font-medium`}>Convert {activeConverter.from.toUpperCase()} → {activeConverter.to.toUpperCase()}</p> */}
@@ -924,6 +926,8 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                             setIsEditing(false);
                         }}
                         darkMode={darkMode}
+                        isViewOnly={isViewOnly}
+                        initialDesignId={initialDesignId}
                     />
                 )}
 

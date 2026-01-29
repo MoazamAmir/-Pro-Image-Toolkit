@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
     if (!isOpen) return null;

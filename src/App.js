@@ -1115,6 +1115,7 @@ const App = () => {
           addContainer={addContainer}
           selectedDownloadType={selectedDownloadType}
           setSelectedDownloadType={setSelectedDownloadType}
+          user={user}
         />
       </main>
       {!isEditing && <Footer darkMode={darkMode} />}

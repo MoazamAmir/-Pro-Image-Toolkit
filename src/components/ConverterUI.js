@@ -98,7 +98,8 @@ const ConverterUI = ({
     isEditing,
     setIsEditing,
     isViewOnly,
-    initialDesignId
+    initialDesignId,
+    user
 }) => {
     // State for live preview
 
@@ -928,6 +929,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                         darkMode={darkMode}
                         isViewOnly={isViewOnly}
                         initialDesignId={initialDesignId}
+                        user={user}
                     />
                 )}
 

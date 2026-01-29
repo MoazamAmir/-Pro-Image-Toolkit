@@ -16,6 +16,7 @@ import { fetchFile } from '@ffmpeg/util';
 import GIF from 'gif.js';
 import PageThumbnail from './PageThumbnail';
 import FirebaseSyncService from '../services/FirebaseSyncService';
+import LinkCopiedPopup from './LinkCopiedPopup';
 
 const ExportManager = ({
     isOpen,
@@ -30,7 +31,8 @@ const ExportManager = ({
     designId,
     onDesignIdGenerated,
     canvasPreviewRef,
-    adjustments
+    adjustments,
+    user
 }) => {
     const [view, setView] = useState('share_design'); // Default to share_design view
     const [publicViewStatus, setPublicViewStatus] = useState('idle'); // 'idle', 'creating', 'live'
@@ -48,6 +50,29 @@ const ExportManager = ({
     const [exportProgress, setExportProgress] = useState(0);
     const [isCopying, setIsCopying] = useState(false);
     const [previewSrc, setPreviewSrc] = useState(null);
+
+    // Share Design State
+    const [accessLevel, setAccessLevel] = useState('private'); // 'private' or 'public'
+    const [showLinkCopiedPopup, setShowLinkCopiedPopup] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+    // Fetch existing access level
+    useEffect(() => {
+        if (designId) {
+            FirebaseSyncService.getDesign(designId).then(data => {
+                if (data && data.accessLevel) {
+                    setAccessLevel(data.accessLevel);
+                }
+            });
+        }
+    }, [designId]);
+
+    const handleAccessLevelChange = async (newLevel) => {
+        setAccessLevel(newLevel);
+        if (designId) {
+            await FirebaseSyncService.updateDesign(designId, { accessLevel: newLevel });
+        }
+    };
 
     // Share link - point to the collaboration (edit) link
     const shareUrl = designId
@@ -276,7 +301,7 @@ const ExportManager = ({
                     adjustments,
                     lastModified: Date.now()
                 };
-                const newDesignId = await FirebaseSyncService.createDesign(currentState);
+                const newDesignId = await FirebaseSyncService.createDesign(currentState, user?.uid);
                 onDesignIdGenerated(newDesignId);
                 urlToCopy = `${window.location.origin}/edit/${newDesignId}`;
             } catch (err) {
@@ -308,7 +333,7 @@ const ExportManager = ({
                 };
 
                 // Save to cloud for the first time
-                currentDesignId = await FirebaseSyncService.createDesign(currentState);
+                currentDesignId = await FirebaseSyncService.createDesign(currentState, user?.uid);
                 onDesignIdGenerated(currentDesignId);
             }
 
@@ -343,22 +368,111 @@ const ExportManager = ({
                     <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><Settings className="w-5 h-5" /></button>
                 </div>
             </div>
-            <div className="px-5 space-y-4 pb-4 overflow-y-auto flex-1 custom-scrollbar">
+            <div className="px-5 space-y-4 pt-4 pb-4 overflow-y-auto flex-1 custom-scrollbar">
+
+                {/* People with access */}
                 <div className="space-y-2">
                     <label className="text-sm font-bold dark:text-white">People with access</label>
-                    <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" placeholder="Add people or groups" className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-950 border dark:border-gray-800 rounded-xl text-sm" /></div>
+                    <div className="space-y-3">
+                        <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" placeholder="Add people or groups" className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-950 border dark:border-gray-800 rounded-xl text-sm" /></div>
+
+                        {/* Owner Badge */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center overflow-hidden border border-white shadow-sm">
+                                    <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || 'User'}`} alt={user?.displayName || 'User'} className="w-full h-full object-cover" />
+                                </div>
+                                <div className="w-8 h-8 rounded-full border border-gray-300 border-dashed flex items-center justify-center hover:bg-gray-50 cursor-pointer">
+                                    <Plus className="w-4 h-4 text-gray-500" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <button onClick={handleCopyLink} className="w-full py-2.5 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all">
-                    {isCopying ? <Check className="w-5 h-5" /> : <Link className="w-5 h-5" />}
-                    <span>{isCopying ? 'Copied!' : 'Copy link'}</span>
-                </button>
-                <div className="h-px bg-gray-100 dark:bg-gray-800" />
+
+                {/* Access Level */}
+                <div className="space-y-2">
+                    <label className="text-sm font-bold dark:text-white">Access level</label>
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                            className="w-full flex items-center justify-between p-3 border dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-all text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300">
+                                    {accessLevel === 'private' ? <Lock className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                                </div>
+                                <div>
+                                    <div className="text-sm font-semibold dark:text-white">
+                                        {accessLevel === 'private' ? 'Only you can access' : 'Anyone with the link'}
+                                    </div>
+                                </div>
+                            </div>
+                            <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {isDropdownOpen && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden animate-fadeIn">
+                                <button
+                                    onClick={() => { handleAccessLevelChange('private'); setIsDropdownOpen(false); }}
+                                    className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${accessLevel === 'private' ? 'bg-purple-50 dark:bg-purple-900/10' : ''}`}
+                                >
+                                    <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500">
+                                        <Lock className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-sm font-medium dark:text-gray-200">Only you can access</span>
+                                    {accessLevel === 'private' && <Check className="w-4 h-4 text-purple-600 ml-auto" />}
+                                </button>
+                                <button
+                                    onClick={() => { handleAccessLevelChange('public'); setIsDropdownOpen(false); }}
+                                    className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${accessLevel === 'public' ? 'bg-purple-50 dark:bg-purple-900/10' : ''}`}
+                                >
+                                    <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500">
+                                        <Globe className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-sm font-medium dark:text-gray-200">Anyone with the link</span>
+                                    {accessLevel === 'public' && <Check className="w-4 h-4 text-purple-600 ml-auto" />}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="pt-2">
+                    <button
+                        onClick={() => {
+                            if (accessLevel === 'private') {
+                                handleCopyLink();
+                                setShowLinkCopiedPopup(true);
+                            } else {
+                                handleCopyLink();
+                            }
+                        }}
+                        className="w-full py-3 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all"
+                    >
+                        <Link className="w-5 h-5" />
+                        <span>Copy link</span>
+                    </button>
+                    {isCopying && <div className="text-center text-xs text-green-500 mt-2 font-medium">Link copied to clipboard!</div>}
+                </div>
+
+                <div className="h-px bg-gray-100 dark:bg-gray-800 my-2" />
+
                 <div className="grid grid-cols-4 gap-2">
                     <ShareAction icon={DownloadIcon} label="Download" onClick={() => setView('download')} />
-                    <ShareAction icon={Link} label="Public link" onClick={() => setView('public_view_link')} />
+                    <ShareAction icon={Link} label="Public view link" onClick={() => setView('public_view_link')} />
                     <ShareAction icon={InstagramIcon} label="Instagram" onClick={() => { }} />
-                    <ShareAction icon={VideoIcon} label="Present" onClick={() => { }} />
+                    <ShareAction icon={VideoIcon} label="Present and record" onClick={() => { }} />
                 </div>
+
+                <div className="grid grid-cols-4 gap-2 pt-2">
+                    <ShareAction icon={LayoutIcon} label="Template link" badge={<span className="text-orange-400">👑</span>} onClick={() => { }} />
+                    <ShareAction icon={Presentation} label="Present" onClick={() => { }} />
+                    <ShareAction icon={CopyIcon} label="Copy to clipboard" onClick={() => { }} />
+                    <ShareAction icon={MoreHorizontalIcon} label="See all" onClick={() => { }} />
+                </div>
+
             </div>
         </div>
     );
@@ -477,6 +591,19 @@ const ExportManager = ({
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
                 .dark.custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
             `}</style>
+
+            <LinkCopiedPopup
+                isOpen={showLinkCopiedPopup}
+                onClose={() => setShowLinkCopiedPopup(false)}
+                onAllowAccess={() => {
+                    handleAccessLevelChange('public');
+                    setShowLinkCopiedPopup(false);
+                }}
+                onCopyPrivate={() => {
+                    handleCopyLink(); // Copies private link again
+                    setShowLinkCopiedPopup(false);
+                }}
+            />
         </div>
     );
 };

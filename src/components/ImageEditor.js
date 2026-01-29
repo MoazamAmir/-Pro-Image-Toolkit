@@ -15,6 +15,7 @@ import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
 import p2pService from '../services/P2PService';
 import FirebaseSyncService from '../services/FirebaseSyncService';
+import AccessDenied from './AccessDenied';
 import imageCompression from 'browser-image-compression';
 import { uploadToCloudinary } from '../services/cloudinary';
 
@@ -106,7 +107,8 @@ const ImageEditor = ({
     onCancel,
     darkMode,
     isViewOnly = false,
-    initialDesignId = null
+    initialDesignId = null,
+    user
 }) => {
     const [activeTab, setActiveTab] = useState('text');
     const [imageSrc, setImageSrc] = useState(null);
@@ -155,10 +157,9 @@ const ImageEditor = ({
     const [recentlyUsedAnimations, setRecentlyUsedAnimations] = useState([]);
     const [hasInteracted, setHasInteracted] = useState(false);
 
-    // Everyone is an owner/editor now
-    const isReadOnly = false;
-    const isOwner = true;
-    const shareAccess = 'edit';
+    const [hasPermission, setHasPermission] = useState(true);
+    const [isOwner, setIsOwner] = useState(false);
+    const [accessLevelState, setAccessLevelState] = useState('private');
 
     // Canvas Size State
     const [canvasSize, setCanvasSize] = useState({ width: 1080, height: 720 });
@@ -190,6 +191,23 @@ const ImageEditor = ({
                 // Initialize sync with callback for remote updates
                 await FirebaseSyncService.initSync(activeDesignId, (remoteData) => {
                     if (isReceivingSync.current) return;
+
+                    // Permission check
+                    const designOwnerId = remoteData.ownerId;
+                    const designAccessLevel = remoteData.accessLevel || 'private';
+                    const currentUserId = user?.uid;
+
+                    const isUserOwner = currentUserId && designOwnerId === currentUserId;
+                    const hasAccess = designAccessLevel === 'public' || isUserOwner;
+
+                    setIsOwner(isUserOwner);
+                    setAccessLevelState(designAccessLevel);
+                    setHasPermission(hasAccess);
+
+                    if (!hasAccess) {
+                        setIsSyncing(false);
+                        return;
+                    }
 
                     isReceivingSync.current = true;
                     console.log('[FirebaseSync] Received update:', remoteData);
@@ -1960,7 +1978,7 @@ const ImageEditor = ({
             </div>
 
             <div className="flex items-center gap-4">
-                <button
+                {/* <button
                     onClick={() => {
                         const editUrl = window.location.href.replace('/view/', '/edit/');
                         navigator.clipboard.writeText(editUrl);
@@ -1970,13 +1988,13 @@ const ImageEditor = ({
                 >
                     <Share2 className="w-4 h-4" />
                     <span>Share</span>
-                </button>
-                <button
+                </button> */}
+                {/* <button
                     onClick={onCancel}
                     className="p-2.5 hover:bg-white/10 rounded-full transition-all text-gray-400 hover:text-white"
                 >
                     <X className="w-6 h-6" />
-                </button>
+                </button> */}
             </div>
         </header>
     );
@@ -2061,6 +2079,19 @@ const ImageEditor = ({
     };
 
 
+    if (!hasPermission) {
+        return (
+            <AccessDenied
+                user={user}
+                onRequestAccess={() => alert("Access request sent to owner")}
+                onSwitchAccount={() => {
+                    // This is a placeholder, usually would trigger logout/login
+                    window.location.href = '/';
+                }}
+            />
+        );
+    }
+
     return (
         <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
             {/* TOP NAVIGATION BAR */}
@@ -2143,6 +2174,7 @@ const ImageEditor = ({
                 adjustments={adjustments}
                 designId={designId}
                 onDesignIdGenerated={setDesignId}
+                user={user}
             />
             <div className="flex flex-1 overflow-hidden relative">
                 {/* LEFT SIDEBAR */}

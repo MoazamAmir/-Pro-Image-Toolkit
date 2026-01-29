@@ -19,10 +19,12 @@ class FirebaseSyncService {
      * @param {Object} initialState - Initial design state
      * @returns {Promise<string>} - The new design ID
      */
-    async createDesign(initialState) {
+    async createDesign(initialState, userId = null) {
         try {
             const docRef = await addDoc(collection(db, 'designs'), {
                 ...initialState,
+                ownerId: userId,
+                accessLevel: 'private', // Default to private
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
                 version: 1

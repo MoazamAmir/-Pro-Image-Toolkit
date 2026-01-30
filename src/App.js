@@ -126,6 +126,7 @@ const App = () => {
 
   // Auth State
   const [user, setUser] = useState(null);
+  const [authInitializing, setAuthInitializing] = useState(true); // NEW: Track auth loading
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -139,6 +140,7 @@ const App = () => {
     const unsubscribe = onAuthChange((currentUser) => {
       console.log("Auth System: User status received ->", currentUser ? currentUser.email : "No User (redirecting to login)");
       setUser(currentUser);
+      setAuthInitializing(false); // Auth check complete
     });
 
     return () => {
@@ -945,6 +947,34 @@ const App = () => {
       }
     }
   };
+
+  // Show loading while Firebase auth is initializing
+  if (authInitializing) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #f8f8ff, #faf5ff)',
+        fontFamily: 'Outfit, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            margin: '0 auto 20px',
+            border: '4px solid #e9d5ff',
+            borderTopColor: '#9333ea',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }} />
+          <p style={{ color: '#6b7280', fontSize: '16px', fontWeight: 500 }}>Loading...</p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
 
   // If no user is logged in, show Landing Page
   if (!user) {

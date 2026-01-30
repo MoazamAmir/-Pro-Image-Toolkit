@@ -137,7 +137,7 @@ const App = () => {
     console.log("Auth System: Initializing...");
 
     const unsubscribe = onAuthChange((currentUser) => {
-      console.log("Auth System: User status received ->", currentUser ? currentUser.email : "Guest");
+      console.log("Auth System: User status received ->", currentUser ? currentUser.email : "No User (redirecting to login)");
       setUser(currentUser);
     });
 

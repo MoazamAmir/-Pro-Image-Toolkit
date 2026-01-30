@@ -127,7 +127,7 @@ const App = () => {
   // Auth State
   const [user, setUser] = useState(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
 
   const fileInputRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
@@ -136,27 +136,13 @@ const App = () => {
   useEffect(() => {
     console.log("Auth System: Initializing...");
 
-    // Safety timeout to clear loading screen
-    const safetyTimeout = setTimeout(() => {
-      setAuthLoading(prev => {
-        if (prev) {
-          console.warn("Auth System: Timeout reached. Forcing ready state.");
-          return false;
-        }
-        return prev;
-      });
-    }, 4000);
-
     const unsubscribe = onAuthChange((currentUser) => {
       console.log("Auth System: User status received ->", currentUser ? currentUser.email : "Guest");
       setUser(currentUser);
-      setAuthLoading(false);
-      clearTimeout(safetyTimeout);
     });
 
     return () => {
       unsubscribe();
-      clearTimeout(safetyTimeout);
     };
   }, []);
 
@@ -943,35 +929,7 @@ const App = () => {
     setSelectedContainerId(newId);
   };
 
-  // If auth is loading, show a simple loading state
-  if (authLoading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(180deg, #8b5cf6 0%, #06b6d4 100%)'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: 40,
-            height: 40,
-            border: '3px solid rgba(255,255,255,0.3)',
-            borderTopColor: 'white',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 16px'
-          }} />
-          {error && (
-            <div style={{ color: 'white', background: 'rgba(255,0,0,0.3)', padding: '12px', borderRadius: '8px', maxWidth: '300px' }}>
-              <p style={{ margin: 0, fontSize: '14px' }}>{error}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+
 
   const handleLandingPageLogin = (userData, pendingTool) => {
     setUser(userData);

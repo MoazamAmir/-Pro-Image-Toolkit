@@ -11,7 +11,7 @@ import {
     setPersistence,
     browserLocalPersistence
 } from 'firebase/auth';
-import { getAnalytics, isSupported } from "firebase/analytics";
+import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -27,18 +27,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const analytics = getAnalytics(app);
 const db = getFirestore(app);
-
-// Safe Analytics Initialization
-let analytics = null;
-isSupported().then(supported => {
-    if (supported) {
-        analytics = getAnalytics(app);
-        console.log("Firebase Analytics initialized");
-    }
-}).catch(err => {
-    console.warn("Firebase Analytics not supported in this environment:", err.message);
-});
 
 // Set persistence as default
 setPersistence(auth, browserLocalPersistence).catch((error) => {
@@ -236,4 +226,4 @@ export const getGoogleRedirectResult = async () => {
     return { user: null, error: null };
 };
 
-export { auth, db, analytics };
+export { auth, db };

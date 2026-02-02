@@ -5,7 +5,7 @@ import {
     Link2, Globe, Lock, User, ArrowLeft, Instagram, LayoutGrid, Clipboard, MoreHorizontal,
     Search, Settings, Users, Link, Download as DownloadIcon, Eye, Instagram as InstagramIcon,
     Video as VideoIcon, Layout as LayoutIcon, Presentation, Copy as CopyIcon, MoreHorizontal as MoreHorizontalIcon,
-    Plus, Sparkles
+    Plus, Sparkles, Crown, Info
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -361,14 +361,14 @@ const ExportManager = ({
 
     const renderShareDesignView = () => (
         <div className="flex flex-col h-full animate-fadeIn">
-            <div className="flex items-center justify-between px-5 py-3 border-b dark:border-gray-800">
-                <h2 className="font-bold text-lg dark:text-white">Share design</h2>
-                <div className="flex items-center gap-4 text-gray-600 dark:text-gray-400">
-                    <div className="flex items-center gap-1.5"><Users className="w-4 h-4" /><span className="text-sm font-medium">0 visitors</span></div>
-                    <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><Settings className="w-5 h-5" /></button>
+            <div className="flex items-center justify-between px-4 py-2 border-b dark:border-gray-800">
+                <h2 className="font-bold text-base dark:text-white">Share design</h2>
+                <div className="flex items-center gap-3 text-gray-600 dark:text-gray-400">
+                    <div className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /><span className="text-xs font-medium">0 visitors</span></div>
+                    <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><Settings className="w-4 h-4" /></button>
                 </div>
             </div>
-            <div className="px-5 space-y-4 pt-4 pb-4 overflow-y-auto flex-1 custom-scrollbar">
+            <div className="px-4 space-y-3 pt-4 pb-4 overflow-y-auto flex-1 custom-scrollbar">
 
                 {/* People with access */}
                 <div className="space-y-2">
@@ -391,19 +391,19 @@ const ExportManager = ({
                 </div>
 
                 {/* Access Level */}
-                <div className="space-y-2">
-                    <label className="text-sm font-bold dark:text-white">Access level</label>
+                <div className="space-y-1.5">
+                    <label className="text-xs font-bold dark:text-white">Access level</label>
                     <div className="relative">
                         <button
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className="w-full flex items-center justify-between p-3 border dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-all text-left"
+                            className="w-full flex items-center justify-between p-2 border dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-all text-left"
                         >
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300">
                                     {accessLevel === 'private' ? <Lock className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
                                 </div>
                                 <div>
-                                    <div className="text-sm font-semibold dark:text-white">
+                                    <div className="text-xs font-semibold dark:text-white">
                                         {accessLevel === 'private' ? 'Only you can access' : 'Anyone with the link'}
                                     </div>
                                 </div>
@@ -483,7 +483,7 @@ const ExportManager = ({
                 <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
                 <h2 className="font-bold text-lg dark:text-white">Collaborate</h2>
             </div>
-            <div className="p-5 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
+            <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
                 <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/20">
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">Share this link to let others edit this design with you in real-time.</p>
                 </div>
@@ -502,7 +502,7 @@ const ExportManager = ({
                     <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
                     <h2 className="font-bold text-lg dark:text-white">Public view link {publicViewStatus === 'live' && <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-600 text-[10px] rounded-full uppercase">Live</span>}</h2>
                 </div>
-                <div className="p-5 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
+                <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
                     {publicViewStatus !== 'live' ? (
                         <>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Create a public view link for a view-only version of this design.</p>
@@ -535,38 +535,213 @@ const ExportManager = ({
     };
 
     const renderDownloadView = () => (
-        <div className="flex flex-col h-full animate-fadeIn">
-            <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
-                <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
-                <h2 className="font-bold text-lg dark:text-white">Download</h2>
+        <div className="flex flex-col h-full animate-fadeIn select-none">
+            <div className="flex items-center px-4 py-2 border-b dark:border-gray-800">
+                <button onClick={() => setView('share_design')} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-4 h-4" /></button>
+                <h2 className="font-bold text-base dark:text-white">Download</h2>
             </div>
-            <div className="p-5 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
-                <div className="space-y-1 relative">
-                    <label className="text-[10px] font-bold uppercase tracking-wider dark:text-gray-400">File type</label>
-                    <button onClick={() => setShowFileTypeDropdown(!showFileTypeDropdown)} className="w-full flex items-center justify-between p-2.5 border dark:border-gray-800 rounded-xl hover:border-purple-500 transition-all">
-                        <span className="text-sm dark:text-white">{fileTypes.find(t => t.id === fileType)?.label}</span>
-                        <ChevronDown className="w-4 h-4" />
+
+            <div className="p-4 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+
+                {/* File Type */}
+                <div className="space-y-2 relative">
+                    <label className="text-xs font-bold dark:text-gray-200">File type</label>
+                    <button
+                        onClick={() => setShowFileTypeDropdown(!showFileTypeDropdown)}
+                        className={`w-full flex items-center justify-between p-2 border ${showFileTypeDropdown ? 'border-purple-600 ring-1 ring-purple-600' : 'dark:border-gray-800'} rounded-xl bg-white dark:bg-gray-950 transition-all`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                {fileTypes.find(t => t.id === fileType)?.icon}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold dark:text-white">{fileTypes.find(t => t.id === fileType)?.label}</span>
+                                {fileTypes.find(t => t.id === fileType)?.suggested && (
+                                    <span className="bg-blue-600 text-white text-[9px] font-bold px-1 py-0.5 rounded">Suggested</span>
+                                )}
+                            </div>
+                        </div>
+                        <ChevronDown className="w-5 h-5 text-gray-400" />
                     </button>
+
                     {showFileTypeDropdown && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar">
                             {fileTypes.map(type => (
-                                <button key={type.id} onClick={() => { setFileType(type.id); setShowFileTypeDropdown(false); }} className={`w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${fileType === type.id ? 'bg-purple-50 dark:bg-purple-900/10' : ''}`}>
-                                    <div className="text-sm font-bold dark:text-white">{type.label}</div>
-                                    <div className="text-[10px] text-gray-500">{type.desc}</div>
+                                <button
+                                    key={type.id}
+                                    onClick={() => { setFileType(type.id); setShowFileTypeDropdown(false); }}
+                                    className={`w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${fileType === type.id ? 'bg-purple-50 dark:bg-purple-900/10' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                            {type.icon}
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold dark:text-white">{type.label}</span>
+                                                {type.suggested && (
+                                                    <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">Suggested</span>
+                                                )}
+                                                {type.premium && (
+                                                    <Crown className="w-3 h-3 text-orange-400" />
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">{type.desc}</div>
+                                        </div>
+                                    </div>
+                                    {fileType === type.id && <Check className="w-4 h-4 text-purple-600" />}
                                 </button>
                             ))}
                         </div>
                     )}
                 </div>
+
+                {/* Size */}
                 <div className="space-y-2">
-                    <div className="flex justify-between items-center"><label className="text-[10px] font-bold uppercase tracking-wider dark:text-gray-400">Size</label><span className="text-xs font-bold dark:text-white">{size}x</span></div>
-                    <input type="range" min="0.5" max="3" step="0.5" value={size} onChange={(e) => setSize(parseFloat(e.target.value))} className="w-full accent-purple-600 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer" />
+                    <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold dark:text-gray-200">Size <span className="text-gray-400 text-[10px] font-normal ml-1">×</span></label>
+                        <div className="flex items-center gap-2">
+                            <div className="px-3 py-1.5 border dark:border-gray-800 rounded-lg text-sm bg-white dark:bg-gray-950 min-w-[50px] text-center font-medium dark:text-white flex items-center justify-center gap-1">
+                                {size} <Crown className="w-3 h-3 text-orange-400" />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="relative h-6 flex items-center">
+                        <div className="absolute w-full h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-purple-600 rounded-full" style={{ width: `${((size - 0.5) / 2.5) * 100}%` }}></div>
+                        </div>
+                        <input
+                            type="range" min="0.5" max="3" step="0.125"
+                            value={size}
+                            onChange={(e) => setSize(parseFloat(e.target.value))}
+                            className="absolute w-full opacity-0 cursor-pointer h-full"
+                        />
+                        <div
+                            className="w-5 h-5 bg-white border-2 border-purple-600 rounded-full shadow absolute pointer-events-none transition-all"
+                            style={{ left: `calc(${((size - 0.5) / 2.5) * 100}% - 10px)` }}
+                        />
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {Math.round(canvasSize.width * size)} × {Math.round(canvasSize.height * size)} px
+                    </div>
                 </div>
+
+                {/* Options */}
                 <div className="space-y-3">
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTransparentBg(!transparentBg)}><div className={`w-4 h-4 rounded border flex items-center justify-center ${transparentBg ? 'bg-purple-600 border-purple-600' : 'border-gray-300'}`}>{transparentBg && <Check className="w-3 h-3 text-white" />}</div><span className="text-sm dark:text-gray-200">Transparent background</span></div>
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCompressFile(!compressFile)}><div className={`w-4 h-4 rounded border flex items-center justify-center ${compressFile ? 'bg-purple-600 border-purple-600' : 'border-gray-300'}`}>{compressFile && <Check className="w-3 h-3 text-white" />}</div><span className="text-sm dark:text-gray-200">Compress file</span></div>
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className="w-4 h-4 rounded border border-gray-300 dark:border-gray-700 flex items-center justify-center group-hover:border-purple-500 transition-colors">
+                            {/* Disabled logic for illustration */}
+                        </div>
+                        <span className="text-xs text-gray-600 dark:text-gray-300">Limit file size</span>
+                        <Info className="w-4 h-4 text-gray-400" />
+                        <Crown className="w-3 h-3 text-orange-400 ml-auto" />
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer group" onClick={() => setCompressFile(!compressFile)}>
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${compressFile ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-700 group-hover:border-purple-500'}`}>
+                            {compressFile && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <span className="text-xs text-gray-600 dark:text-gray-300">Compress file (lower quality)</span>
+                        <Crown className="w-3 h-3 text-orange-400 ml-auto" />
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer group" onClick={() => setTransparentBg(!transparentBg)}>
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${transparentBg ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-700 group-hover:border-purple-500'}`}>
+                            {transparentBg && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <span className="text-xs text-gray-600 dark:text-gray-300">Transparent background</span>
+                        <Crown className="w-3 h-3 text-orange-400 ml-auto" />
+                    </label>
                 </div>
-                <button onClick={handleExport} disabled={isExporting} className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-all">
+
+                {/* Select Pages */}
+                <div className="space-y-2 relative">
+                    <label className="text-sm font-bold dark:text-gray-200">Select pages</label>
+                    <button
+                        onClick={() => setShowPageSelector(!showPageSelector)}
+                        className="w-full flex items-center justify-between p-3 border dark:border-gray-800 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-all bg-white dark:bg-gray-950"
+                    >
+                        <span className="text-xs dark:text-white">
+                            {selectedPages.includes('all') ? `All pages (${pages.length})` :
+                                selectedPages.includes('current') ? `Current page (Page ${activePageId})` :
+                                    `${selectedPages.length} selected`}
+                        </span>
+                        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showPageSelector ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showPageSelector && (
+                        <div className="absolute bottom-full mb-2 left-0 right-0 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-[300px]">
+                            <div className="p-2 border-b dark:border-gray-700 overflow-y-auto custom-scrollbar flex-1 space-y-1">
+                                <label className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg cursor-pointer">
+                                    <div
+                                        onClick={() => setSelectedPages(['all'])}
+                                        className={`w-5 h-5 rounded border flex items-center justify-center ${selectedPages.includes('all') ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-600'}`}
+                                    >
+                                        {selectedPages.includes('all') && <Check className="w-3.5 h-3.5 text-white" />}
+                                    </div>
+                                    <span className="text-sm font-medium dark:text-gray-200">All pages ({pages.length})</span>
+                                </label>
+                                <label className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg cursor-pointer">
+                                    <div
+                                        onClick={() => setSelectedPages(['current'])}
+                                        className={`w-5 h-5 rounded border flex items-center justify-center ${selectedPages.includes('current') ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-600'}`}
+                                    >
+                                        {selectedPages.includes('current') && <Check className="w-3.5 h-3.5 text-white" />}
+                                    </div>
+                                    <span className="text-sm font-medium dark:text-gray-200">Current page (Page {activePageId})</span>
+                                </label>
+                                <div className="h-px bg-gray-100 dark:bg-gray-800 my-1"></div>
+                                {pages.map((p, i) => (
+                                    <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg cursor-pointer group">
+                                        <div
+                                            onClick={() => {
+                                                if (selectedPages.includes('all')) setSelectedPages([p.id]);
+                                                else if (selectedPages.includes('current')) setSelectedPages([...pages.filter(pg => pg.id !== activePageId).map(pg => pg.id), p.id]);
+                                                else {
+                                                    const newSelection = selectedPages.includes(p.id)
+                                                        ? selectedPages.filter(id => id !== p.id)
+                                                        : [...selectedPages, p.id];
+                                                    setSelectedPages(newSelection.length === pages.length ? ['all'] : newSelection.length === 0 ? ['current'] : newSelection);
+                                                }
+                                            }}
+                                            className={`w-5 h-5 rounded border flex items-center justify-center ${selectedPages.includes(p.id) || selectedPages.includes('all') || (selectedPages.includes('current') && p.id === activePageId) ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-600'}`}
+                                        >
+                                            {(selectedPages.includes(p.id) || selectedPages.includes('all') || (selectedPages.includes('current') && p.id === activePageId)) && <Check className="w-3.5 h-3.5 text-white" />}
+                                        </div>
+                                        <div className="w-8 h-8 rounded border bg-gray-100 flex items-center justify-center overflow-hidden">
+                                            <div className="w-full h-full bg-gray-200" />
+                                        </div>
+                                        <span className="text-sm font-medium dark:text-gray-200">Page {i + 1}</span>
+                                        <span className="text-xs text-gray-400 ml-auto">Custom size</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <div className="p-3 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                                <button
+                                    onClick={() => setShowPageSelector(false)}
+                                    className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-sm transition-colors"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Preferences */}
+                <div className="pt-2">
+                    <label className="text-sm font-bold dark:text-gray-200 mb-2 block">Preferences</label>
+                    <label className="flex items-center gap-3 cursor-pointer group" onClick={() => setSavePreferences(!savePreferences)}>
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${savePreferences ? 'bg-purple-600 border-purple-600' : 'border-gray-300 dark:border-gray-700 group-hover:border-purple-500'}`}>
+                            {savePreferences && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <span className="text-sm text-gray-600 dark:text-gray-300">Save download settings</span>
+                    </label>
+                </div>
+
+                <button
+                    onClick={handleExport}
+                    disabled={isExporting}
+                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-all mt-4"
+                >
                     {isExporting ? `Exporting ${exportProgress}%` : 'Download'}
                 </button>
             </div>
@@ -575,8 +750,8 @@ const ExportManager = ({
 
     return (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center pointer-events-none">
-            <div className="absolute inset-0 bg-black/5 pointer-events-auto" onClick={onClose} />
-            <div className="absolute top-14 right-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[340px] rounded-xl shadow-2xl overflow-hidden border dark:border-gray-800 shadow-black/20 animate-slideDown flex flex-col" style={{ height: 'auto', maxHeight: 'calc(100vh - 80px)' }}>
+            <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
+            <div className="absolute top-14 right-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[320px] rounded-xl shadow-2xl overflow-hidden border dark:border-gray-800 shadow-black/20 animate-slideDown flex flex-col" style={{ height: 'auto', maxHeight: 'calc(100vh - 100px)' }}>
                 {view === 'share_design' ? renderShareDesignView() :
                     view === 'share' ? renderShareView() :
                         view === 'public_view_link' ? renderPublicViewLinkView() :

@@ -126,7 +126,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                         backgroundClip: 'text',
                         letterSpacing: '-0.5px'
                     }}>
-                        ProImage
+                        Pro Image Toolkit
                     </div>
                 </div>
 

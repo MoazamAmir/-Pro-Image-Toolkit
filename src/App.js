@@ -81,7 +81,7 @@ const App = () => {
   const loadingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [editedFile, setEditedFile] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(!!designId); // Initialize based on URL to prevent flicker
   const [isViewOnly, setIsViewOnly] = useState(false);
 
   // Container management

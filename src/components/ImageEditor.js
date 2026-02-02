@@ -1,4 +1,5 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { threeDElements } from '../data/threeDElements';
 import { framesElements } from '../data/framesElements';
 import { gridTemplates } from '../data/gridTemplates';
@@ -96,7 +97,8 @@ const {
     ShoppingBag,
     Wallet,
     Map,
-    Share2
+    Share2,
+    FolderKanban
 } = LucideIcons;
 
 // ImageEditor component continues...
@@ -152,6 +154,7 @@ const ImageEditor = ({
 
     const [pages, setPages] = useState([{ id: 1, layers: [] }]);
     const [activePageId, setActivePageId] = useState(1);
+    const navigate = useNavigate(); // For navigation
     const [zoom, setZoom] = useState(0.8); // 80% default zoom
     const [isGridView, setIsGridView] = useState(false);
     const [recentlyUsedAnimations, setRecentlyUsedAnimations] = useState([]);
@@ -171,6 +174,13 @@ const ImageEditor = ({
     const syncTimeoutRef = useRef(null);
 
     const hasLoadedInitialData = useRef(!initialDesignId);
+
+    // Projects Panel State
+    const [userProjects, setUserProjects] = useState([]);
+    const [projectsLoading, setProjectsLoading] = useState(false);
+    const [projectSearchQuery, setProjectSearchQuery] = useState('');
+    const [projectMenuOpen, setProjectMenuOpen] = useState(null); // design id of open menu
+
 
     useEffect(() => {
         setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers } : p));
@@ -295,6 +305,52 @@ const ImageEditor = ({
             setRecentlyUsedAnimations(loaded);
         }
     }, []);
+
+    // Fetch user projects when Projects tab is opened
+    useEffect(() => {
+        const fetchUserProjects = async () => {
+            if (activeTab === 'projects' && user?.uid && !projectsLoading) {
+                setProjectsLoading(true);
+                try {
+                    const designs = await FirebaseSyncService.getUserDesigns(user.uid);
+                    setUserProjects(designs);
+                } catch (error) {
+                    console.error('Failed to fetch user projects:', error);
+                } finally {
+                    setProjectsLoading(false);
+                }
+            }
+        };
+        fetchUserProjects();
+    }, [activeTab, user?.uid]);
+
+    // Function to handle project deletion
+    const handleDeleteProject = async (projectId) => {
+        if (!user?.uid || !projectId) return;
+
+        const confirmed = window.confirm('Are you sure you want to delete this project? This action cannot be undone.');
+        if (!confirmed) return;
+
+        try {
+            const success = await FirebaseSyncService.deleteDesign(projectId, user.uid);
+            if (success) {
+                setUserProjects(prev => prev.filter(p => p.id !== projectId));
+                setProjectMenuOpen(null);
+            } else {
+                alert('Failed to delete project. Please try again.');
+            }
+        } catch (error) {
+            console.error('Delete project error:', error);
+            alert('Failed to delete project. Please try again.');
+        }
+    };
+
+    // Function to open a project for editing
+    const handleOpenProject = (projectId) => {
+        if (projectId === designId) return; // Already editing this design
+        window.location.href = `/edit/${projectId}`;
+    };
+
 
     // Add current layers state to history
     const saveToHistory = React.useCallback((newLayers) => {
@@ -1818,6 +1874,56 @@ const ImageEditor = ({
         return canvas;
     };
 
+    const handleClose = async () => {
+        // If viewing only, just close
+        if (isViewOnly) {
+            onCancel();
+            return;
+        }
+
+        // setIsSaving(true);
+        try {
+            // Generate thumbnail
+            // Calculate scale to target approx 300px width
+            const targetWidth = 300;
+            const scale = targetWidth / canvasSize.width;
+
+            const thumbnailCanvas = await renderFinalCanvas(null, null, { scale: scale, transparent: false });
+            // Use JPEG with 0.7 quality for good balance of size/quality
+            const thumbnailDataUrl = thumbnailCanvas.toDataURL('image/jpeg', 0.7);
+
+            // Save thumbnail to Firebase if we have a design ID
+            // Fire-and-forget save logic
+            (async () => {
+                try {
+                    if (designId) {
+                        await FirebaseSyncService.updateDesign(designId, {
+                            thumbnail: thumbnailDataUrl,
+                            lastModified: Date.now()
+                        });
+                    } else if (file && user?.uid) {
+                        await FirebaseSyncService.createDesign({
+                            pages: pages,
+                            activePageId: activePageId,
+                            canvasSize: canvasSize,
+                            adjustments: adjustments,
+                            thumbnail: thumbnailDataUrl,
+                            name: file.name ? file.name.replace(/\.[^/.]+$/, "") : 'Untitled Design'
+                        }, user.uid);
+                    }
+                } catch (e) {
+                    console.error('Background save failed:', e);
+                }
+            })();
+        } catch (error) {
+            console.error('Error auto-saving thumbnail:', error);
+        } finally {
+            // Remove the /edit/:id from URL and go back to base state
+            navigate('/image-editor', { replace: true });
+            onCancel(); // Close the editor immediately
+        }
+    };
+
     const handleApply = async () => {
         setIsSaving(true);
         // Small delay to ensure UI updates before heavy canvas work
@@ -2099,9 +2205,9 @@ const ImageEditor = ({
                 <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
                     <div className="flex items-center gap-4">
                         <button
-                            onClick={onCancel}
+                            onClick={handleClose}
                             className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
-                            title="Cancel"
+                            title="Close Editor"
                         >
                             <X className="w-5 h-5" />
                         </button>
@@ -2188,6 +2294,7 @@ const ImageEditor = ({
                         {/* <TabButton id="adjust" icon={Sliders} label="Adjust" /> */}
                         <TabButton id="brand" icon={Box} label="Brand" premium />
                         <TabButton id="forms" icon={FileText} label="Forms" />
+                        <TabButton id="projects" icon={FolderKanban} label="Projects" />
                         <button
                             onClick={enterCropMode}
                             className={`group relative flex flex-col items-center justify-center w-full py-2.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
@@ -3111,6 +3218,147 @@ const ImageEditor = ({
                                                 </button>
                                             ))}
                                         </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {activeTab === 'projects' && (
+                            <div className="animate-fadeIn space-y-4">
+                                <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Your Projects</h3>
+
+                                {/* Search Bar */}
+                                <div className="relative mb-4">
+                                    <div className={`absolute inset-y-0 left-3 flex items-center pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        <Search className="w-4 h-4" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Search your projects..."
+                                        value={projectSearchQuery}
+                                        onChange={(e) => setProjectSearchQuery(e.target.value)}
+                                        className={`w-full pl-10 pr-4 py-2.5 rounded-xl border-none shadow-sm ${darkMode ? 'bg-gray-800 text-white placeholder:text-gray-500' : 'bg-white text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200'} text-xs focus:ring-2 focus:ring-purple-500 transition-all`}
+                                    />
+                                </div>
+
+                                {/* Loading State */}
+                                {projectsLoading && (
+                                    <div className="flex flex-col items-center justify-center py-12">
+                                        <Loader2 className="w-8 h-8 text-purple-500 animate-spin mb-3" />
+                                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading your projects...</p>
+                                    </div>
+                                )}
+
+                                {/* Not Logged In State */}
+                                {!user && !projectsLoading && (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                                        <div className={`w-16 h-16 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} flex items-center justify-center mb-4`}>
+                                            <User className="w-8 h-8 text-gray-400" />
+                                        </div>
+                                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Sign in to see your projects</p>
+                                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Your saved designs will appear here</p>
+                                    </div>
+                                )}
+
+                                {/* Empty State */}
+                                {user && !projectsLoading && userProjects.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                                        <div className={`w-16 h-16 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} flex items-center justify-center mb-4`}>
+                                            <FolderKanban className="w-8 h-8 text-gray-400" />
+                                        </div>
+                                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>No projects yet</p>
+                                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Start creating and your designs will appear here</p>
+                                    </div>
+                                )}
+
+                                {/* Projects Grid */}
+                                {user && !projectsLoading && userProjects.length > 0 && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {userProjects
+                                            .filter(project =>
+                                                project.name.toLowerCase().includes(projectSearchQuery.toLowerCase())
+                                            )
+                                            .map(project => (
+                                                <div
+                                                    key={project.id}
+                                                    className={`group relative rounded-xl overflow-hidden cursor-pointer transition-all hover:scale-[1.02] ${project.id === designId
+                                                        ? 'ring-2 ring-purple-500'
+                                                        : `${darkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-100 hover:bg-gray-50'}`
+                                                        }`}
+                                                    onClick={() => handleOpenProject(project.id)}
+                                                >
+                                                    {/* Thumbnail */}
+                                                    <div className={`aspect-[4/3] ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} flex items-center justify-center overflow-hidden`}>
+                                                        {project.thumbnail ? (
+                                                            <img
+                                                                src={project.thumbnail}
+                                                                alt={project.name}
+                                                                className="w-full h-full object-cover"
+                                                                crossOrigin="anonymous"
+                                                                referrerPolicy="no-referrer"
+                                                                onError={(e) => {
+                                                                    // Hide broken image and show placeholder
+                                                                    e.target.style.display = 'none';
+                                                                    e.target.parentElement.innerHTML = '<div class="flex items-center justify-center w-full h-full"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg></div>';
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <ImageIcon className="w-8 h-8 text-gray-400" />
+                                                        )}
+                                                    </div>
+
+                                                    {/* Info */}
+                                                    <div className="p-2">
+                                                        <p className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {project.name}
+                                                        </p>
+                                                        <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                            {Math.round(project.canvasSize?.width || 1080)} x {Math.round(project.canvasSize?.height || 720)} px
+                                                        </p>
+                                                    </div>
+
+                                                    {/* 3-Dot Menu Button - Shows on Hover */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setProjectMenuOpen(projectMenuOpen === project.id ? null : project.id);
+                                                        }}
+                                                        className={`absolute top-2 right-2 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${darkMode ? 'bg-black/50 hover:bg-black/70' : 'bg-white/80 hover:bg-white'
+                                                            } shadow-sm`}
+                                                    >
+                                                        <MoreVertical className="w-4 h-4" />
+                                                    </button>
+
+                                                    {/* Dropdown Menu */}
+                                                    {projectMenuOpen === project.id && (
+                                                        <div
+                                                            className={`absolute top-10 right-2 ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'} border rounded-lg shadow-xl z-50 overflow-hidden`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteProject(project.id);
+                                                                }}
+                                                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium w-full transition-colors ${darkMode
+                                                                    ? 'text-red-400 hover:bg-red-500/20'
+                                                                    : 'text-red-600 hover:bg-red-50'
+                                                                    }`}
+                                                            >
+                                                                <Trash className="w-4 h-4" />
+                                                                <span>Delete</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Current Badge */}
+                                                    {project.id === designId && (
+                                                        <div className="absolute top-2 left-2 px-2 py-0.5 bg-purple-600 text-white text-[9px] font-bold rounded-full">
+                                                            CURRENT
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        }
                                     </div>
                                 )}
                             </div>
@@ -4336,7 +4584,7 @@ const ImageEditor = ({
                 })()
             }
 
-            <style jsx>{`
+            <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(147, 51, 234, 0.2); border-radius: 10px; }

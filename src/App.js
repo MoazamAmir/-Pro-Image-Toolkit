@@ -178,8 +178,8 @@ const App = () => {
     }
 
     // Handle view/edit route
-    if (designId && !isEditing) {
-      setIsEditing(true);
+    if (designId && !selectedFile) {
+      if (!isEditing) setIsEditing(true);
       const viewOnly = location.pathname.includes('/view/');
       setIsViewOnly(viewOnly);
 

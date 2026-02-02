@@ -668,7 +668,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                                 type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileSelect}
-                                accept={activeConverter.accept}
+                                accept={activeConverter?.accept}
                                 multiple={activeConverter?.multiple}
                                 className="hidden"
                             />
@@ -678,7 +678,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                                     <div className="relative z-10">
                                         <Upload className={`w-20 h-20 ${darkMode ? 'text-purple-400' : 'text-purple-500'} mx-auto mb-6 group-hover:animate-pulse-intense transition-transform group-hover:scale-110`} />
                                         <p className={`${darkMode ? 'text-gray-200' : 'text-gray-700'} mb-3 text-2xl font-black tracking-tight`}>
-                                            Drop your {activeConverter.multiple ? 'files' : 'file'} here
+                                            {activeConverter ? `Drop your ${activeConverter.multiple ? 'files' : 'file'} here` : 'Select a tool to begin'}
                                         </p>
                                         <p className={`text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'} max-w-sm mx-auto font-medium`}>
                                             or <span className="text-purple-500 font-bold underline">browse files</span> from your computer
@@ -1119,7 +1119,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                                             {customFileName || convertedFile.name}
                                         </p>
                                         <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'} font-bold uppercase tracking-wider`}>
-                                            {convertedFile.type?.split('/')[1] || activeConverter.to.toUpperCase()} • {(convertedFile.blob?.size / 1024).toFixed(1)} KB
+                                            {convertedFile.type?.split('/')[1] || activeConverter?.to?.toUpperCase() || 'FILE'} • {(convertedFile.blob?.size / 1024).toFixed(1)} KB
                                         </p>
                                     </div>
                                 </div>
@@ -1220,7 +1220,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
             </div >
             {!isConverting && !isEditing && (
                 <ToolDetailsPanel
-                    toolName={activeConverter.name}
+                    toolName={activeConverter?.name}
                     activeConverter={activeConverter}
                     darkMode={darkMode}
                     converters={converters}

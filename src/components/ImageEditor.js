@@ -173,7 +173,7 @@ const ImageEditor = ({
     const isReceivingSync = useRef(false);
     const syncTimeoutRef = useRef(null);
 
-    const hasLoadedInitialData = useRef(!initialDesignId);
+    const hasLoadedInitialData = useRef(false);
 
     // Projects Panel State
     const [userProjects, setUserProjects] = useState([]);
@@ -189,12 +189,26 @@ const ImageEditor = ({
     // Initialize Firebase Sync
     useEffect(() => {
         const initFirebaseSync = async () => {
-            if (!designId && !initialDesignId) {
-                // Not in sync mode yet, maybe create a design later
+            const activeDesignId = initialDesignId || designId;
+
+            if (!activeDesignId) {
                 return;
             }
 
-            const activeDesignId = designId || initialDesignId;
+            // Important: Reset everything when switching designs
+            if (initialDesignId && initialDesignId !== designId) {
+                setDesignId(initialDesignId);
+                hasLoadedInitialData.current = false;
+                // Clear existing state to prevent flash or accidental overwrite
+                setLayers([]);
+                setPages([{ id: 1, layers: [] }]);
+                setActivePageId(1);
+                setAdjustments({
+                    brightness: 100, contrast: 100, saturation: 100, blur: 0,
+                    grayscale: 0, sepia: 0, hue: 0, invert: 0
+                });
+            }
+
             setIsSyncing(true);
 
             try {

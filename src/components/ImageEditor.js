@@ -348,7 +348,7 @@ const ImageEditor = ({
     // Function to open a project for editing
     const handleOpenProject = (projectId) => {
         if (projectId === designId) return; // Already editing this design
-        window.location.href = `/edit/${projectId}`;
+        navigate(`/edit/${projectId}`);
     };
 
 
@@ -724,16 +724,39 @@ const ImageEditor = ({
                 }
 
                 try {
-                    // Upload to Cloudinary (handles compression internally)
-                    const cloudinaryUrl = await handleFileUpload(file);
-                    if (!cloudinaryUrl) return;
+                    // Reset everything to start fresh with a new upload IMMEDIATELY
+                    setLayers([]);
+                    setImageSrc(null); // Clear previous image
+                    setPages([{ id: 1, layers: [] }]);
+                    setActivePageId(1);
+                    setHistory([]);
+                    setHistoryIndex(-1);
+                    setDesignId(null); // New upload is a new design
+                    hasLoadedInitialData.current = true; // Mark as loaded so we don't fetch old project sync
 
-                    const img = new Image();
-                    img.crossOrigin = "anonymous";
-                    img.onload = () => {
-                        // Set canvas size (scaled down if too huge, but keeping aspect ratio)
-                        let width = img.width;
-                        let height = img.height;
+                    setAdjustments({
+                        brightness: 100,
+                        contrast: 100,
+                        saturation: 100,
+                        blur: 0,
+                        grayscale: 0,
+                        sepia: 0,
+                        hue: 0,
+                        invert: 0,
+                        highlights: 0,
+                        shadows: 0
+                    });
+
+                    // 1. CREATE LOCAL PREVIEW IMMEDIATELY
+                    const localUrl = URL.createObjectURL(file);
+                    setImageSrc(localUrl);
+
+                    // Pre-load image to get dimensions and show immediate canvas
+                    const previewImg = new Image();
+                    previewImg.src = localUrl;
+                    previewImg.onload = () => {
+                        let width = previewImg.width;
+                        let height = previewImg.height;
                         const maxInitialWidth = 1500;
                         const maxInitialHeight = window.innerHeight * 0.8;
 
@@ -742,21 +765,19 @@ const ImageEditor = ({
                             width = maxInitialWidth;
                             height = height * ratio;
                         }
-
                         if (height > maxInitialHeight) {
                             const ratio = maxInitialHeight / height;
                             height = maxInitialHeight;
                             width = width * ratio;
                         }
 
-                        // Update canvas size state
                         setCanvasSize({ width, height });
 
-                        const newLayer = {
+                        const initialBgLayer = {
                             id: 'background-layer',
                             type: 'shape',
                             shapeType: 'image',
-                            content: cloudinaryUrl,
+                            content: localUrl,
                             color: 'transparent',
                             width: width,
                             height: height,
@@ -766,13 +787,20 @@ const ImageEditor = ({
                             isLocked: false,
                             isBackground: true
                         };
-
-                        const nextLayers = [newLayer];
-                        setLayers(nextLayers);
-                        saveToHistory(nextLayers);
-                        setImageSrc(cloudinaryUrl);
+                        setLayers([initialBgLayer]);
+                        saveToHistory([initialBgLayer]);
                     };
-                    img.src = cloudinaryUrl;
+
+                    // 2. START BACKGROUND UPLOAD TO CLOUDINARY
+                    const cloudinaryUrl = await handleFileUpload(file);
+                    if (!cloudinaryUrl) return;
+
+                    // 3. UPDATE PERMANENT SOURCE ONCE READY
+                    setImageSrc(cloudinaryUrl);
+                    setLayers(prev => prev.map(l =>
+                        l.id === 'background-layer' ? { ...l, content: cloudinaryUrl } : l
+                    ));
+
                 } catch (err) {
                     console.error("Error processing file:", err);
                 }
@@ -3388,10 +3416,10 @@ const ImageEditor = ({
                     </div>
                 )}
 
-                {/* UPLOADING OVERLAY */}
+                {/* UPLOADING OVERLAY - Made more transparent to show preview */}
                 {isUploading && (
-                    <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-                        <div className={`p-8 rounded-3xl ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-2 shadow-2xl flex flex-col items-center gap-4 max-w-xs w-full`}>
+                    <div className="absolute inset-0 z-[100] flex items-center justify-center bg-white/40 dark:bg-black/40 animate-fadeIn">
+                        <div className={`p-8 rounded-3xl ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-2 shadow-2xl flex flex-col items-center gap-4 max-w-xs w-full backdrop-blur-md`}>
                             <div className="relative">
                                 <div className="w-16 h-16 border-4 border-blue-500/20 rounded-full animate-ping absolute inset-0" />
                                 <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin relative z-10" />
@@ -3425,6 +3453,29 @@ const ImageEditor = ({
                 >
                     {/* Workspace (Canvas) */}
                     <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-8 pb-32 bg-gray-100 dark:bg-gray-900'}`} ref={containerRef}>
+                        {/* High-quality localized loading indicator for project transitions */}
+                        {isSyncing && (
+                            <div className="absolute inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-md z-[100] flex flex-col items-center justify-center transition-all duration-500 animate-fadeIn">
+                                <div className="relative group">
+                                    <div className="absolute inset-0 bg-purple-500/30 rounded-full blur-xl group-hover:bg-purple-500/50 transition-all duration-500 animate-pulse"></div>
+                                    <div className="relative flex flex-col items-center gap-6">
+                                        <div className="relative">
+                                            <div className="w-20 h-20 border-4 border-purple-500/20 rounded-2xl animate-[spin_3s_linear_infinite] absolute inset-0"></div>
+                                            <div className="w-20 h-20 border-4 border-purple-600 border-t-transparent rounded-2xl animate-spin relative z-10 flex items-center justify-center">
+                                                <Sparkles className="w-8 h-8 text-purple-600 animate-pulse" />
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-center gap-2">
+                                            <h2 className="text-xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600 animate-gradient-x">Loading Project</h2>
+                                            <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-500/10 rounded-full border border-purple-500/20">
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-purple-600">Syncing with Cloud</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {/* Canvas Area */}
                         <div
                             className="relative transition-all duration-300 ease-out"

@@ -192,6 +192,57 @@ class FirebaseSyncService {
             return false;
         }
     }
+
+    /**
+     * Update the active design for a specific session (owner's UID)
+     * @param {string} sessionId - Usually the owner's UID
+     * @param {string} designId - The project ID currently being viewed
+     * @param {string} lastUpdatedBy - Random string to identify the sender
+     */
+    async updateActiveSession(sessionId, designId, lastUpdatedBy) {
+        if (!sessionId || !designId) return;
+        try {
+            const sessionRef = doc(db, 'active_sessions', sessionId);
+            await setDoc(sessionRef, {
+                activeDesignId: designId,
+                updatedAt: serverTimestamp(),
+                lastUpdatedBy: lastUpdatedBy || Math.random().toString(36).substr(2, 9)
+            }, { merge: true });
+        } catch (error) {
+            console.error('Error updating active session:', error);
+        }
+    }
+
+    /**
+     * Listen for project switch events in a session
+     * @param {string} sessionId 
+     * @param {Function} callback 
+     */
+    listenToActiveSession(sessionId, callback) {
+        if (!sessionId) return null;
+
+        const sessionRef = doc(db, 'active_sessions', sessionId);
+        return onSnapshot(sessionRef, (doc) => {
+            if (doc.exists()) {
+                callback(doc.data());
+            }
+        }, (error) => {
+            console.error('Session Sync Error:', error);
+        });
+    }
+
+    /**
+     * Clear session data
+     */
+    async clearActiveSession(sessionId) {
+        if (!sessionId) return;
+        try {
+            const sessionRef = doc(db, 'active_sessions', sessionId);
+            await deleteDoc(sessionRef);
+        } catch (error) {
+            console.error('Error clearing active session:', error);
+        }
+    }
 }
 
 const firebaseSyncService = new FirebaseSyncService();

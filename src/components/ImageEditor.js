@@ -14,7 +14,8 @@ import lottie from 'lottie-web';
 import { saveEditorState, loadEditorState, saveRecentlyUsedAnimations, loadRecentlyUsedAnimations } from '../utils/editorStorage';
 import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
-import p2pService from '../services/P2PService';
+import { db, storage } from '../services/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import AccessDenied from './AccessDenied';
 import imageCompression from 'browser-image-compression';
@@ -161,7 +162,7 @@ const ImageEditor = ({
     const [hasInteracted, setHasInteracted] = useState(false);
 
     const [hasPermission, setHasPermission] = useState(true);
-    const [isOwner, setIsOwner] = useState(false);
+    const [isOwner, setIsOwner] = useState(!initialDesignId); // Owner if starting new, or wait for sync
     const [accessLevelState, setAccessLevelState] = useState('private');
 
     // Canvas Size State
@@ -180,6 +181,9 @@ const ImageEditor = ({
     const [projectsLoading, setProjectsLoading] = useState(false);
     const [projectSearchQuery, setProjectSearchQuery] = useState('');
     const [projectMenuOpen, setProjectMenuOpen] = useState(null); // design id of open menu
+    const [isProjectSwitching, setIsProjectSwitching] = useState(false);
+    const localInstanceId = useRef(Math.random().toString(36).substr(2, 9)).current;
+    const sessionUnsubscribe = useRef(null);
 
 
     useEffect(() => {
@@ -249,13 +253,43 @@ const ImageEditor = ({
 
                     // Mark initial data as loaded so we can start syncing back
                     hasLoadedInitialData.current = true;
+                    setIsProjectSwitching(false);
 
-                    setTimeout(() => { isReceivingSync.current = false; }, 100);
+                    setTimeout(() => { isReceivingSync.current = false; }, 50);
                 });
 
                 if (initialDesignId) {
                     setDesignId(initialDesignId);
                 }
+
+                // --- START SESSION SYNC LOGIC ---
+                // We use the design's ownerId as the sessionId so all guests follow the owner
+                // We need to wait for the first design sync to get the ownerId
+                FirebaseSyncService.getDesign(activeDesignId).then(designData => {
+                    if (designData && designData.ownerId) {
+                        const sessionId = designData.ownerId;
+                        console.log('[SessionSync] Joining session:', sessionId);
+
+                        // Broadcast our current project if we are the ones who just opened it
+                        // This helps sync others if we just switched
+                        FirebaseSyncService.updateActiveSession(sessionId, activeDesignId, localInstanceId);
+
+                        // Listen for others switching projects
+                        if (sessionUnsubscribe.current) sessionUnsubscribe.current();
+                        sessionUnsubscribe.current = FirebaseSyncService.listenToActiveSession(sessionId, (sessionData) => {
+                            if (sessionData && sessionData.activeDesignId && sessionData.activeDesignId !== activeDesignId) {
+                                // Only navigate if the update came from someone else
+                                if (sessionData.lastUpdatedBy !== localInstanceId) {
+                                    console.log('[SessionSync] Remote project switch detected:', sessionData.activeDesignId);
+                                    setIsProjectSwitching(true);
+                                    navigate(`/edit/${sessionData.activeDesignId}`);
+                                }
+                            }
+                        });
+                    }
+                });
+                // --- END SESSION SYNC LOGIC ---
+
             } catch (error) {
                 console.error('[FirebaseSync] Initialization failed:', error);
             } finally {
@@ -267,6 +301,10 @@ const ImageEditor = ({
 
         return () => {
             FirebaseSyncService.stopSync();
+            if (sessionUnsubscribe.current) {
+                sessionUnsubscribe.current();
+                sessionUnsubscribe.current = null;
+            }
         };
     }, [initialDesignId]);
 
@@ -293,7 +331,7 @@ const ImageEditor = ({
             } catch (error) {
                 console.error('[FirebaseSync] Update failed:', error);
             }
-        }, 100);
+        }, 50);
 
         return () => {
             if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -360,8 +398,24 @@ const ImageEditor = ({
     };
 
     // Function to open a project for editing
-    const handleOpenProject = (projectId) => {
+    const handleOpenProject = async (projectId) => {
         if (projectId === designId) return; // Already editing this design
+
+        // Broadcast to others that we are switching projects
+        // We use the ownerId as the sessionId. Since we are in the Projects tab, 
+        // the current user is likely the owner, but we check designId's owner for safety.
+        try {
+            const designData = await FirebaseSyncService.getDesign(designId || projectId);
+            const sessionId = designData?.ownerId || user?.uid;
+            if (sessionId) {
+                console.log('[SessionSync] Broadcasting project switch:', projectId);
+                await FirebaseSyncService.updateActiveSession(sessionId, projectId, localInstanceId);
+            }
+        } catch (e) {
+            console.error('[SessionSync] Failed to broadcast switch:', e);
+        }
+
+        setIsProjectSwitching(true);
         navigate(`/edit/${projectId}`);
     };
 
@@ -1966,39 +2020,11 @@ const ImageEditor = ({
         }
     };
 
+    /* 
     const handleApply = async () => {
-        setIsSaving(true);
-        // Small delay to ensure UI updates before heavy canvas work
-        await new Promise(r => setTimeout(r, 500));
-
-        try {
-            // Ensure all layers are properly synchronized before saving
-            const currentState = { layers, adjustments };
-            saveEditorState(currentState);
-
-            const canvas = await renderFinalCanvas();
-            if (canvas) {
-                canvas.toBlob((blob) => {
-                    setIsSaving(false);
-                    if (blob) {
-                        // Navigate directly to converter - no loading indicator
-                        onApply(blob);
-                    } else {
-                        console.error('Failed to create blob');
-                        onApply(null);
-                    }
-                }, 'image/png');
-            } else {
-                setIsSaving(false);
-                console.error('Failed to render canvas');
-                onCancel();
-            }
-        } catch (err) {
-            console.error('Apply error:', err);
-            setIsSaving(false);
-            alert("Could not process image. A security restriction on an animation icon might be blocking the save. Try removing recently added icons.");
-        }
+        // ... unused applying logic ...
     };
+    */
 
     const handleDownload = async () => {
         setIsSaving(true);
@@ -2246,13 +2272,15 @@ const ImageEditor = ({
             {isViewOnly ? renderPresentationHeader() : (
                 <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
                     <div className="flex items-center gap-4">
-                        <button
-                            onClick={handleClose}
-                            className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
-                            title="Close Editor"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
+                        {(isOwner || !designId) && (
+                            <button
+                                onClick={handleClose}
+                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
+                                title="Close Editor"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        )}
                         <div className="h-6 w-px bg-gray-700/20 mx-1" />
                         <div className="flex items-center gap-2">
                             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
@@ -3480,7 +3508,9 @@ const ImageEditor = ({
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-center gap-2">
-                                            <h2 className="text-xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600 animate-gradient-x">Loading Project</h2>
+                                            <h2 className="text-xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600 animate-gradient-x">
+                                                {isOwner || isProjectSwitching ? "Loading Project" : "Project Import Modal"}
+                                            </h2>
                                             <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-500/10 rounded-full border border-purple-500/20">
                                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-purple-600">Syncing with Cloud</span>

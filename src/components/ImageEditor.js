@@ -12,6 +12,7 @@ import { animatedElements } from '../data/animatedElements';
 import { graphicsElements } from '../data/graphicsElements';
 import lottie from 'lottie-web';
 import { saveEditorState, loadEditorState, saveRecentlyUsedAnimations, loadRecentlyUsedAnimations } from '../utils/editorStorage';
+import { imageAnimations } from '../data/imageAnimations';
 import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
 import { db, storage } from '../services/firebase';
@@ -99,7 +100,8 @@ const {
     Wallet,
     Map,
     Share2,
-    FolderKanban
+    FolderKanban,
+    Crown
 } = LucideIcons;
 
 // ImageEditor component continues...
@@ -160,6 +162,7 @@ const ImageEditor = ({
     const [isGridView, setIsGridView] = useState(false);
     const [recentlyUsedAnimations, setRecentlyUsedAnimations] = useState([]);
     const [hasInteracted, setHasInteracted] = useState(false);
+    const [hoverAnimation, setHoverAnimation] = useState(null);
 
     const [hasPermission, setHasPermission] = useState(true);
     const [isOwner, setIsOwner] = useState(!initialDesignId); // Owner if starting new, or wait for sync
@@ -1650,22 +1653,86 @@ const ImageEditor = ({
         ctx.rect(0, 0, canvas.width, canvas.height);
         ctx.clip();
 
+        const calculateAnimationState = (layer, time, totalDuration) => {
+            if (!layer.animationClass) return { alpha: 1, tx: 0, ty: 0, s: 1, clipW: 1, clipH: 1 };
+
+            const animClass = layer.animationClass.toLowerCase();
+            const timing = layer.animationOn || 'enter';
+            const style = layer.animationStyle || 'seep';
+            const duration = options.duration || 3;
+
+            let alpha = 1, tx = 0, ty = 0, s = 1, clipW = 1, clipH = 1;
+
+            const animDur = 0.8; // 0.8s for start/end transitions
+            let phase = 'idle';
+            let progress = 1;
+
+            if (timing === 'enter' || timing === 'both') {
+                if (time < animDur) {
+                    phase = 'enter';
+                    progress = time / animDur;
+                }
+            }
+
+            if (phase === 'idle' && (timing === 'exit' || timing === 'both')) {
+                if (time > duration - animDur) {
+                    phase = 'exit';
+                    progress = (duration - time) / animDur;
+                }
+            }
+
+            const p = Math.max(0, Math.min(1, progress));
+            const easeOutQuart = 1 - Math.pow(1 - p, 4);
+            const ep = easeOutQuart;
+
+            // Map animation classes to canvas effects
+            if (animClass.includes('fade')) {
+                alpha = ep;
+            } else if (animClass.includes('rise') || animClass.includes('up')) {
+                ty = (1 - ep) * 40 * finalScale;
+                alpha = ep;
+            } else if (animClass.includes('pop') || animClass.includes('zoom')) {
+                s = 0.6 + (0.4 * ep);
+                alpha = ep;
+            } else if (animClass.includes('pan')) {
+                tx = (time / duration) * 30 * finalScale;
+            } else if (animClass.includes('breathe')) {
+                s = 1 + Math.sin((time / duration) * Math.PI * 2) * 0.04;
+            } else if (animClass.includes('reveal')) {
+                alpha = ep;
+                if (style === 'seep') clipH = ep;
+                else if (style === 'flow') clipW = ep;
+                else clipW = ep;
+            }
+
+            return { alpha, tx, ty, s, clipW, clipH };
+        };
+
         for (const layer of targetLayers) {
             if (layer.isHidden) continue;
 
+            const anim = calculateAnimationState(layer, frameTime, options.duration || 3);
+
             // Coordinates are percentage-based (0-100) relative to canvasSize
-            const canvasX = (layer.x / 100) * canvas.width;
-            const canvasY = (layer.y / 100) * canvas.height;
+            const canvasX = ((layer.x / 100) * canvas.width) + anim.tx;
+            const canvasY = ((layer.y / 100) * canvas.height) + anim.ty;
 
             ctx.save();
+            ctx.globalAlpha = anim.alpha;
             ctx.translate(canvasX, canvasY);
             ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
-            ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+            ctx.scale((layer.flipX ? -1 : 1) * anim.s, (layer.flipY ? -1 : 1) * anim.s);
 
             // Width and Height are in editor pixels, scale them for export
             // FIX: Use the actual layer dimensions relative to the canvas size
             const w = (layer.width || 100) * finalScale;
             const h = (layer.height || 100) * finalScale;
+
+            if (anim.clipW < 1 || anim.clipH < 1) {
+                ctx.beginPath();
+                ctx.rect(-w / 2, -h / 2, w * anim.clipW, h * anim.clipH);
+                ctx.clip();
+            }
 
             if (layer.id === 'background-layer' || (layer.type === 'shape' && layer.shapeType === 'image')) {
                 if (layer.content && (layer.shapeType === 'image' || layer.id === 'background-layer')) {
@@ -2409,6 +2476,136 @@ const ImageEditor = ({
                                             </div>
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'animations' && (
+                            <div className="animate-fadeIn space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>Animations</h3>
+                                    <button
+                                        onClick={() => {
+                                            const updatedLayers = layers.map(l =>
+                                                l.id === activeLayerId ? { ...l, animationClass: null } : l
+                                            );
+                                            setLayers(updatedLayers);
+                                            saveToHistory(updatedLayers);
+                                        }}
+                                        className="text-[10px] text-purple-600 font-bold hover:underline"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+
+                                <div className="space-y-8">
+                                    {Object.entries(imageAnimations).map(([category, templates]) => (
+                                        <div key={category}>
+                                            <h4 className={`text-[10px] font-black uppercase mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {category}
+                                            </h4>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {templates.map((template) => {
+                                                    const IconCmp = LucideIcons[template.icon] || LucideIcons.Sparkles;
+                                                    const isApplied = layers.find(l => l.id === activeLayerId)?.animationClass === template.class;
+
+                                                    return (
+                                                        <button
+                                                            key={template.id}
+                                                            onMouseEnter={() => setHoverAnimation(template.class)}
+                                                            onMouseLeave={() => setHoverAnimation(null)}
+                                                            onClick={() => {
+                                                                const updatedLayers = layers.map(l =>
+                                                                    l.id === activeLayerId ? { ...l, animationClass: template.class } : l
+                                                                );
+                                                                setLayers(updatedLayers);
+                                                                saveToHistory(updatedLayers);
+                                                            }}
+                                                            className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105 border-2 ${isApplied
+                                                                ? 'border-purple-500 bg-purple-500/10'
+                                                                : (darkMode ? 'border-transparent hover:bg-gray-800' : 'border-transparent hover:bg-gray-50')
+                                                                }`}
+                                                        >
+                                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shadow-sm ${darkMode ? 'bg-gray-800 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                                                                <IconCmp className="w-5 h-5" />
+                                                            </div>
+                                                            <span className={`text-[9px] font-bold text-center truncate w-full ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                {template.name}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* Animation Settings Panel */}
+                                    {layers.find(l => l.id === activeLayerId)?.animationClass && (
+                                        <div className={`mt-8 pt-8 border-t ${darkMode ? 'border-gray-800' : 'border-gray-100'} animate-fadeIn space-y-6`}>
+                                            <div className="space-y-4">
+                                                <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    Animate
+                                                </h4>
+                                                <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                                                    {['both', 'enter', 'exit'].map((timing) => {
+                                                        const isActive = (layers.find(l => l.id === activeLayerId)?.animationTiming || 'enter') === timing;
+                                                        return (
+                                                            <button
+                                                                key={timing}
+                                                                onClick={() => {
+                                                                    const updatedLayers = layers.map(l =>
+                                                                        l.id === activeLayerId ? { ...l, animationTiming: timing } : l
+                                                                    );
+                                                                    setLayers(updatedLayers);
+                                                                    saveToHistory(updatedLayers);
+                                                                }}
+                                                                className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${isActive
+                                                                    ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm'
+                                                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                                                    }`}
+                                                            >
+                                                                {timing === 'both' ? 'Both' : timing === 'enter' ? 'On enter' : 'On exit'}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* Style Variation Grid (Only for Reveal or specific animations) */}
+                                            {layers.find(l => l.id === activeLayerId)?.animationClass?.startsWith('reveal-') && (
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-1">
+                                                        <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                            Style
+                                                        </h4>
+                                                        <Crown className="w-3 h-3 text-orange-400" />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {['seep', 'flow', 'bloom', 'splotch'].map((style) => {
+                                                            const isActive = (layers.find(l => l.id === activeLayerId)?.animationStyle || 'seep') === style;
+                                                            return (
+                                                                <button
+                                                                    key={style}
+                                                                    onClick={() => {
+                                                                        const updatedLayers = layers.map(l =>
+                                                                            l.id === activeLayerId ? { ...l, animationStyle: style } : l
+                                                                        );
+                                                                        setLayers(updatedLayers);
+                                                                        saveToHistory(updatedLayers);
+                                                                    }}
+                                                                    className={`py-2 px-4 text-[10px] font-bold rounded-lg border-2 transition-all ${isActive
+                                                                        ? 'border-purple-500 bg-purple-500/10 text-purple-600'
+                                                                        : (darkMode ? 'border-gray-800 hover:border-gray-700 text-gray-400' : 'border-gray-200 hover:border-gray-300 text-gray-600')
+                                                                        }`}
+                                                                >
+                                                                    {style.charAt(0).toUpperCase() + style.slice(1)}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -3873,13 +4070,14 @@ const ImageEditor = ({
                                         </div>
                                     ) : layer.type === 'text' ? (
                                         <div
+                                            key={`${layer.id}-${layer.animationClass || ''}-${activeLayerId === layer.id ? (hoverAnimation || '') : ''}`}
                                             contentEditable={editingLayerId === layer.id}
                                             suppressContentEditableWarning
                                             onBlur={(e) => {
                                                 setEditingLayerId(null);
                                                 setLayers(layers.map(l => l.id === layer.id ? { ...l, content: e.target.innerText } : l));
                                             }}
-                                            className={`px-1.5 py-0.5 outline-none ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none`}
+                                            className={`px-1.5 py-0.5 outline-none ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none ${activeLayerId === layer.id && hoverAnimation ? hoverAnimation : `${layer.animationClass || ''} ${layer.animationClass?.startsWith('reveal-') ? `reveal-style-${layer.animationStyle || 'seep'}` : ''}`.trim()}`}
                                             style={{
                                                 fontSize: `${layer.fontSize}px`,
                                                 fontFamily: layer.fontFamily,
@@ -4016,7 +4214,8 @@ const ImageEditor = ({
                                         </div>
                                     ) : (layer.type === 'lottie' || layer.type === 'gif') ? (
                                         <div
-                                            className="pointer-events-none overflow-hidden"
+                                            key={`${layer.id}-${layer.animationClass || ''}-${activeLayerId === layer.id ? (hoverAnimation || '') : ''}`}
+                                            className={`pointer-events-none overflow-hidden ${activeLayerId === layer.id && hoverAnimation ? hoverAnimation : (layer.animationClass || '')}`}
                                             style={{
                                                 width: `${layer.width}px`,
                                                 height: `${layer.height}px`,
@@ -4091,10 +4290,10 @@ const ImageEditor = ({
                                                 if (layer.shapeType === 'image') {
                                                     return (
                                                         <img
+                                                            key={`${layer.id}-${layer.animationClass || ''}-${activeLayerId === layer.id ? (hoverAnimation || '') : ''}`}
                                                             ref={layer.id === 'background-layer' ? imageRef : null}
                                                             src={layer.content}
                                                             alt=""
-                                                            className="w-full h-full pointer-events-none"
                                                             draggable={false}
                                                             referrerPolicy="no-referrer"
                                                             crossOrigin="anonymous"
@@ -4104,11 +4303,16 @@ const ImageEditor = ({
                                                                     filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`
                                                                 } : {})
                                                             }}
+                                                            className={`w-full h-full pointer-events-none ${activeLayerId === layer.id && hoverAnimation ? hoverAnimation : `${layer.animationClass || ''} ${layer.animationClass?.startsWith('reveal-') ? `reveal-style-${layer.animationStyle || 'seep'}` : ''}`.trim()}`}
                                                         />
                                                     );
                                                 }
                                                 return (
-                                                    <div style={style} className="relative flex items-center justify-center overflow-hidden">
+                                                    <div
+                                                        key={`${layer.id}-${layer.animationClass || ''}-${activeLayerId === layer.id ? (hoverAnimation || '') : ''}`}
+                                                        style={style}
+                                                        className={`relative flex items-center justify-center ${layer.shapeType?.startsWith('line') || layer.shapeType === 'arrow' ? '' : 'overflow-hidden'} ${activeLayerId === layer.id && hoverAnimation ? hoverAnimation : `${layer.animationClass || ''} ${layer.animationClass?.startsWith('reveal-') ? `reveal-style-${layer.animationStyle || 'seep'}` : ''}`.trim()}`}
+                                                    >
                                                         {isTextableShape && (
                                                             <div
                                                                 contentEditable={layer.isSelected}
@@ -4394,8 +4598,20 @@ const ImageEditor = ({
                             <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipX ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Horizontal">
                                 <FlipHorizontal className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
+                            <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
                                 <FlipHorizontal className="w-3.5 h-3.5 rotate-90" />
+                            </button>
+
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveTab('animations');
+                                    setIsPanelOpen(true);
+                                }}
+                                className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300 ${activeTab === 'animations' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
+                                title="Animate"
+                            >
+                                <Sparkles className="w-4 h-4" />
                             </button>
 
 

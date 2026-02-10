@@ -187,6 +187,10 @@ const ImageEditor = ({
     const [isProjectSwitching, setIsProjectSwitching] = useState(false);
     const localInstanceId = useRef(Math.random().toString(36).substr(2, 9)).current;
     const sessionUnsubscribe = useRef(null);
+    const presenceUnsubscribe = useRef(null);
+    const [collaborators, setCollaborators] = useState([]);
+    const userColor = useRef(`#${Math.floor(Math.random() * 16777215).toString(16)}`).current;
+    const lastPresenceUpdate = useRef(0);
 
 
     useEffect(() => {
@@ -293,6 +297,14 @@ const ImageEditor = ({
                 });
                 // --- END SESSION SYNC LOGIC ---
 
+                // --- START PRESENCE LOGIC ---
+                if (presenceUnsubscribe.current) presenceUnsubscribe.current();
+                presenceUnsubscribe.current = FirebaseSyncService.listenToPresence(activeDesignId, (users) => {
+                    // Filter out self
+                    setCollaborators(users.filter(u => u.userId !== user?.uid));
+                });
+                // --- END PRESENCE LOGIC ---
+
             } catch (error) {
                 console.error('[FirebaseSync] Initialization failed:', error);
             } finally {
@@ -307,6 +319,13 @@ const ImageEditor = ({
             if (sessionUnsubscribe.current) {
                 sessionUnsubscribe.current();
                 sessionUnsubscribe.current = null;
+            }
+            if (presenceUnsubscribe.current) {
+                presenceUnsubscribe.current();
+                presenceUnsubscribe.current = null;
+            }
+            if (designId && user?.uid) {
+                FirebaseSyncService.clearPresence(designId, user.uid);
             }
         };
     }, [initialDesignId]);
@@ -334,7 +353,7 @@ const ImageEditor = ({
             } catch (error) {
                 console.error('[FirebaseSync] Update failed:', error);
             }
-        }, 50);
+        }, 30); // Reduced to 30ms for faster sync
 
         return () => {
             if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -494,6 +513,16 @@ const ImageEditor = ({
         setActivePageId(newPageId);
         setLayers([newBgLayer]);
         setActiveLayerId(newBgLayer.id);
+
+        // Broadcast new selection and page
+        if (designId && user?.uid) {
+            FirebaseSyncService.updatePresence(designId, user.uid, {
+                selectedLayerId: newBgLayer.id,
+                activePageId: newPageId,
+                name: user?.displayName || 'Guest',
+                color: userColor
+            });
+        }
         setHistory([[newBgLayer]]);
         setHistoryIndex(0);
         // Save state after page change
@@ -526,6 +555,16 @@ const ImageEditor = ({
             }
             setHistory([savedLayers]);
             setHistoryIndex(0);
+
+            // Broadcast page switch
+            if (designId && user?.uid) {
+                FirebaseSyncService.updatePresence(designId, user.uid, {
+                    selectedLayerId: bgLayer ? bgLayer.id : null,
+                    activePageId: pageId,
+                    name: user?.displayName || 'Guest',
+                    color: userColor
+                });
+            }
         }
     };
 
@@ -977,32 +1016,34 @@ const ImageEditor = ({
     }, [imageSrc]);
 
     const handleMouseDown = (e, layer) => {
-        if (isViewOnly) return;
-        if (editingLayerId === layer.id || layer.isLocked) return;
-
+        if (isViewOnly || layer.isLocked || editingLayerId === layer.id) return;
         e.preventDefault();
         e.stopPropagation();
 
         setActiveLayerId(layer.id);
-        setLayers(prev => prev.map(l => ({
-            ...l,
-            isSelected: l.id === layer.id
-        })));
+        setLayers(prev => prev.map(l => ({ ...l, isSelected: l.id === layer.id })));
 
-        if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
+        const offsetX = (e.clientX - rect.left) - ((layer.x * rect.width) / 100);
+        const offsetY = (e.clientY - rect.top) - ((layer.y * rect.height) / 100);
 
-        const layerXPx = ((layer.x || 0) / 100) * rect.width;
-        const layerYPx = ((layer.y || 0) / 100) * rect.height;
-
-        const offset = {
-            x: e.clientX - rect.left - layerXPx,
-            y: e.clientY - rect.top - layerYPx
+        dragRef.current = {
+            isDragging: true,
+            layerId: layer.id,
+            offset: { x: offsetX, y: offsetY }
         };
-
-        setDragOffset(offset);
         setIsDraggingLayer(true);
-        dragRef.current = { isDragging: true, layerId: layer.id, offset };
+        setHasInteracted(true);
+
+        // Broadcast selection
+        if (designId && user?.uid) {
+            FirebaseSyncService.updatePresence(designId, user.uid, {
+                selectedLayerId: layer.id,
+                activePageId,
+                name: user?.displayName || 'Guest',
+                color: userColor
+            });
+        }
     };
 
     const handleMouseMove = (e) => {
@@ -1069,6 +1110,23 @@ const ImageEditor = ({
         const handleGlobalMouseMove = (e) => {
             if (!containerRef.current) return;
             const rect = containerRef.current.getBoundingClientRect();
+
+            // Broadcast cursor position (throttled)
+            const now = Date.now();
+            if (now - lastPresenceUpdate.current > 50 && designId && user?.uid) { // Reduced to 50ms
+                const cursorX = ((e.clientX - rect.left) / rect.width) * 100;
+                const cursorY = ((e.clientY - rect.top) / rect.height) * 100;
+
+                if (cursorX >= -5 && cursorX <= 105 && cursorY >= -5 && cursorY <= 105) {
+                    FirebaseSyncService.updatePresence(designId, user.uid, {
+                        cursor: { x: cursorX, y: cursorY },
+                        activePageId,
+                        name: user?.displayName || 'Guest',
+                        color: userColor
+                    });
+                    lastPresenceUpdate.current = now;
+                }
+            }
 
             if (dragRef.current.isDragging && dragRef.current.layerId) {
                 const { layerId, offset } = dragRef.current;
@@ -3691,7 +3749,7 @@ const ImageEditor = ({
                     }}
                 >
                     {/* Workspace (Canvas) */}
-                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-8 pb-32 bg-gray-100 dark:bg-gray-900'}`} ref={containerRef}>
+                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-8 pb-32 bg-gray-100 dark:bg-gray-900'}`}>
                         {/* High-quality localized loading indicator for project transitions */}
                         {isSyncing && (
                             <div className="absolute inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-md z-[100] flex flex-col items-center justify-center transition-all duration-500 animate-fadeIn">
@@ -3719,16 +3777,19 @@ const ImageEditor = ({
                         )}
                         {/* Canvas Area */}
                         <div
-                            className="relative transition-all duration-300 ease-out"
+                            ref={containerRef}
+                            className="absolute bg-white shadow-2xl overflow-visible"
                             style={{
                                 width: `${canvasSize.width}px`,
                                 height: `${canvasSize.height}px`,
-                                transform: `scale(${zoom})`,
-                                transformOrigin: 'center center'
+                                left: '50%',
+                                top: '50%',
+                                transform: `translate(-50%, -50%) scale(${zoom})`,
+                                transformOrigin: 'center center',
+                                containerType: 'size'
                             }}
                             onMouseDown={(e) => {
                                 if (isViewOnly) return;
-                                // Select background layer when clicking on canvas
                                 const bgLayer = layers.find(l => l.id === 'background-layer');
                                 if (bgLayer) {
                                     e.stopPropagation();
@@ -4374,6 +4435,65 @@ const ImageEditor = ({
                                     )}
                                 </div>
                             ))}
+
+                            {/* Collaborator Selections */}
+                            {collaborators.map(collab => {
+                                if (!collab.selectedLayerId || collab.activePageId !== activePageId) return null;
+                                const targetLayer = layers.find(l => l.id === collab.selectedLayerId);
+                                if (!targetLayer || targetLayer.isSelected) return null;
+
+                                return (
+                                    <div
+                                        key={`selection-${collab.userId}`}
+                                        className="absolute pointer-events-none will-change-transform z-100"
+                                        style={{
+                                            left: 0,
+                                            top: 0,
+                                            width: `${targetLayer.width}px`,
+                                            height: `${targetLayer.height}px`,
+                                            transform: `translate3d(calc(${targetLayer.x}cqw - 50%), calc(${targetLayer.y}cqh - 50%), 0) rotate(${targetLayer.rotation || 0}deg)`,
+                                            border: `2px solid ${collab.color || '#8b5cf6'}`,
+                                            transition: 'transform 0.15s cubic-bezier(0.1, 0.7, 0.1, 1)',
+                                        }}
+                                    >
+                                        <div
+                                            className="absolute -top-6 left-0 px-2 py-0.5 rounded-full text-[10px] text-white font-bold whitespace-nowrap shadow-sm backdrop-blur-sm"
+                                            style={{ backgroundColor: collab.color || '#8b5cf6' }}
+                                        >
+                                            {collab.name}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {/* Collaborator Cursors */}
+                            {collaborators.map(collab => {
+                                if (!collab.cursor || collab.activePageId !== activePageId) return null;
+                                return (
+                                    <div
+                                        key={`cursor-${collab.userId}`}
+                                        className="absolute pointer-events-none z-[1000] will-change-transform"
+                                        style={{
+                                            left: 0,
+                                            top: 0,
+                                            transform: `translate3d(${collab.cursor.x}cqw, ${collab.cursor.y}cqh, 0)`,
+                                            transition: 'transform 0.1s cubic-bezier(0.1, 0.7, 0.1, 1)',
+                                        }}
+                                    >
+                                        <div className="relative">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ color: collab.color || '#8b5cf6', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}>
+                                                <path d="M5.65376 12.3673H5.46026L5.31717 12.4976L0.500002 16.8829L0.500002 1.19841L11.7841 12.3673H5.65376Z" fill="currentColor" stroke="white" strokeWidth="1.2" />
+                                            </svg>
+                                            <div
+                                                className="absolute left-4 top-4 px-2 py-1 rounded-full shadow-lg text-[10px] text-white font-bold whitespace-nowrap backdrop-blur-sm"
+                                                style={{ backgroundColor: collab.color || '#8b5cf6' }}
+                                            >
+                                                {collab.name}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
 
                         </div>
                     </div>

@@ -243,6 +243,51 @@ class FirebaseSyncService {
             console.error('Error clearing active session:', error);
         }
     }
+
+    /**
+     * Update user presence in a design (cursor, selection, etc)
+     */
+    async updatePresence(designId, userId, data) {
+        if (!designId || !userId) return;
+        try {
+            const presenceRef = doc(db, 'designs', designId, 'presence', userId);
+            await setDoc(presenceRef, {
+                ...data,
+                userId,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (error) {
+            // Silently fail for presence to avoid console spam
+        }
+    }
+
+    /**
+     * Listen to all users' presence in a design
+     */
+    listenToPresence(designId, callback) {
+        if (!designId) return null;
+        const presenceRef = collection(db, 'designs', designId, 'presence');
+        return onSnapshot(presenceRef, (snapshot) => {
+            const users = [];
+            snapshot.forEach(doc => {
+                users.push(doc.data());
+            });
+            callback(users);
+        });
+    }
+
+    /**
+     * Clean up old presence data
+     */
+    async clearPresence(designId, userId) {
+        if (!designId || !userId) return;
+        try {
+            const presenceRef = doc(db, 'designs', designId, 'presence', userId);
+            await deleteDoc(presenceRef);
+        } catch (error) {
+            console.error('Error clearing presence:', error);
+        }
+    }
 }
 
 const firebaseSyncService = new FirebaseSyncService();

@@ -338,6 +338,11 @@ const ExportManager = ({
             }
 
             if (currentDesignId) {
+                // Automatically set access level to public when creating a public link
+                // This ensures anyone with the link can actually view it
+                await FirebaseSyncService.updateDesign(currentDesignId, { accessLevel: 'public' });
+                setAccessLevel('public');
+
                 const link = `${window.location.origin}/view/${currentDesignId}`;
                 setPublicLink(link);
                 setPublicViewStatus('live');

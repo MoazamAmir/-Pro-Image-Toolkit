@@ -32,7 +32,8 @@ const ExportManager = ({
     onDesignIdGenerated,
     canvasPreviewRef,
     adjustments,
-    user
+    user,
+    onStartRecordingStudio
 }) => {
     const [view, setView] = useState('share_design'); // Default to share_design view
     const [publicViewStatus, setPublicViewStatus] = useState('idle'); // 'idle', 'creating', 'live'
@@ -81,7 +82,7 @@ const ExportManager = ({
 
     // Generate preview when opening public link view
     useEffect(() => {
-        if (view === 'public_view_link' && !previewSrc) {
+        if ((view === 'public_view_link' || view === 'present_and_record') && !previewSrc) {
             const generatePreview = async () => {
                 try {
                     if (canvasPreviewRef?.current) {
@@ -468,7 +469,7 @@ const ExportManager = ({
                     <ShareAction icon={DownloadIcon} label="Download" onClick={() => setView('download')} />
                     <ShareAction icon={Link} label="Public view link" onClick={() => setView('public_view_link')} />
                     <ShareAction icon={InstagramIcon} label="Instagram" onClick={() => { }} />
-                    <ShareAction icon={VideoIcon} label="Present and record" onClick={() => { }} />
+                    <ShareAction icon={VideoIcon} label="Present and record" onClick={() => setView('present_and_record')} />
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 pt-2">
@@ -753,6 +754,50 @@ const ExportManager = ({
         </div>
     );
 
+    const renderPresentAndRecordView = () => (
+        <div className="flex flex-col h-full animate-fadeIn">
+            <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
+                <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                <h2 className="font-bold text-base dark:text-white">Present and record</h2>
+            </div>
+            <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Record yourself while talking over a presentation. Share with students, friends, or colleagues using a public view link.</p>
+
+                {/* Preview */}
+                <div className="w-full aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700 relative">
+                    {previewSrc ? (
+                        <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" />
+                    ) : renderFinalCanvas ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <ImageIcon className="w-12 h-12 opacity-20" />
+                        </div>
+                    )}
+                    {/* Small recording badge */}
+                    <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+                        <div className="w-8 h-8 rounded-full bg-gray-300 overflow-hidden border-2 border-white shadow-sm">
+                            <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || 'User'}`} alt="" className="w-full h-full object-cover" />
+                        </div>
+                        <span className="text-[9px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded shadow-sm">Recording</span>
+                    </div>
+                </div>
+
+                <button
+                    onClick={() => {
+                        onClose();
+                        if (onStartRecordingStudio) onStartRecordingStudio();
+                    }}
+                    className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all text-sm"
+                >
+                    Go to recording studio
+                </button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center pointer-events-none">
             <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
@@ -760,7 +805,8 @@ const ExportManager = ({
                 {view === 'share_design' ? renderShareDesignView() :
                     view === 'share' ? renderShareView() :
                         view === 'public_view_link' ? renderPublicViewLinkView() :
-                            renderDownloadView()}
+                            view === 'present_and_record' ? renderPresentAndRecordView() :
+                                renderDownloadView()}
             </div>
             <style>{`
                 @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

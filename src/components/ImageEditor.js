@@ -15,6 +15,7 @@ import { saveEditorState, loadEditorState, saveRecentlyUsedAnimations, loadRecen
 import { imageAnimations } from '../data/imageAnimations';
 import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
+import PresentAndRecordStudio from './PresentAndRecord/PresentAndRecordStudio';
 import { db, storage } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import FirebaseSyncService from '../services/FirebaseSyncService';
@@ -146,6 +147,7 @@ const ImageEditor = ({
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [isSaving, setIsSaving] = useState(false);
     const [showExportPopup, setShowExportPopup] = useState(false);
+    const [showRecordingStudio, setShowRecordingStudio] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [extractedColors, setExtractedColors] = useState([]);
@@ -2476,7 +2478,21 @@ const ImageEditor = ({
                 designId={designId}
                 onDesignIdGenerated={setDesignId}
                 user={user}
+                onStartRecordingStudio={() => setShowRecordingStudio(true)}
             />
+
+            {/* Present and Record Studio */}
+            {showRecordingStudio && (
+                <PresentAndRecordStudio
+                    pages={pages}
+                    layers={layers}
+                    canvasSize={canvasSize}
+                    adjustments={adjustments}
+                    renderFinalCanvas={renderFinalCanvas}
+                    onClose={() => setShowRecordingStudio(false)}
+                    darkMode={darkMode}
+                />
+            )}
             <div className="flex flex-1 overflow-hidden relative">
                 {/* LEFT SIDEBAR */}
                 {!isViewOnly && (

@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    X, Pause, Play, Square, Mic, Video, ChevronLeft, ChevronRight,
-    Monitor, Download, Trash2, CheckCircle, Clock, Settings, Maximize2
+    X, Pause, Play, Mic, Video, ChevronLeft, ChevronRight,
+    Monitor, Download, Trash2, CheckCircle, Clock, Settings
 } from 'lucide-react';
 import useRecording from './useRecording';
 
@@ -27,7 +27,7 @@ const PresentAndRecordStudio = ({
         audioLevel,
         enumerateDevices, startAudioMonitor,
         startCameraPreview,
-        startCountdown, startRecording,
+        startCountdown, prepareRecording, executeRecording,
         pauseRecording, resumeRecording, stopRecording,
         downloadRecording, discardRecording,
         cleanup, formatTime
@@ -90,10 +90,19 @@ const PresentAndRecordStudio = ({
         if (previewCanvasRef.current) renderDesignToCanvas(previewCanvasRef.current);
     }, [renderDesignToCanvas, layers, adjustments]);
 
-    const handleStartRecording = () => {
-        startCountdown(() => {
-            startRecording();
-        });
+    const handleStartRecording = async () => {
+        // Step 1: Prepare streams (acquires permissions immediately)
+        const success = await prepareRecording();
+        if (success) {
+            // Step 2: Set phase to countdown for UI
+            setPhase('countdown');
+            // Step 3: Start countdown
+            startCountdown(() => {
+                // Step 4: Countdown finished, start actual recording
+                executeRecording();
+                // Phase is set to 'recording' inside executeRecording()
+            });
+        }
     };
 
     const handlePageSwitch = (direction) => {

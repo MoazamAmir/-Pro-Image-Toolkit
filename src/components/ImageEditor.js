@@ -159,7 +159,7 @@ const ImageEditor = ({
 
 
 
-    const [pages, setPages] = useState([{ id: 1, layers: [] }]);
+    const [pages, setPages] = useState([{ id: 1, layers: [], canvasSize: { width: 1080, height: 720 } }]);
     const [activePageId, setActivePageId] = useState(1);
     const navigate = useNavigate(); // For navigation
     const [zoom, setZoom] = useState(0.8); // 80% default zoom
@@ -199,8 +199,8 @@ const ImageEditor = ({
 
 
     useEffect(() => {
-        setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers } : p));
-    }, [layers]);
+        setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers, canvasSize } : p));
+    }, [layers, canvasSize]);
 
     // Initialize Firebase Sync
     useEffect(() => {
@@ -257,6 +257,11 @@ const ImageEditor = ({
                         const activePage = remoteData.pages.find(p => p.id === (remoteData.activePageId || activePageId));
                         if (activePage) {
                             setLayers(activePage.layers || []);
+                            if (activePage.canvasSize) setCanvasSize(activePage.canvasSize);
+
+                            // Restore imageSrc from background layer
+                            const bg = (activePage.layers || []).find(l => l.id === 'background-layer');
+                            if (bg && bg.content) setImageSrc(bg.content);
                         }
                     }
                     if (remoteData.activePageId) setActivePageId(remoteData.activePageId);
@@ -346,7 +351,7 @@ const ImageEditor = ({
 
         syncTimeoutRef.current = setTimeout(async () => {
             const currentState = {
-                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
+                pages: pages.map(p => p.id === activePageId ? { ...p, layers, canvasSize } : p),
                 activePageId,
                 canvasSize,
                 adjustments,
@@ -506,12 +511,12 @@ const ImageEditor = ({
             isLocked: false,
             isBackground: true
         };
-        const newPage = { id: newPageId, layers: [newBgLayer] };
+        const newPage = { id: newPageId, layers: [newBgLayer], canvasSize: { width: newWidth, height: newHeight } };
         setPages(prev => {
             const updatedPages = [...prev, newPage];
             // Save all pages to ensure proper sync
             const updatedPagesWithCurrent = updatedPages.map(p =>
-                p.id === activePageId ? { ...p, layers } : p
+                p.id === activePageId ? { ...p, layers, canvasSize } : p
             );
             return updatedPagesWithCurrent;
         });
@@ -531,17 +536,17 @@ const ImageEditor = ({
         setHistory([[newBgLayer]]);
         setHistoryIndex(0);
         // Save state after page change
-        saveEditorState({ layers: [newBgLayer], adjustments });
+        saveEditorState({ layers: [newBgLayer], adjustments, canvasSize: { width: newWidth, height: newHeight } });
     };
 
     const switchPage = (pageId) => {
         // First save current layers to active page
         setPages(prev => {
             const updatedPages = prev.map(p =>
-                p.id === activePageId ? { ...p, layers } : p
+                p.id === activePageId ? { ...p, layers, canvasSize } : p
             );
             // Save the updated pages state
-            saveEditorState({ layers: layers, adjustments });
+            saveEditorState({ layers: layers, adjustments, canvasSize });
             return updatedPages;
         });
 
@@ -549,14 +554,20 @@ const ImageEditor = ({
         if (targetPage) {
             setActivePageId(pageId);
             const savedLayers = targetPage.layers || [];
+            const savedCanvasSize = targetPage.canvasSize || { width: 1080, height: 720 };
+
             setLayers(savedLayers);
+            setCanvasSize(savedCanvasSize);
+
             // Select background layer by default if it exists
             const bgLayer = savedLayers.find(l => l.id === 'background-layer');
             if (bgLayer) {
                 setActiveLayerId(bgLayer.id);
                 setLayers(savedLayers.map(l => ({ ...l, isSelected: l.id === bgLayer.id })));
+                if (bgLayer.content) setImageSrc(bgLayer.content);
             } else {
                 setActiveLayerId(null);
+                setImageSrc(null);
             }
             setHistory([savedLayers]);
             setHistoryIndex(0);
@@ -939,7 +950,7 @@ const ImageEditor = ({
         saveToHistory(nextLayers);
         setActiveLayerId(newLayer.id);
         // Ensure state is saved immediately after adding new elements
-        saveEditorState({ layers: nextLayers, adjustments });
+        saveEditorState({ layers: nextLayers, adjustments, canvasSize });
     };
 
 
@@ -974,6 +985,12 @@ const ImageEditor = ({
             }
             if (savedState.adjustments) {
                 setAdjustments(prev => ({ ...prev, ...savedState.adjustments }));
+            }
+            if (savedState.canvasSize) {
+                setCanvasSize(savedState.canvasSize);
+            }
+            if (savedState.pages) {
+                setPages(savedState.pages);
             }
         }
     }, []);
@@ -1291,13 +1308,16 @@ const ImageEditor = ({
                     setLayers(layersPrev => layersPrev.map(l => {
                         // Background layer always fills the container
                         if (l.isBackground || l.id === 'background-layer') {
-                            return { ...l, width: newWidth, height: newHeight };
+                            return { ...l, width: newWidth, height: newHeight, x: 50, y: 50 };
                         }
 
-                        // Other layers: Keep their pixel size, but maintain percentage position
-                        // The user said they only want the selected (canvas) to change.
-                        // By NOT multiplying width/height here, they stay at their fixed pixel size.
-                        return l;
+                        // Maintain absolute pixel position
+                        const oldX_px = (l.x / 100) * prev.width;
+                        const oldY_px = (l.y / 100) * prev.height;
+                        const nextX = (oldX_px / newWidth) * 100;
+                        const nextY = (oldY_px / newHeight) * 100;
+
+                        return { ...l, x: nextX, y: nextY };
                     }));
 
                     return { width: newWidth, height: newHeight };
@@ -1317,16 +1337,19 @@ const ImageEditor = ({
                         let { width = 100, height = 100, fontSize = 24, x = 50, y = 50, type, shapeType } = ly;
 
                         // Type check for proportional resizing
-                        const isImageOrFrame = type === 'shape' && shapeType === 'image' || type === 'frame' || type === 'lottie' || type === 'gif';
-                        const isTextOrIcon = type === 'text' || (type === 'shape' && shapeType === 'icon');
+                        const isImageOrFrame = type === 'shape' && (shapeType === 'image' || shapeType === 'icon') || type === 'frame' || type === 'lottie' || type === 'gif';
+                        const isText = type === 'text';
                         const isCorner = handle.length === 2; // nw, ne, se, sw
 
                         // Calculate current edges in pixels for anchoring
                         const containerW = rect.width;
                         const containerH = rect.height;
 
-                        if (isTextOrIcon) {
-                            // Text/Icon scaling logic (already somewhat proportional)
+                        let newWidth = width;
+                        let newHeight = height;
+
+                        if (isText) {
+                            // Text scaling logic
                             const movement = isCorner ?
                                 (handle === 'se' || handle === 'nw' ? (dx + dy) / 2 : (dx - dy) / 2) :
                                 (handle.includes('e') || handle.includes('w') ? dx : dy);
@@ -1334,19 +1357,9 @@ const ImageEditor = ({
                             const direction = (handle.includes('w') || handle.includes('n')) ? -1 : 1;
                             const actualChange = movement * direction;
 
-                            const oldFontSize = fontSize;
                             fontSize = Math.max(8, fontSize + actualChange);
-
-                            // For icons, also update width/height
-                            if (type !== 'text') {
-                                const ratio = width / oldFontSize;
-                                width = fontSize * ratio;
-                                height = fontSize * ratio;
-                            }
                         } else {
                             // Image/Frame/Shape resizing with proper anchoring
-                            let newWidth = width;
-                            let newHeight = height;
 
                             // 1. Calculate target dimensions based on handle
                             if (handle.includes('e')) newWidth += dx;
@@ -1384,17 +1397,40 @@ const ImageEditor = ({
                                 y = 50;
                                 setCanvasSize({ width: newWidth, height: newHeight });
                             }
-
-                            width = newWidth;
-                            height = newHeight;
                         }
 
-                        // Boundary constraints for center position
+                        width = newWidth;
+                        height = newHeight;
+
+                        // Boundary constraints for center position (don't constrain background)
                         if (!isBackground) {
                             const halfWPercent = (width / 2 / containerW) * 100;
                             const halfHPercent = (height / 2 / containerH) * 100;
                             x = Math.max(halfWPercent, Math.min(100 - halfWPercent, x));
                             y = Math.max(halfHPercent, Math.min(100 - halfHPercent, y));
+                        } else {
+                            // When background is resized, update all other layers to stay in pixel position
+                            // Because setCanvasSize is called inside the loop, we should do this collectively
+                            // Actually, let's just use the current width/height of the background layer
+                            // which is updated in the same loop for 'ly'
+                            setCanvasSize({ width: newWidth, height: newHeight });
+
+                            // We need another map to update OTHER layers
+                            // This is slightly inefficient but ensures isolation
+                            setTimeout(() => { // Small delay to avoid state collision during map
+                                setLayers(currentLayers => currentLayers.map(oth => {
+                                    if (oth.id === ly.id) return { ...ly, width: newWidth, height: newHeight, x: 50, y: 50 };
+
+                                    const oX_px = (oth.x / 100) * width;
+                                    const oY_px = (oth.y / 100) * height;
+                                    const nX = (oX_px / newWidth) * 100;
+                                    const nY = (oY_px / newHeight) * 100;
+
+                                    return { ...oth, x: nX, y: nY };
+                                }));
+                            }, 0);
+
+                            return { ...ly, width: newWidth, height: newHeight, x: 50, y: 50 };
                         }
 
                         return { ...ly, width, height, fontSize, x, y };
@@ -4139,7 +4175,7 @@ const ImageEditor = ({
                                             setIsPanningContent(!isPanningContent);
                                         }
                                     }}
-                                    className={`absolute ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none transition-all duration-200 ${layer.isSelected ? (isPanningContent && (layer.type === 'frame' || layer.shapeType === 'image') ? 'outline outline-2 outline-purple-500 [outline-style:dashed] outline-offset-2 z-[100]' : 'ring-2 ring-purple-500 shadow-2xl z-[50]') : 'hover:ring-1 hover:ring-purple-400 z-10'} ${layer.isHidden ? 'opacity-0 pointer-events-none' : ''}`}
+                                    className={`absolute ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none transition-shadow ${layer.isSelected ? (isPanningContent && (layer.type === 'frame' || layer.shapeType === 'image') ? 'ring-2 ring-purple-500 ring-dashed shadow-2xl scale-[1.01]' : 'ring-2 ring-purple-500 shadow-2xl') : 'hover:ring-1 hover:ring-purple-400'} ${layer.isHidden ? 'opacity-0 pointer-events-none' : ''}`}
                                     style={{
                                         left: `${layer.x}%`,
                                         top: `${layer.y}%`,
@@ -4509,7 +4545,7 @@ const ImageEditor = ({
                                                 if (layer.shapeType === 'icon') {
                                                     const IconCmp = LucideIcons[layer.content] || LucideIcons.HelpCircle;
                                                     return (
-                                                        <div style={{ width: `${Math.min(layer.width, layer.height) * 0.6}px`, height: `${Math.min(layer.width, layer.height) * 0.6}px`, color: layer.color }}>
+                                                        <div style={{ width: '100%', height: '100%', color: layer.color }}>
                                                             <IconCmp className="w-full h-full" stroke={layer.color} />
                                                         </div>
                                                     );
@@ -4609,7 +4645,7 @@ const ImageEditor = ({
                                                 )}
                                                 {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => {
                                                     const isCorner = ['nw', 'ne', 'se', 'sw'].includes(handle);
-                                                    if (!isCorner && (layer.type === 'text' || layer.shapeType === 'icon')) return null;
+                                                    if (!isCorner && layer.type === 'text') return null;
                                                     return (
                                                         <div
                                                             key={handle}

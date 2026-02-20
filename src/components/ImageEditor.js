@@ -102,7 +102,9 @@ const {
     Map,
     Share2,
     FolderKanban,
-    Crown
+    Crown,
+    Move,
+    RefreshCw
 } = LucideIcons;
 
 // ImageEditor component continues...
@@ -173,6 +175,7 @@ const ImageEditor = ({
     // Canvas Size State
     const [canvasSize, setCanvasSize] = useState({ width: 1080, height: 720 });
     const [isResizingCanvas, setIsResizingCanvas] = useState(false); // { handle: 'e' | 's' | 'se' }
+    const [isPanningContent, setIsPanningContent] = useState(false);
 
     const [designId, setDesignId] = useState(initialDesignId);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -1017,6 +1020,57 @@ const ImageEditor = ({
         img.src = imageSrc;
     }, [imageSrc]);
 
+    // Helper to find all connected layers for linked dragging
+    const getConnectedLayers = (startLayerId, allLayers) => {
+        const threshold = 5; // 5px proximity threshold
+        const connected = new Set([startLayerId]);
+        const stack = [startLayerId];
+
+        const getBounds = (layer) => {
+            const rect = containerRef.current.getBoundingClientRect();
+            const w = layer.width || (layer.type === 'text' ? (layer.content?.length || 0) * layer.fontSize * 0.6 : 100);
+            const h = layer.height || (layer.type === 'text' ? layer.fontSize * 1.2 : 100);
+            const centerX = (layer.x * rect.width) / 100;
+            const centerY = (layer.y * rect.height) / 100;
+            return {
+                left: centerX - w / 2,
+                right: centerX + w / 2,
+                top: centerY - h / 2,
+                bottom: centerY + h / 2
+            };
+        };
+
+        while (stack.length > 0) {
+            const currentId = stack.pop();
+            const currentLayer = allLayers.find(l => l.id === currentId);
+            if (!currentLayer) continue;
+            const b1 = getBounds(currentLayer);
+
+            allLayers.forEach(otherLayer => {
+                if (connected.has(otherLayer.id) || otherLayer.isLocked || otherLayer.id === 'background-layer') return;
+
+                const b2 = getBounds(otherLayer);
+
+                // Check if rects are within threshold of each other
+                const isVerticalOverlap = !(b1.bottom < b2.top - threshold || b1.top > b2.bottom + threshold);
+                const isHorizontalOverlap = !(b1.right < b2.left - threshold || b1.left > b2.right + threshold);
+
+                const touchingHorizontally = isVerticalOverlap && (
+                    Math.abs(b1.right - b2.left) <= threshold || Math.abs(b1.left - b2.right) <= threshold
+                );
+                const touchingVertically = isHorizontalOverlap && (
+                    Math.abs(b1.bottom - b2.top) <= threshold || Math.abs(b1.top - b2.bottom) <= threshold
+                );
+
+                if (touchingHorizontally || touchingVertically) {
+                    connected.add(otherLayer.id);
+                    stack.push(otherLayer.id);
+                }
+            });
+        }
+        return Array.from(connected);
+    };
+
     const handleMouseDown = (e, layer) => {
         if (isViewOnly || layer.isLocked || editingLayerId === layer.id) return;
         e.preventDefault();
@@ -1026,13 +1080,25 @@ const ImageEditor = ({
         setLayers(prev => prev.map(l => ({ ...l, isSelected: l.id === layer.id })));
 
         const rect = containerRef.current.getBoundingClientRect();
-        const offsetX = (e.clientX - rect.left) - ((layer.x * rect.width) / 100);
-        const offsetY = (e.clientY - rect.top) - ((layer.y * rect.height) / 100);
+
+        // Linked dragging setup
+        const connectedLayerIds = getConnectedLayers(layer.id, layers);
+        const offsets = {};
+        connectedLayerIds.forEach(id => {
+            const l = layers.find(ly => ly.id === id);
+            if (l) {
+                offsets[id] = {
+                    x: (e.clientX - rect.left) - ((l.x * rect.width) / 100),
+                    y: (e.clientY - rect.top) - ((l.y * rect.height) / 100)
+                };
+            }
+        });
 
         dragRef.current = {
             isDragging: true,
             layerId: layer.id,
-            offset: { x: offsetX, y: offsetY }
+            connectedLayerIds,
+            offsets
         };
         setIsDraggingLayer(true);
         setHasInteracted(true);
@@ -1131,28 +1197,39 @@ const ImageEditor = ({
             }
 
             if (dragRef.current.isDragging && dragRef.current.layerId) {
-                const { layerId, offset } = dragRef.current;
-                let newX = ((e.clientX - rect.left - offset.x) / rect.width) * 100;
-                let newY = ((e.clientY - rect.top - offset.y) / rect.height) * 100;
+                const { connectedLayerIds, offsets } = dragRef.current;
 
                 setLayers(prev => {
-                    // Get the layer to calculate its size constraints
-                    const layer = prev.find(l => l.id === layerId);
-                    if (layer) {
-                        // Calculate element's actual size
-                        let layerWidth, layerHeight;
+                    return prev.map(l => {
+                        if (!connectedLayerIds.includes(l.id)) return l;
 
-                        if (layer.type === 'text') {
-                            // Estimate text width based on content length and fontSize
-                            const textLength = (layer.content || '').length;
-                            layerWidth = textLength * layer.fontSize * 0.6; // More accurate estimation
-                            layerHeight = layer.fontSize * 1.2;
-                        } else if (layer.type === 'form') {
-                            layerWidth = layer.width || 280;
-                            layerHeight = layer.height || 350;
+                        if (isPanningContent && (l.shapeType === 'image' || l.type === 'frame')) {
+                            // Internal Panning Logic
+                            const moveX = e.movementX / (zoom || 1);
+                            const moveY = e.movementY / (zoom || 1);
+                            return {
+                                ...l,
+                                contentX: (l.contentX || 0) + moveX,
+                                contentY: (l.contentY || 0) + moveY
+                            };
+                        }
+
+                        const offset = offsets[l.id];
+                        let newX = ((e.clientX - rect.left - offset.x) / rect.width) * 100;
+                        let newY = ((e.clientY - rect.top - offset.y) / rect.height) * 100;
+
+                        // Calculate element's actual size for constraints
+                        let layerWidth, layerHeight;
+                        if (l.type === 'text') {
+                            const textLength = (l.content || '').length;
+                            layerWidth = textLength * l.fontSize * 0.6;
+                            layerHeight = l.fontSize * 1.2;
+                        } else if (l.type === 'form') {
+                            layerWidth = l.width || 280;
+                            layerHeight = l.height || 350;
                         } else {
-                            layerWidth = layer.width || 100;
-                            layerHeight = layer.height || 100;
+                            layerWidth = l.width || 100;
+                            layerHeight = l.height || 100;
                         }
 
                         const halfWidthPercent = (layerWidth / 2 / rect.width) * 100;
@@ -1161,13 +1238,12 @@ const ImageEditor = ({
                         // Constrain so element stays fully inside the image boundary
                         newX = Math.max(halfWidthPercent, Math.min(100 - halfWidthPercent, newX));
                         newY = Math.max(halfHeightPercent, Math.min(100 - halfHeightPercent, newY));
-                    }
 
-                    return prev.map(l =>
-                        l.id === layerId ? { ...l, x: newX, y: newY } : l
-                    );
+                        return { ...l, x: newX, y: newY };
+                    });
                 });
-            } else if (isResizingCanvas && isResizingCanvas.handle) {
+            }
+            else if (isResizingCanvas && isResizingCanvas.handle) {
                 const moveX = e.movementX / (zoom || 1);
                 const moveY = e.movementY / (zoom || 1);
 
@@ -1218,29 +1294,19 @@ const ImageEditor = ({
                             return { ...l, width: newWidth, height: newHeight };
                         }
 
-                        // Other layers: Scale proportionally
-                        let updated = { ...l };
-
-                        // Scale Dimensions
-                        if (updated.width) updated.width *= ratioX;
-                        if (updated.height) updated.height *= ratioY;
-
-                        // Scale Text
-                        if (updated.fontSize) {
-                            updated.fontSize *= fontScale;
-                        }
-
-                        return updated;
+                        // Other layers: Keep their pixel size, but maintain percentage position
+                        // The user said they only want the selected (canvas) to change.
+                        // By NOT multiplying width/height here, they stay at their fixed pixel size.
+                        return l;
                     }));
 
                     return { width: newWidth, height: newHeight };
                 });
             } else if (resizing) {
                 const handle = resizing.handle;
-                // movementX/Y are not always reliable in all browsers,
-                // but they are sufficient for relative resizing
-                const dx = e.movementX;
-                const dy = e.movementY;
+                const dx = e.movementX / (zoom || 1);
+                const dy = e.movementY / (zoom || 1);
+                const isBackground = resizing.id === 'background-layer';
 
                 setLayers(prev => {
                     const l = prev.find(ly => ly.id === resizing.id);
@@ -1248,51 +1314,87 @@ const ImageEditor = ({
 
                     return prev.map(ly => {
                         if (ly.id !== resizing.id) return ly;
-                        let { width = 100, height = 100, fontSize = 24, x = 50, y = 50 } = ly;
+                        let { width = 100, height = 100, fontSize = 24, x = 50, y = 50, type, shapeType } = ly;
 
-                        // Calculate max allowed size based on position
-                        const maxWidthFromLeft = (x / 100) * rect.width * 2;
-                        const maxWidthFromRight = ((100 - x) / 100) * rect.width * 2;
-                        const maxWidth = Math.min(maxWidthFromLeft, maxWidthFromRight);
+                        // Type check for proportional resizing
+                        const isImageOrFrame = type === 'shape' && shapeType === 'image' || type === 'frame' || type === 'lottie' || type === 'gif';
+                        const isTextOrIcon = type === 'text' || (type === 'shape' && shapeType === 'icon');
+                        const isCorner = handle.length === 2; // nw, ne, se, sw
 
-                        const maxHeightFromTop = (y / 100) * rect.height * 2;
-                        const maxHeightFromBottom = ((100 - y) / 100) * rect.height * 2;
-                        const maxHeight = Math.min(maxHeightFromTop, maxHeightFromBottom);
+                        // Calculate current edges in pixels for anchoring
+                        const containerW = rect.width;
+                        const containerH = rect.height;
 
-                        if (ly.id === 'background-layer' || (ly.type === 'shape' && ly.shapeType === 'image')) {
-                            if (handle.includes('e')) width = Math.max(20, Math.min(maxWidth, width + dx));
-                            if (handle.includes('w')) width = Math.max(20, Math.min(maxWidth, width - dx));
-                            if (handle.includes('s')) height = Math.max(20, Math.min(maxHeight, height + dy));
-                            if (handle.includes('n')) height = Math.max(20, Math.min(maxHeight, height - dy));
-                        } else if (ly.type === 'text' || (ly.type === 'shape' && ly.shapeType === 'icon')) {
-                            const movement = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+                        if (isTextOrIcon) {
+                            // Text/Icon scaling logic (already somewhat proportional)
+                            const movement = isCorner ?
+                                (handle === 'se' || handle === 'nw' ? (dx + dy) / 2 : (dx - dy) / 2) :
+                                (handle.includes('e') || handle.includes('w') ? dx : dy);
 
-                            // Calculate max fontSize based on position and text content length
-                            const textLength = (ly.content || '').length || 1;
-                            const maxFontSizeByWidth = maxWidth / (textLength * 0.6);
-                            const maxFontSizeByHeight = maxHeight / 1.2;
-                            const maxFontSize = Math.min(maxFontSizeByWidth, maxFontSizeByHeight);
+                            const direction = (handle.includes('w') || handle.includes('n')) ? -1 : 1;
+                            const actualChange = movement * direction;
 
-                            if (handle.includes('e') || handle.includes('s')) {
-                                if (ly.type === 'text') fontSize = Math.max(8, Math.min(maxFontSize, fontSize + movement));
-                                else {
-                                    const newSize = Math.max(20, Math.min(Math.min(maxWidth, maxHeight), width + movement));
-                                    width = newSize;
-                                    height = newSize;
-                                }
-                            } else {
-                                if (ly.type === 'text') fontSize = Math.max(8, Math.min(maxFontSize, fontSize - movement));
-                                else {
-                                    const newSize = Math.max(20, Math.min(Math.min(maxWidth, maxHeight), width - movement));
-                                    width = newSize;
-                                    height = newSize;
-                                }
+                            const oldFontSize = fontSize;
+                            fontSize = Math.max(8, fontSize + actualChange);
+
+                            // For icons, also update width/height
+                            if (type !== 'text') {
+                                const ratio = width / oldFontSize;
+                                width = fontSize * ratio;
+                                height = fontSize * ratio;
                             }
                         } else {
-                            if (handle.includes('e')) width = Math.max(20, Math.min(maxWidth, width + dx));
-                            if (handle.includes('w')) width = Math.max(20, Math.min(maxWidth, width - dx));
-                            if (handle.includes('s')) height = Math.max(20, Math.min(maxHeight, height + dy));
-                            if (handle.includes('n')) height = Math.max(20, Math.min(maxHeight, height - dy));
+                            // Image/Frame/Shape resizing with proper anchoring
+                            let newWidth = width;
+                            let newHeight = height;
+
+                            // 1. Calculate target dimensions based on handle
+                            if (handle.includes('e')) newWidth += dx;
+                            if (handle.includes('w')) newWidth -= dx;
+                            if (handle.includes('s')) newHeight += dy;
+                            if (handle.includes('n')) newHeight -= dy;
+
+                            // 2. Proportional resizing for corners of images/frames
+                            if (isCorner && isImageOrFrame) {
+                                const ratio = width / height;
+                                if (Math.abs(dx) > Math.abs(dy)) {
+                                    newHeight = newWidth / ratio;
+                                } else {
+                                    newWidth = newHeight * ratio;
+                                }
+                            }
+
+                            // 3. Apply constraints
+                            newWidth = Math.max(20, newWidth);
+                            newHeight = Math.max(20, newHeight);
+
+                            // 4. Calculate actual changes for anchoring
+                            const actualDeltaW = newWidth - width;
+                            const actualDeltaH = newHeight - height;
+
+                            // 5. Update position (x, y) to keep opposite side fixed
+                            if (!isBackground) {
+                                if (handle.includes('e')) x += (actualDeltaW / 2 / containerW) * 100;
+                                if (handle.includes('w')) x -= (actualDeltaW / 2 / containerW) * 100;
+                                if (handle.includes('s')) y += (actualDeltaH / 2 / containerH) * 100;
+                                if (handle.includes('n')) y -= (actualDeltaH / 2 / containerH) * 100;
+                            } else {
+                                // Background layer stays centered, canvas resizes around it
+                                x = 50;
+                                y = 50;
+                                setCanvasSize({ width: newWidth, height: newHeight });
+                            }
+
+                            width = newWidth;
+                            height = newHeight;
+                        }
+
+                        // Boundary constraints for center position
+                        if (!isBackground) {
+                            const halfWPercent = (width / 2 / containerW) * 100;
+                            const halfHPercent = (height / 2 / containerH) * 100;
+                            x = Math.max(halfWPercent, Math.min(100 - halfWPercent, x));
+                            y = Math.max(halfHPercent, Math.min(100 - halfHPercent, y));
                         }
 
                         return { ...ly, width, height, fontSize, x, y };
@@ -1472,20 +1574,27 @@ const ImageEditor = ({
         const isIcon = type === 'icon';
         const isGradient = type === 'gradient';
 
-        let width = 100;
-        let height = 100;
+        // Get background dimensions for relative sizing
+        const bgLayer = layers.find(l => l.id === 'background-layer');
+        const bgW = bgLayer?.width || (canvasSize?.width || 1000);
+        const bgH = bgLayer?.height || (canvasSize?.height || 1000);
+
+        let width = bgW; // Default to same size as background
+        let height = bgH;
         let color = '#9333ea';
+
         if (type.startsWith('line') || type === 'arrow') {
-            width = 200;
+            width = bgW * 0.4;
             height = 20; // Hit area height
             color = darkMode ? '#ffffff' : '#000000';
         } else if (isIcon) {
-            width = 80;
-            height = 80;
+            width = bgW * 0.2;
+            height = bgW * 0.2;
             color = '#3b82f6';
         } else if (isGradient) {
             color = content;
         }
+
         const newLayer = {
             id: Date.now(),
             type: 'shape',
@@ -1499,7 +1608,10 @@ const ImageEditor = ({
             y: 50,
             rotation: 0,
             isSelected: true,
-            isLocked: false
+            isLocked: false,
+            contentX: 0,
+            contentY: 0,
+            contentScale: 1
         };
         addLayerWithSync(newLayer);
         setIsPanelOpen(false); // Close panel on mobile after adding
@@ -1511,19 +1623,66 @@ const ImageEditor = ({
         const url = typeof urlOrItem === 'string' ? urlOrItem : urlOrItem?.thumb;
         if (!url) return;
 
-        const newLayer = {
-            id: Date.now(),
-            type: 'shape',
-            shapeType: 'image',
-            content: url,
-            color: 'transparent',
-            width: 400,
-            height: 600,
-            x: 50,
-            y: 50,
-            isSelected: true
+        // Get background dimensions for relative sizing
+        const bgLayer = layers.find(l => l.id === 'background-layer');
+        const bgW = bgLayer?.width || (canvasSize?.width || 1000);
+        const bgH = bgLayer?.height || (canvasSize?.height || 1000);
+
+        // Calculate proportional size (100% of background to match image size)
+        const targetWidth = bgW;
+        const targetHeight = bgH;
+
+        // Load actual image to get its aspect ratio for correctness
+        const img = new Image();
+        img.src = url;
+        img.onload = () => {
+            const aspectRatio = img.naturalWidth / img.naturalHeight;
+            let finalWidth = targetWidth;
+            let finalHeight = targetHeight;
+
+            if (aspectRatio > (bgW / bgH)) { // Image is wider relative to background
+                finalHeight = targetWidth / aspectRatio;
+            } else { // Image is taller relative to background
+                finalWidth = targetHeight * aspectRatio;
+            }
+
+            const newLayer = {
+                id: Date.now(),
+                type: 'shape',
+                shapeType: 'image',
+                content: url,
+                color: 'transparent',
+                width: finalWidth,
+                height: finalHeight,
+                x: 50,
+                y: 50,
+                isSelected: true,
+                contentX: 0,
+                contentY: 0,
+                contentScale: 1
+            };
+            addLayerWithSync(newLayer);
         };
-        addLayerWithSync(newLayer);
+
+        // Fallback if onload fails or takes too long (rare)
+        if (!img.naturalWidth) {
+            const newLayer = {
+                id: Date.now(),
+                type: 'shape',
+                shapeType: 'image',
+                content: url,
+                color: 'transparent',
+                width: targetWidth,
+                height: targetHeight,
+                x: 50,
+                y: 50,
+                isSelected: true,
+                contentX: 0,
+                contentY: 0,
+                contentScale: 1
+            };
+            addLayerWithSync(newLayer);
+        }
     };
 
     const addFrame = (frameItem) => {
@@ -1533,13 +1692,19 @@ const ImageEditor = ({
         const isString = typeof frameItem === 'string';
         const item = isString ? { thumb: frameItem, shapeType: 'basic' } : frameItem;
 
-        let initialWidth = 300;
-        let initialHeight = 300;
+        // Get background dimensions for relative sizing
+        const bgLayer = layers.find(l => l.id === 'background-layer');
+        const bgW = bgLayer?.width || (canvasSize?.width || 1000);
+        const bgH = bgLayer?.height || (canvasSize?.height || 1000);
+
+        let initialWidth = bgW; // Default to 100% of background width
+        let initialHeight = bgH;
+
         if (item.aspectRatio) {
-            if (item.aspectRatio > 1) { // Wider than tall
-                initialHeight = 300 / item.aspectRatio;
-            } else { // Taller than wide or square
-                initialWidth = 300 * item.aspectRatio;
+            if (item.aspectRatio > (bgW / bgH)) { // Frame is wider relative to background
+                initialHeight = bgW / item.aspectRatio;
+            } else { // Frame is taller relative to background
+                initialWidth = bgH * item.aspectRatio;
             }
         }
 
@@ -1557,7 +1722,10 @@ const ImageEditor = ({
             isSelected: true,
             backgroundColor: 'transparent', // Default background fill
             borderColor: '#ffffff', // Default white border
-            borderWidth: 10 // Default border width in pixels
+            borderWidth: 10, // Default border width in pixels
+            contentX: 0,
+            contentY: 0,
+            contentScale: 1
         };
         const nextLayers = [...layers.map(l => ({ ...l, isSelected: false })), newLayer];
         setLayers(nextLayers);
@@ -2485,6 +2653,8 @@ const ImageEditor = ({
             {showRecordingStudio && (
                 <PresentAndRecordStudio
                     pages={pages}
+                    activePageId={activePageId}
+                    switchPage={switchPage}
                     layers={layers}
                     canvasSize={canvasSize}
                     adjustments={adjustments}
@@ -3963,9 +4133,13 @@ const ImageEditor = ({
                                     }}
                                     onDoubleClick={(e) => {
                                         e.stopPropagation();
-                                        if (layer.type === 'text') setEditingLayerId(layer.id);
+                                        if (layer.type === 'text') {
+                                            setEditingLayerId(layer.id);
+                                        } else if (layer.type === 'frame' || layer.shapeType === 'image') {
+                                            setIsPanningContent(!isPanningContent);
+                                        }
                                     }}
-                                    className={`absolute ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none transition-shadow ${layer.isSelected ? 'ring-2 ring-purple-500 shadow-2xl' : 'hover:ring-1 hover:ring-purple-400'} ${layer.isHidden ? 'opacity-0 pointer-events-none' : ''}`}
+                                    className={`absolute ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none transition-all duration-200 ${layer.isSelected ? (isPanningContent && (layer.type === 'frame' || layer.shapeType === 'image') ? 'outline outline-2 outline-purple-500 [outline-style:dashed] outline-offset-2 z-[100]' : 'ring-2 ring-purple-500 shadow-2xl z-[50]') : 'hover:ring-1 hover:ring-purple-400 z-10'} ${layer.isHidden ? 'opacity-0 pointer-events-none' : ''}`}
                                     style={{
                                         left: `${layer.x}%`,
                                         top: `${layer.y}%`,
@@ -4032,7 +4206,12 @@ const ImageEditor = ({
                                                     src={layer.content || layer.placeholder}
                                                     alt="Frame content"
                                                     className="w-full h-full pointer-events-none"
-                                                    style={{ objectFit: 'fill', width: '100%', height: '100%' }}
+                                                    style={{
+                                                        objectFit: 'cover',
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        transform: `scale(${layer.contentScale || 1}) translate(${(layer.contentX || 0) / (layer.width || 1) * 100}%, ${(layer.contentY || 0) / (layer.height || 1) * 100}%)`
+                                                    }}
                                                     draggable={false}
                                                 />
                                             )}
@@ -4375,7 +4554,8 @@ const ImageEditor = ({
                                                             referrerPolicy="no-referrer"
                                                             crossOrigin="anonymous"
                                                             style={{
-                                                                objectFit: 'contain',
+                                                                objectFit: 'cover',
+                                                                transform: layer.id !== 'background-layer' ? `scale(${layer.contentScale || 1}) translate(${(layer.contentX || 0) / (layer.width || 1) * 100}%, ${(layer.contentY || 0) / (layer.height || 1) * 100}%)` : undefined,
                                                                 ...(layer.id === 'background-layer' ? {
                                                                     filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%) blur(${adjustments.blur}px) grayscale(${adjustments.grayscale}%) sepia(${adjustments.sepia}%) hue-rotate(${adjustments.hue}deg) invert(${adjustments.invert}%)`
                                                                 } : {})
@@ -4421,6 +4601,12 @@ const ImageEditor = ({
                                         <>
                                             {/* Bounding box + handles */}
                                             <div className="absolute inset-0 border-2 border-purple-500 pointer-events-none">
+                                                {/* Dimension Tooltip */}
+                                                {!isResizingCanvas && !isSaving && (
+                                                    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded shadow-lg font-bold whitespace-nowrap z-50 animate-fadeIn">
+                                                        {Math.round(layer.width)} × {Math.round(layer.height)} px
+                                                    </div>
+                                                )}
                                                 {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => {
                                                     const isCorner = ['nw', 'ne', 'se', 'sw'].includes(handle);
                                                     if (!isCorner && (layer.type === 'text' || layer.shapeType === 'icon')) return null;
@@ -4749,6 +4935,59 @@ const ImageEditor = ({
                             >
                                 <Sparkles className="w-4 h-4" />
                             </button>
+
+                            {(layer.shapeType === 'image' || layer.type === 'frame') && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsPanningContent(!isPanningContent);
+                                    }}
+                                    className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md ${isPanningContent ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 ring-1 ring-purple-500' : 'text-gray-700 dark:text-gray-300'}`}
+                                    title="Move Internally"
+                                >
+                                    <Move className="w-4 h-4" />
+                                </button>
+                            )}
+
+                            {(layer.shapeType === 'image' || layer.type === 'frame') && isPanningContent && (
+                                <>
+                                    <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentScale: Math.max(0.1, (l.contentScale || 1) - 0.1) } : l);
+                                            setLayers(updated);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300"
+                                        title="Content Zoom Out"
+                                    >
+                                        <Minus className="w-3.5 h-3.5" />
+                                    </button>
+                                    <span className="text-[10px] font-bold text-gray-500 w-8 text-center">{Math.round((layer.contentScale || 1) * 100)}%</span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentScale: (l.contentScale || 1) + 0.1 } : l);
+                                            setLayers(updated);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300"
+                                        title="Content Zoom In"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentX: 0, contentY: 0, contentScale: 1 } : l);
+                                            setLayers(updated);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300"
+                                        title="Reset Content"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5" />
+                                    </button>
+                                </>
+                            )}
 
 
                             {/* Color Button - For shapes, text AND frames (background) */}

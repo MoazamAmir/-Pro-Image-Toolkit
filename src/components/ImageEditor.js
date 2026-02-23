@@ -16,6 +16,7 @@ import { imageAnimations } from '../data/imageAnimations';
 import ExportManager from './ExportManager';
 import PageThumbnail from './PageThumbnail';
 import PresentAndRecordStudio from './PresentAndRecord/PresentAndRecordStudio';
+import PresentationViewer from './PresentationViewer';
 import { db, storage } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import FirebaseSyncService from '../services/FirebaseSyncService';
@@ -150,6 +151,8 @@ const ImageEditor = ({
     const [isSaving, setIsSaving] = useState(false);
     const [showExportPopup, setShowExportPopup] = useState(false);
     const [showRecordingStudio, setShowRecordingStudio] = useState(false);
+    const [showPresentationViewer, setShowPresentationViewer] = useState(false);
+    const [presentationMode, setPresentationMode] = useState('fullscreen');
     const [isUploading, setIsUploading] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [extractedColors, setExtractedColors] = useState([]);
@@ -2683,6 +2686,7 @@ const ImageEditor = ({
                 onDesignIdGenerated={setDesignId}
                 user={user}
                 onStartRecordingStudio={() => setShowRecordingStudio(true)}
+                onStartPresentation={(mode) => { setPresentationMode(mode); setShowPresentationViewer(true); }}
             />
 
             {/* Present and Record Studio */}
@@ -2697,6 +2701,22 @@ const ImageEditor = ({
                     renderFinalCanvas={renderFinalCanvas}
                     onClose={() => setShowRecordingStudio(false)}
                     darkMode={darkMode}
+                />
+            )}
+
+            {/* Presentation Viewer */}
+            {showPresentationViewer && (
+                <PresentationViewer
+                    pages={pages}
+                    activePageId={activePageId}
+                    switchPage={switchPage}
+                    layers={layers}
+                    canvasSize={canvasSize}
+                    adjustments={adjustments}
+                    renderFinalCanvas={renderFinalCanvas}
+                    onClose={() => setShowPresentationViewer(false)}
+                    darkMode={darkMode}
+                    mode={presentationMode}
                 />
             )}
             <div className="flex flex-1 overflow-hidden relative">

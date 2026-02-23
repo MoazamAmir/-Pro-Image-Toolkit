@@ -5,7 +5,7 @@ import {
     Link2, Globe, Lock, User, ArrowLeft, Instagram, LayoutGrid, Clipboard, MoreHorizontal,
     Search, Settings, Users, Link, Download as DownloadIcon, Eye, Instagram as InstagramIcon,
     Video as VideoIcon, Layout as LayoutIcon, Presentation, Copy as CopyIcon, MoreHorizontal as MoreHorizontalIcon,
-    Plus, Sparkles, Crown, Info
+    Plus, Sparkles, Crown, Info, Maximize, MonitorPlay
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -33,7 +33,8 @@ const ExportManager = ({
     canvasPreviewRef,
     adjustments,
     user,
-    onStartRecordingStudio
+    onStartRecordingStudio,
+    onStartPresentation
 }) => {
     const [view, setView] = useState('share_design'); // Default to share_design view
     const [publicViewStatus, setPublicViewStatus] = useState('idle'); // 'idle', 'creating', 'live'
@@ -51,6 +52,7 @@ const ExportManager = ({
     const [exportProgress, setExportProgress] = useState(0);
     const [isCopying, setIsCopying] = useState(false);
     const [previewSrc, setPreviewSrc] = useState(null);
+    const [presentMode, setPresentMode] = useState('fullscreen');
 
     // Share Design State
     const [accessLevel, setAccessLevel] = useState('private'); // 'private' or 'public'
@@ -82,7 +84,7 @@ const ExportManager = ({
 
     // Generate preview when opening public link view
     useEffect(() => {
-        if ((view === 'public_view_link' || view === 'present_and_record') && !previewSrc) {
+        if ((view === 'public_view_link' || view === 'present_and_record' || view === 'present') && !previewSrc) {
             const generatePreview = async () => {
                 try {
                     if (canvasPreviewRef?.current) {
@@ -474,7 +476,7 @@ const ExportManager = ({
 
                 <div className="grid grid-cols-4 gap-2 pt-2">
                     <ShareAction icon={LayoutIcon} label="Template link" badge={<span className="text-orange-400">👑</span>} onClick={() => { }} />
-                    <ShareAction icon={Presentation} label="Present" onClick={() => { }} />
+                    <ShareAction icon={Presentation} label="Present" onClick={() => setView('present')} />
                     <ShareAction icon={CopyIcon} label="Copy to clipboard" onClick={() => { }} />
                     <ShareAction icon={MoreHorizontalIcon} label="See all" onClick={() => { }} />
                 </div>
@@ -798,6 +800,84 @@ const ExportManager = ({
         </div>
     );
 
+    const renderPresentView = () => {
+        const modes = [
+            { id: 'fullscreen', label: 'Present full screen', desc: 'Present full screen at your own pace', icon: Maximize },
+            { id: 'presenter', label: 'Presenter view', desc: 'View with speaker notes', icon: MonitorPlay },
+            { id: 'present_and_record', label: 'Present and record', desc: 'Record while presenting', icon: VideoIcon },
+            { id: 'autoplay', label: 'Autoplay', desc: 'Auto-advance slides', icon: Play },
+        ];
+
+        return (
+            <div className="flex flex-col h-full animate-fadeIn">
+                <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
+                    <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                    <h2 className="font-bold text-base dark:text-white">Present</h2>
+                </div>
+                <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
+                    {/* Mode Options */}
+                    <div className="grid grid-cols-4 gap-2">
+                        {modes.map(m => {
+                            const Icon = m.icon;
+                            return (
+                                <button
+                                    key={m.id}
+                                    onClick={() => setPresentMode(m.id)}
+                                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all ${presentMode === m.id ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                >
+                                    <div className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${presentMode === m.id ? 'border-purple-500 bg-purple-100 dark:bg-purple-900/30 text-purple-600' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                                        <Icon className="w-5 h-5" />
+                                    </div>
+                                    <span className={`text-[9px] font-medium text-center leading-tight ${presentMode === m.id ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>{m.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Dots indicator */}
+                    <div className="flex items-center justify-center gap-1.5 py-1">
+                        {modes.map(m => (
+                            <div key={m.id} className={`w-1.5 h-1.5 rounded-full transition-all ${presentMode === m.id ? 'bg-purple-500 w-3' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                        ))}
+                    </div>
+
+                    {/* Preview */}
+                    <div className="w-full aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700">
+                        {previewSrc ? (
+                            <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                                <ImageIcon className="w-12 h-12 opacity-20" />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Description */}
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {modes.find(m => m.id === presentMode)?.desc}
+                    </p>
+
+                    {/* Present Button */}
+                    <button
+                        onClick={() => {
+                            onClose();
+                            if (presentMode === 'present_and_record') {
+                                if (onStartRecordingStudio) onStartRecordingStudio();
+                            } else if (presentMode === 'presenter') {
+                                if (onStartPresentation) onStartPresentation('fullscreen');
+                            } else {
+                                if (onStartPresentation) onStartPresentation(presentMode);
+                            }
+                        }}
+                        className="w-full py-3.5 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all text-sm"
+                    >
+                        Present
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center pointer-events-none">
             <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
@@ -806,7 +886,8 @@ const ExportManager = ({
                     view === 'share' ? renderShareView() :
                         view === 'public_view_link' ? renderPublicViewLinkView() :
                             view === 'present_and_record' ? renderPresentAndRecordView() :
-                                renderDownloadView()}
+                                view === 'present' ? renderPresentView() :
+                                    renderDownloadView()}
             </div>
             <style>{`
                 @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

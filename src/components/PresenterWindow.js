@@ -3,10 +3,12 @@ import {
     X, ChevronLeft, ChevronRight, Maximize2, Play, Pause,
     PenTool, Keyboard, Timer, Clipboard, MoreHorizontal,
     RotateCcw, ZoomIn, Edit3, Radio, Settings, Users, Copy, Hash,
-    ThumbsUp, Clock, ChevronDown, Eraser, Highlighter, Pen, Undo
+    ThumbsUp, Clock, ChevronDown, Eraser, Highlighter, Pen, Undo,
+    Video, CheckCircle, Download, Trash2
 } from 'lucide-react';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
+import useRecording from './PresentAndRecord/useRecording';
 
 const PresenterWindow = ({ designId, user }) => {
     // Design state
@@ -57,6 +59,15 @@ const PresenterWindow = ({ designId, user }) => {
 
     const [reactions, setReactions] = useState([]); // { id, type, x, y }
     const lastDrawingSyncRef = useRef(0);
+
+    // Recording logic
+    const {
+        phase, setPhase, elapsedTime: recordElapsed, countdownValue,
+        recordedBlob, processingProgress,
+        startCountdown, prepareRecording, executeRecording,
+        pauseRecording, resumeRecording, stopRecording,
+        downloadRecording, discardRecording, formatTime: formatRecordTime
+    } = useRecording();
 
     // -- Clock --
     useEffect(() => {
@@ -361,11 +372,32 @@ const PresenterWindow = ({ designId, user }) => {
                     <span className="pw-clock">{currentTime}</span>
                     <span className="pw-divider">|</span>
                     <span className="pw-timer">{formattedTimer}</span>
-                    <button className="pw-icon-btn" title="Reset timer" onClick={() => { setElapsed(0); setTimerRunning(false); }}>
+                    <button className="pw-icon-btn" title="Reset timer" onClick={() => { setElapsed(0); setTimerRunning(false); if (phase === 'recording') stopRecording(); }}>
                         <RotateCcw size={16} />
                     </button>
-                    <button className="pw-icon-btn" title={timerRunning ? 'Pause' : 'Play'} onClick={() => setTimerRunning(!timerRunning)}>
-                        {timerRunning ? <Pause size={16} /> : <Play size={16} />}
+                    <button
+                        className={`pw-icon-btn pw-play-btn ${phase === 'recording' ? 'is-recording' : ''}`}
+                        title={phase === 'recording' ? 'Pause Recording' : 'Start Recording'}
+                        onClick={async () => {
+                            if (phase === 'setup' || phase === 'done') {
+                                const ok = await prepareRecording();
+                                if (ok) {
+                                    startCountdown(() => {
+                                        executeRecording();
+                                        setTimerRunning(true);
+                                    });
+                                }
+                            } else if (phase === 'recording') {
+                                pauseRecording();
+                                setTimerRunning(false);
+                            } else if (phase === 'paused') {
+                                resumeRecording();
+                                setTimerRunning(true);
+                            }
+                        }}
+                    >
+                        {phase === 'recording' ? <Pause size={16} /> : <Play size={16} />}
+                        {phase === 'recording' && <span className="pw-rec-indicator" />}
                     </button>
                 </div>
                 <div className="pw-topbar-tools">
@@ -535,6 +567,49 @@ const PresenterWindow = ({ designId, user }) => {
                             <button className="pw-nav-arrow pw-nav-right" onClick={goNext}>
                                 <ChevronRight size={28} />
                             </button>
+                        )}
+
+                        {/* Recording Overlays */}
+                        {phase === 'countdown' && (
+                            <div className="pw-rec-overlay pw-countdown-overlay">
+                                <div className="pw-countdown-num">{countdownValue}</div>
+                            </div>
+                        )}
+
+                        {phase === 'processing' && (
+                            <div className="pw-rec-overlay pw-processing-overlay">
+                                <div className="pw-processing-card">
+                                    <div className="pw-spinner" />
+                                    <h3>Processing Recording...</h3>
+                                    <div className="pw-progress-bar">
+                                        <div className="pw-progress-fill" style={{ width: `${processingProgress}%` }} />
+                                    </div>
+                                    <span>{processingProgress}%</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {phase === 'done' && recordedBlob && (
+                            <div className="pw-rec-overlay pw-done-overlay">
+                                <div className="pw-done-card">
+                                    <CheckCircle size={48} className="pw-done-icon" />
+                                    <h3>Recording Ready!</h3>
+                                    <p>Your presentation has been recorded successfully.</p>
+                                    <div className="pw-done-actions">
+                                        <button className="pw-btn-download" onClick={downloadRecording}>
+                                            <Download size={18} />
+                                            Download
+                                        </button>
+                                        <button className="pw-btn-discard" onClick={discardRecording}>
+                                            <Trash2 size={18} />
+                                            Discard
+                                        </button>
+                                        <button className="pw-btn-close" onClick={() => setPhase('setup')}>
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </div>
 
@@ -1148,6 +1223,90 @@ const presenterStyles = `
         0% { transform: translateY(0) scale(0.5); opacity: 0; }
         10% { transform: translateY(-20px) scale(1.2); opacity: 1; }
         100% { transform: translateY(-400px) scale(1); opacity: 0; }
+    }
+
+    /* === RECORDING UI === */
+    .pw-play-btn.is-recording {
+        background: rgba(239, 68, 68, 0.2) !important;
+        border-color: #ef4444 !important;
+        color: #ef4444 !important;
+        position: relative;
+    }
+    .pw-rec-indicator {
+        position: absolute;
+        top: -2px; right: -2px;
+        width: 8px; height: 8px;
+        background: #ef4444;
+        border-radius: 50%;
+        animation: pw-pulse-indicator 1.5s infinite;
+    }
+    @keyframes pw-pulse-indicator {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.5); opacity: 0.5; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+
+    .pw-rec-overlay {
+        position: absolute; inset: 0;
+        z-index: 2000;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(15, 15, 30, 0.8);
+        backdrop-filter: blur(8px);
+    }
+
+    .pw-countdown-num {
+        font-size: 120px; font-weight: 800;
+        color: #8B3DFF;
+        text-shadow: 0 0 30px rgba(139, 61, 255, 0.5);
+        animation: pw-scale-in 1s ease-out infinite;
+    }
+    @keyframes pw-scale-in {
+        from { transform: scale(0.5); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+
+    .pw-processing-card, .pw-done-card {
+        background: #1e1e2e;
+        padding: 40px; border-radius: 24px;
+        border: 1px solid rgba(255,255,255,0.1);
+        text-align: center;
+        max-width: 400px; width: 90%;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+
+    .pw-progress-bar {
+        width: 100%; height: 6px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 10px; margin: 20px 0 10px;
+        overflow: hidden;
+    }
+    .pw-progress-fill {
+        height: 100%; background: #8B3DFF;
+        transition: width 0.3s ease;
+    }
+
+    .pw-done-icon { color: #10b981; margin-bottom: 20px; }
+    .pw-done-card h3 { font-size: 24px; font-weight: 700; margin-bottom: 10px; }
+    .pw-done-card p { color: rgba(255,255,255,0.6); margin-bottom: 30px; }
+
+    .pw-done-actions { display: grid; gap: 12px; }
+    .pw-btn-download {
+        background: #8B3DFF; color: #fff;
+        border: none; padding: 12px; border-radius: 12px;
+        font-weight: 600; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .pw-btn-discard {
+        background: rgba(239, 68, 68, 0.1); color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        padding: 10px; border-radius: 12px;
+        font-weight: 600; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .pw-btn-close {
+        background: transparent; color: rgba(255,255,255,0.4);
+        border: none; padding: 10px; cursor: pointer;
+        font-size: 13px;
     }
 
 `;

@@ -13,6 +13,8 @@ root.render(
         <Route path="/" element={<App />} />
         <Route path="/view/:designId" element={<App />} />
         <Route path="/edit/:designId" element={<App />} />
+        <Route path="/presenter/:designId" element={<App />} />
+        <Route path="/live/:sessionCode" element={<App />} />
         <Route path="/:toolSlug" element={<App />} />
       </Routes>
     </BrowserRouter>

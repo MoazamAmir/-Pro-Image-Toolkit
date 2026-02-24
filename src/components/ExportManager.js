@@ -859,12 +859,31 @@ const ExportManager = ({
 
                     {/* Present Button */}
                     <button
-                        onClick={() => {
+                        onClick={async () => {
                             onClose();
                             if (presentMode === 'present_and_record') {
                                 if (onStartRecordingStudio) onStartRecordingStudio();
                             } else if (presentMode === 'presenter') {
-                                if (onStartPresentation) onStartPresentation('fullscreen');
+                                // Auto-save design if no designId exists
+                                let did = typeof designId === 'string' && designId ? designId : '';
+                                if (!did) {
+                                    try {
+                                        const currentState = {
+                                            pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
+                                            activePageId,
+                                            canvasSize,
+                                            adjustments,
+                                            lastModified: Date.now()
+                                        };
+                                        did = await FirebaseSyncService.createDesign(currentState, user?.uid);
+                                        if (onDesignIdGenerated) onDesignIdGenerated(did);
+                                    } catch (err) {
+                                        console.error('Failed to save design for presenter:', err);
+                                        alert('Failed to save design. Please try again.');
+                                        return;
+                                    }
+                                }
+                                window.open(`/presenter/${did}`, '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
                             } else {
                                 if (onStartPresentation) onStartPresentation(presentMode);
                             }

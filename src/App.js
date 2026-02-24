@@ -10,6 +10,8 @@ import ConverterUI from './components/ConverterUI';
 import CropImageTool from './components/CropImageTool';
 import ToolDetailsPanel from './components/ToolDetailsPanel';
 import ImageEditor from './components/ImageEditor';
+import PresenterWindow from './components/PresenterWindow';
+import AudienceViewer from './components/AudienceViewer';
 import { AuthModal } from './components/Auth';
 import LandingPage from './components/LandingPage/LandingPage';
 import { onAuthChange, logOut, getGoogleRedirectResult, auth } from './services/firebase';
@@ -57,7 +59,7 @@ import {
 import { converters } from './utils/toolList';
 
 const App = () => {
-  const { toolSlug, designId } = useParams();
+  const { toolSlug, designId, sessionCode } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeConverter, setActiveConverter] = useState(null);
@@ -948,6 +950,11 @@ const App = () => {
     }
   };
 
+  // Audience Live Viewer route (standalone, no auth required — must be before auth check)
+  if (location.pathname.startsWith('/live/') && sessionCode) {
+    return <AudienceViewer sessionCode={sessionCode} />;
+  }
+
   // Show loading while Firebase auth is initializing
   if (authInitializing) {
     return (
@@ -974,6 +981,11 @@ const App = () => {
         </div>
       </div>
     );
+  }
+
+  // Presenter Window route (standalone)
+  if (location.pathname.startsWith('/presenter/') && designId) {
+    return <PresenterWindow designId={designId} user={user} />;
   }
 
   // If no user is logged in, show Landing Page

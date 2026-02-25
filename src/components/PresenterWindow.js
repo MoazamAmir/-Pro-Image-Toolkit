@@ -60,13 +60,64 @@ const PresenterWindow = ({ designId, user }) => {
     const [reactions, setReactions] = useState([]); // { id, type, x, y }
     const lastDrawingSyncRef = useRef(0);
 
-    // Recording logic
+    // Magic Shortcuts State
+    const [activeMagicEffect, setActiveMagicEffect] = useState(null); // 'blur' | 'quiet' | 'bubbles' | 'confetti' | 'drumroll' | 'curtain' | 'mic-drop'
+    const [showMagicPopup, setShowMagicPopup] = useState(false);
+    const audioRef = useRef(null);
+
+    const magicShortcuts = [
+        { id: 'blur', label: 'Blur', key: 'B', icon: <div className="pw-m-icon blur-icon">🌐</div> },
+        { id: 'quiet', label: 'Quiet', key: 'Q', icon: <div className="pw-m-icon quiet-icon">🤫</div> },
+        { id: 'bubbles', label: 'Bubbles', key: 'O', icon: <div className="pw-m-icon bubbles-icon">🫧</div> },
+        { id: 'confetti', label: 'Confetti', key: 'C', icon: <div className="pw-m-icon confetti-icon">🎉</div> },
+        { id: 'drumroll', label: 'Drumroll', key: 'D', icon: <div className="pw-m-icon drumroll-icon">🥁</div> },
+        { id: 'curtain', label: 'Curtain call', key: 'U', icon: <div className="pw-m-icon curtain-icon">🎀</div> },
+        { id: 'mic-drop', label: 'Mic drop', key: 'M', icon: <div className="pw-m-icon mic-icon">🎤</div> },
+    ];
+
+    const playMagicSound = (effectId) => {
+        if (!audioRef.current) audioRef.current = new Audio();
+
+        // Mapping of effects to sound URLs (Use user's sounds or placeholders)
+        const sounds = {
+            'blur': 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3', // Whoosh
+            'quiet': 'https://www.soundjay.com/human/shh-1.mp3', // Shh
+            'bubbles': 'https://assets.mixkit.co/active_storage/sfx/1110/1110-preview.mp3', // Bubbles
+            'confetti': 'https://assets.mixkit.co/active_storage/sfx/2012/2012-preview.mp3', // Pop
+            'drumroll': 'https://assets.mixkit.co/active_storage/sfx/2654/2654-preview.mp3', // Drumroll
+            'curtain': 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3', // Slide
+            'mic-drop': 'https://www.soundjay.com/mechanical/microphone-drop-1.mp3' // Mic drop
+        };
+
+        if (sounds[effectId]) {
+            audioRef.current.src = sounds[effectId];
+            audioRef.current.play().catch(e => console.log("Audio play blocked or failed"));
+        }
+    };
+
+    const triggerMagicEffect = useCallback((effectId) => {
+        if (effectId === 'clear') {
+            setActiveMagicEffect(null);
+            return;
+        }
+        setActiveMagicEffect(effectId);
+        playMagicSound(effectId);
+
+        // Auto-clear some effects after a few seconds
+        if (['confetti', 'mic-drop', 'bubbles', 'drumroll'].includes(effectId)) {
+            setTimeout(() => {
+                setActiveMagicEffect(prev => (prev === effectId ? null : prev));
+            }, 5000);
+        }
+    }, []);
+
     const {
         phase, setPhase, elapsedTime: recordElapsed, countdownValue,
         recordedBlob, processingProgress,
         startCountdown, prepareRecording, executeRecording,
         pauseRecording, resumeRecording, stopRecording,
-        downloadRecording, discardRecording, formatTime: formatRecordTime
+        downloadRecording, discardRecording, formatTime: formatRecordTime,
+        enumerateDevices
     } = useRecording();
 
     // -- Clock --
@@ -83,6 +134,11 @@ const PresenterWindow = ({ designId, user }) => {
         const id = setInterval(tick, 1000);
         return () => clearInterval(id);
     }, []);
+
+    // -- Enumerate Recording Devices --
+    useEffect(() => {
+        enumerateDevices();
+    }, [enumerateDevices]);
 
     // -- Timer --
     useEffect(() => {
@@ -160,13 +216,26 @@ const PresenterWindow = ({ designId, user }) => {
     // Keyboard
     useEffect(() => {
         const handleKey = (e) => {
+            const key = e.key.toUpperCase();
             if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goNext(); }
             else if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
-            else if (e.key === 'Escape') window.close();
+            else if (e.key === 'Escape') {
+                if (showMagicPopup) setShowMagicPopup(false);
+                else window.close();
+            }
+            // Magic Shortcuts
+            else if (key === 'B') triggerMagicEffect('blur');
+            else if (key === 'Q') triggerMagicEffect('quiet');
+            else if (key === 'O') triggerMagicEffect('bubbles');
+            else if (key === 'C') triggerMagicEffect('confetti');
+            else if (key === 'D') triggerMagicEffect('drumroll');
+            else if (key === 'U') triggerMagicEffect('curtain');
+            else if (key === 'M') triggerMagicEffect('mic-drop');
+            else if (key === 'X') triggerMagicEffect('clear');
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [currentPageIndex, totalPages]);
+    }, [currentPageIndex, totalPages, triggerMagicEffect, showMagicPopup]);
 
     // -- Live Session --
     const startLiveSession = async () => {
@@ -469,12 +538,44 @@ const PresenterWindow = ({ designId, user }) => {
                         )}
                     </div>
 
-                    <button className={`pw-tool-btn ${activeTool === 'laser' ? 'active' : ''}`} title="Laser pointer" onClick={() => { setActiveTool(activeTool === 'laser' ? null : 'laser'); setShowDrawingToolbar(false); }}>
+                    {/* <button className={`pw-tool-btn ${activeTool === 'laser' ? 'active' : ''}`} title="Laser pointer" onClick={() => { setActiveTool(activeTool === 'laser' ? null : 'laser'); setShowDrawingToolbar(false); }}>
                         <PenTool size={18} />
-                    </button>
-                    <button className="pw-tool-btn" title="Keyboard shortcuts">
+                    </button> */}
+                    <button
+                        className={`pw-tool-btn ${showMagicPopup ? 'active' : ''}`}
+                        title="Magic shortcuts"
+                        onClick={() => setShowMagicPopup(!showMagicPopup)}
+                    >
                         <Keyboard size={18} />
                     </button>
+
+                    {showMagicPopup && (
+                        <div className="pw-magic-popup">
+                            <div className="pw-magic-header">
+                                <Keyboard size={14} />
+                                <span>Magic Shortcuts</span>
+                            </div>
+                            <div className="pw-magic-list">
+                                {magicShortcuts.map(s => (
+                                    <button
+                                        key={s.id}
+                                        className={`pw-magic-item ${activeMagicEffect === s.id ? 'active' : ''}`}
+                                        onClick={() => { triggerMagicEffect(s.id); setShowMagicPopup(false); }}
+                                    >
+                                        <span className="pw-magic-icon">{s.icon}</span>
+                                        <span className="pw-magic-label">{s.label}</span>
+                                        <span className="pw-magic-key">{s.key}</span>
+                                    </button>
+                                ))}
+                                <div className="pw-magic-divider" />
+                                <button className="pw-magic-item clear" onClick={() => { triggerMagicEffect('clear'); setShowMagicPopup(false); }}>
+                                    <RotateCcw size={14} />
+                                    <span className="pw-magic-label">Clear</span>
+                                    <span className="pw-magic-key">X</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <button className="pw-tool-btn" title="Timer">
                         <Timer size={18} />
                     </button>
@@ -562,6 +663,46 @@ const PresenterWindow = ({ designId, user }) => {
                                     {r.type === 'heart' ? '❤️' : r.type === 'clap' ? '👏' : r.type === 'celebrate' ? '🎉' : '👍'}
                                 </div>
                             ))}
+
+                            {/* Magic Effects Layer */}
+                            {activeMagicEffect && (
+                                <div className={`pw-magic-layer ${activeMagicEffect}`}>
+                                    {activeMagicEffect === 'blur' && <div className="pw-blur-overlay" />}
+                                    {activeMagicEffect === 'quiet' && (
+                                        <div className="pw-quiet-effect">
+                                            <div className="pw-shh-emoji">🤫</div>
+                                            <div className="pw-shh-pulse" />
+                                        </div>
+                                    )}
+                                    {activeMagicEffect === 'bubbles' && (
+                                        <div className="pw-bubbles-container">
+                                            {[...Array(15)].map((_, i) => <div key={i} className="pw-bubble" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 2}s` }} />)}
+                                        </div>
+                                    )}
+                                    {activeMagicEffect === 'confetti' && (
+                                        <div className="pw-confetti-container">
+                                            {[...Array(30)].map((_, i) => <div key={i} className="pw-confetti-piece" style={{ left: `${Math.random() * 100}%`, backgroundColor: ['#8B3DFF', '#FFD700', '#00C2FF', '#FF3B3B'][i % 4], animationDelay: `${Math.random() * 0.5}s` }} />)}
+                                        </div>
+                                    )}
+                                    {activeMagicEffect === 'curtain' && (
+                                        <div className="pw-curtain-container">
+                                            <div className="pw-curtain-left" />
+                                            <div className="pw-curtain-right" />
+                                        </div>
+                                    )}
+                                    {activeMagicEffect === 'mic-drop' && (
+                                        <div className="pw-mic-drop-effect">
+                                            <div className="pw-mic-icon">🎤</div>
+                                            <div className="pw-mic-impact" />
+                                        </div>
+                                    )}
+                                    {activeMagicEffect === 'drumroll' && (
+                                        <div className="pw-drumroll-effect">
+                                            <div className="pw-drum-icon">🥁</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         {currentPageIndex < totalPages - 1 && (
                             <button className="pw-nav-arrow pw-nav-right" onClick={goNext}>
@@ -1307,6 +1448,171 @@ const presenterStyles = `
         background: transparent; color: rgba(255,255,255,0.4);
         border: none; padding: 10px; cursor: pointer;
         font-size: 13px;
+    }
+
+    /* === MAGIC SHORTCUTS UI === */
+    .pw-magic-popup {
+        position: absolute;
+        top: 48px; right: 80px;
+        width: 180px;
+        background: rgba(30, 30, 50, 0.98);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+        z-index: 2000;
+        backdrop-filter: blur(12px);
+        overflow: hidden;
+    }
+    .pw-magic-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px;
+        background: rgba(255,255,255,0.03);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        font-size: 12px; font-weight: 700; color: #fff;
+    }
+    .pw-magic-list { padding: 4px; display: flex; flex-direction: column; }
+    .pw-magic-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 10px; border: none; background: transparent;
+        color: rgba(255,255,255,0.7); border-radius: 8px;
+        cursor: pointer; transition: all 0.2s;
+        font-family: inherit;
+    }
+    .pw-magic-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+    .pw-magic-item.active { background: rgba(139, 61, 255, 0.15); color: #c4a0ff; }
+    .pw-magic-icon { 
+        font-size: 16px; width: 20px; height: 20px; 
+        display: flex; align-items: center; justify-content: center; 
+    }
+    .pw-magic-label { flex: 1; font-size: 13px; text-align: left; font-weight: 500; }
+    .pw-magic-key {
+        font-size: 10px; font-weight: 700;
+        background: rgba(255,255,255,0.1);
+        padding: 2px 6px; border-radius: 4px;
+        color: rgba(255,255,255,0.4);
+    }
+    
+    /* Specific Icon Styles to match image */
+    .blur-icon { color: #00C2FF; filter: drop-shadow(0 0 5px rgba(0, 194, 255, 0.4)); }
+    .quiet-icon { color: #FFD700; transform: scale(1.1); }
+    .bubbles-icon { color: #00E5FF; }
+    .confetti-icon { color: #FF3B3B; }
+    .drumroll-icon { color: #FF00FF; }
+    .curtain-icon { color: #E53935; }
+    .mic-icon { color: #757575; }
+    
+    .pw-magic-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
+    .pw-magic-item.clear { color: rgba(255, 255, 255, 0.5); }
+    .pw-magic-item.clear:hover { color: #fff; background: rgba(239, 68, 68, 0.1); }
+
+    /* === MAGIC EFFECTS LAYERS === */
+    .pw-magic-layer {
+        position: absolute; inset: 0;
+        z-index: 150; pointer-events: none;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; border-radius: 6px;
+    }
+
+   .pw-blur-overlay {
+    position: fixed;
+    inset: 0;
+
+    backdrop-filter: blur(80px) saturate(180%);
+    -webkit-backdrop-filter: blur(80px) saturate(180%);
+
+    background: rgba(15, 23, 42, 0.65); /* dark glass effect */
+    
+    z-index: 9999;
+}
+    @keyframes pw-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Quiet */
+    .pw-quiet-effect { position: relative; display: flex; align-items: center; justify-content: center; z-index: 170; }
+    .pw-shh-emoji { 
+        font-size: 200px; 
+        z-index: 171; 
+        animation: pw-shh-appear 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+        filter: drop-shadow(0 0 30px rgba(255, 215, 0, 0.3));
+    }
+    @keyframes pw-shh-appear {
+        from { transform: scale(0.5); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+    .pw-shh-pulse {
+        position: absolute; width: 300px; height: 300px;
+        background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, transparent 70%);
+        border-radius: 50%;
+        animation: pw-shh-pulse 2s infinite;
+    }
+    @keyframes pw-shh-pulse {
+        0% { transform: scale(0.8); opacity: 0.8; }
+        100% { transform: scale(1.5); opacity: 0; }
+    }
+    @keyframes pw-bounce {
+        from { transform: translateY(0); }
+        to { transform: translateY(-20px); }
+    }
+
+    /* Bubbles */
+    .pw-bubble {
+        position: absolute; bottom: -50px;
+        width: 15px; height: 15px;
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        animation: pw-bubble-up 4s linear infinite;
+    }
+    @keyframes pw-bubble-up {
+        0% { transform: translateY(0) scale(1); opacity: 0.8; }
+        100% { transform: translateY(-100vh) scale(1.5); opacity: 0; }
+    }
+
+    /* Confetti */
+    .pw-confetti-piece {
+        position: absolute; top: -10px;
+        width: 10px; height: 10px;
+        border-radius: 2px;
+        animation: pw-confetti-fall 3s linear forwards;
+    }
+    @keyframes pw-confetti-fall {
+        0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* Curtain */
+    .pw-curtain-container { position: absolute; inset: 0; display: flex; z-index: 200; }
+    .pw-curtain-left, .pw-curtain-right {
+        flex: 1; background: #8B0000;
+        box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        transition: transform 1s ease-in-out;
+    }
+    .pw-magic-layer.curtain .pw-curtain-left { animation: pw-curtain-close-left 1s forwards; }
+    .pw-magic-layer.curtain .pw-curtain-right { animation: pw-curtain-close-right 1s forwards; }
+    @keyframes pw-curtain-close-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+    @keyframes pw-curtain-close-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+    /* Mic Drop */
+    .pw-mic-drop-effect { display: flex; align-items: center; justify-content: center; flex-direction: column; }
+    .pw-mic-icon { font-size: 80px; animation: pw-mic-fall 0.8s cubic-bezier(.17,.67,.83,.67) forwards; }
+    .pw-mic-impact {
+        width: 100px; height: 2px; background: rgba(255,255,255,0.2);
+        filter: blur(4px); box-shadow: 0 0 20px #fff;
+        opacity: 0; animation: pw-mic-flash 0.1s 0.8s forwards;
+    }
+    @keyframes pw-mic-fall {
+        0% { transform: translateY(-300px) rotate(-45deg); }
+        80% { transform: translateY(100px) rotate(0); }
+        100% { transform: translateY(15vh) rotate(0); }
+    }
+    @keyframes pw-mic-flash { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+    /* Drumroll */
+    .pw-drum-icon { font-size: 100px; animation: pw-shake 0.1s infinite; }
+    @keyframes pw-shake {
+        0%, 100% { transform: translate(0, 0); }
+        25% { transform: translate(-3px, -3px); }
+        50% { transform: translate(3px, 3px); }
+        75% { transform: translate(-3px, 3px); }
     }
 
 `;

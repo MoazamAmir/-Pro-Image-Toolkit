@@ -10,6 +10,7 @@ const useRecording = () => {
     const [countdownValue, setCountdownValue] = useState(3);
     const [recordedBlob, setRecordedBlob] = useState(null);
     const [processingProgress, setProcessingProgress] = useState(0);
+    const [error, setError] = useState(null);
 
     const [cameras, setCameras] = useState([]);
     const [microphones, setMicrophones] = useState([]);
@@ -30,6 +31,8 @@ const useRecording = () => {
 
     const enumerateDevices = useCallback(async () => {
         try {
+            setError(null);
+            // Permission trigger
             await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop())).catch(() => { });
             const devices = await navigator.mediaDevices.enumerateDevices();
             setCameras(devices.filter(d => d.kind === 'videoinput'));
@@ -38,21 +41,37 @@ const useRecording = () => {
             if (mics.length > 0 && !selectedMicrophone) setSelectedMicrophone(mics[0].deviceId);
         } catch (err) {
             console.error('enumerateDevices error:', err);
+            setError('Device enumeration failed.');
         }
     }, [selectedMicrophone]);
 
-    const startAudioMonitor = useCallback(async (deviceId) => {
+    const stopAudioMonitor = useCallback(() => {
         if (audioAnimFrameRef.current) cancelAnimationFrame(audioAnimFrameRef.current);
-        if (audioContextRef.current) audioContextRef.current.close().catch(() => { });
-        if (micStreamRef.current) micStreamRef.current.getTracks().forEach(t => t.stop());
+        if (analyserRef.current) analyserRef.current = null;
+        if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => { });
+            audioContextRef.current = null;
+        }
+        if (micStreamRef.current) {
+            micStreamRef.current.getTracks().forEach(t => t.stop());
+            micStreamRef.current = null;
+        }
+        setAudioLevel(0);
+    }, []);
 
-        if (!deviceId) return;
+    const startAudioMonitor = useCallback(async (deviceId) => {
+        stopAudioMonitor();
+        if (!deviceId || deviceId === 'none') return;
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+            setError(null);
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { deviceId: { ideal: deviceId } }
+            });
             micStreamRef.current = stream;
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             audioContextRef.current = audioCtx;
+
             const source = audioCtx.createMediaStreamSource(stream);
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
@@ -68,16 +87,20 @@ const useRecording = () => {
                 audioAnimFrameRef.current = requestAnimationFrame(checkLevel);
             };
             checkLevel();
+
+            if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => { });
         } catch (err) {
             console.error('startAudioMonitor error:', err);
+            setError('Microphone preview failed.');
         }
-    }, []);
+    }, [stopAudioMonitor]);
 
     const startCameraPreview = useCallback(async (deviceId) => {
         if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
         if (!deviceId || deviceId === 'none') return null;
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: 640, height: 480 } });
+            setError(null);
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { ideal: deviceId }, width: 640, height: 480 } });
             cameraStreamRef.current = stream;
             return stream;
         } catch (err) {
@@ -103,13 +126,14 @@ const useRecording = () => {
 
     const prepareRecording = useCallback(async () => {
         try {
-            // 1. Capture Full Screen (Display Media)
+            setError(null);
+            stopAudioMonitor();
+
+            // 1. Capture Full Screen
             const displayStream = await navigator.mediaDevices.getDisplayMedia({
                 video: { cursor: "always", displaySurface: "browser" },
                 audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                preferCurrentTab: true,
-                selfBrowserSurface: "include",
-                monitorTypeSurfaces: "include"
+                preferCurrentTab: true
             }).catch(err => {
                 console.error('getDisplayMedia error:', err);
                 return null;
@@ -118,27 +142,25 @@ const useRecording = () => {
             if (!displayStream) return false;
             displayStreamRef.current = displayStream;
 
-            // 2. Capture Microphone with Fallback logic
+            // 2. Capture Microphone
             let micStream = null;
-            if (selectedMicrophone && selectedMicrophone !== 'none') {
-                try {
+            const constraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
+            try {
+                if (selectedMicrophone && selectedMicrophone !== 'none') {
                     micStream = await navigator.mediaDevices.getUserMedia({
-                        audio: { deviceId: { exact: selectedMicrophone }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                        audio: { deviceId: { ideal: selectedMicrophone }, ...constraints }
                     });
-                } catch (err) {
-                    console.warn('Specific mic failed, falling back:', err);
-                    try {
-                        micStream = await navigator.mediaDevices.getUserMedia({
-                            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-                        });
-                    } catch (fallbackErr) {
-                        console.error('Fallback mic failed:', fallbackErr);
-                    }
+                } else if (selectedMicrophone !== 'none') {
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
                 }
-                if (micStream) micStreamRef.current = micStream;
+            } catch (err) {
+                console.warn('Mic capture failed:', err);
             }
 
-            // 3. Mix Audio using AudioContext
+            if (micStream) micStreamRef.current = micStream;
+
+            // 3. Mix Audio
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
             audioContextRef.current = audioCtx;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
@@ -167,37 +189,28 @@ const useRecording = () => {
             // 4. Build Combined Stream
             const videoTrack = displayStream.getVideoTracks()[0];
             const tracks = [videoTrack];
-            if (hasAudioTracks) destination.stream.getAudioTracks().forEach(track => tracks.push(track));
+            if (hasAudioTracks) {
+                destination.stream.getAudioTracks().forEach(track => tracks.push(track));
+            }
 
             const combinedStream = new MediaStream(tracks);
             combinedStreamRef.current = combinedStream;
 
-            // Handle browser share stopping
             videoTrack.onended = () => stopRecording();
-
             return true;
         } catch (err) {
             console.error('prepareRecording error:', err);
+            setError('Failed to setup recording components.');
             return false;
         }
-    }, [selectedMicrophone]);
+    }, [selectedMicrophone, stopAudioMonitor]);
 
     const executeRecording = useCallback(() => {
-        if (!combinedStreamRef.current) {
-            console.error('No stream prepared!');
-            return;
-        }
-
+        if (!combinedStreamRef.current) return;
         try {
             chunksRef.current = [];
             setElapsedTime(0);
-
-            const supportedTypes = [
-                'video/webm;codecs=h264,opus',
-                'video/webm;codecs=vp9,opus',
-                'video/webm;codecs=vp8,opus',
-                'video/webm'
-            ];
+            const supportedTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
             const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
 
             const recorder = new MediaRecorder(combinedStreamRef.current, { mimeType, videoBitsPerSecond: 2500000 });
@@ -209,14 +222,12 @@ const useRecording = () => {
 
             recorder.onstop = () => {
                 setPhase('processing');
-
                 [displayStreamRef, micStreamRef, combinedStreamRef, cameraStreamRef].forEach(ref => {
                     if (ref.current) {
                         ref.current.getTracks().forEach(t => t.stop());
                         ref.current = null;
                     }
                 });
-
                 let progress = 0;
                 const interval = setInterval(() => {
                     progress += 10;
@@ -226,9 +237,8 @@ const useRecording = () => {
                         const finalBlob = new Blob(chunksRef.current, { type: mimeType });
                         setRecordedBlob(finalBlob);
                         setPhase('done');
-                        console.log('Recording finalized. Size:', finalBlob.size);
                     }
-                }, 150);
+                }, 100);
             };
 
             recorder.start(1000);
@@ -236,12 +246,11 @@ const useRecording = () => {
             timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
         } catch (err) {
             console.error('executeRecording error:', err);
-            setPhase('setup');
+            setError('Recording failed to start.');
         }
     }, []);
 
     const startRecording = useCallback(async () => {
-        // Legacy fallback or simplified trigger
         const ok = await prepareRecording();
         if (ok) executeRecording();
     }, [prepareRecording, executeRecording]);
@@ -251,7 +260,6 @@ const useRecording = () => {
             mediaRecorderRef.current.stop();
         }
         if (timerRef.current) clearInterval(timerRef.current);
-        // Track stopping is now handled in recorder.onstop to prevent file corruption
     }, []);
 
     const pauseRecording = useCallback(() => {
@@ -284,6 +292,7 @@ const useRecording = () => {
         setRecordedBlob(null);
         chunksRef.current = [];
         setElapsedTime(0);
+        setError(null);
         setPhase('setup');
     }, []);
 
@@ -294,6 +303,10 @@ const useRecording = () => {
             if (ref.current) ref.current.getTracks().forEach(t => t.stop());
             ref.current = null;
         });
+        if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => { });
+            audioContextRef.current = null;
+        }
     }, []);
 
     useEffect(() => { return () => cleanup(); }, [cleanup]);
@@ -305,7 +318,7 @@ const useRecording = () => {
     };
 
     return {
-        phase, setPhase, elapsedTime, countdownValue, recordedBlob, processingProgress,
+        phase, setPhase, elapsedTime, countdownValue, recordedBlob, processingProgress, error,
         cameras, microphones, selectedCamera, setSelectedCamera, selectedMicrophone, setSelectedMicrophone, audioLevel,
         enumerateDevices, startAudioMonitor, startCameraPreview, startCountdown,
         prepareRecording, executeRecording, startRecording,

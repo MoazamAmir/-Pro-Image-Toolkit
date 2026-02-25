@@ -20,7 +20,7 @@ const PresentAndRecordStudio = ({
     const {
         phase, setPhase,
         elapsedTime, countdownValue,
-        recordedBlob, processingProgress,
+        recordedBlob, processingProgress, error,
         cameras, microphones,
         selectedCamera, setSelectedCamera,
         selectedMicrophone, setSelectedMicrophone,
@@ -277,6 +277,15 @@ const PresentAndRecordStudio = ({
                         </div>
 
                         <div className="prs-setup-body">
+                            {error && (
+                                <div className="prs-error-alert">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <X className="w-4 h-4" />
+                                        <span className="font-bold">Error</span>
+                                    </div>
+                                    <p>{error}</p>
+                                </div>
+                            )}
                             <div className="prs-input-config">
                                 <div className="prs-config-item">
                                     <div className="flex items-center gap-2 mb-2 text-xs font-bold text-gray-400">
@@ -465,6 +474,8 @@ const PresentAndRecordStudio = ({
                 
                 .prs-mic-bar-bg { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; }
                 .prs-mic-bar-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #ec4899); transition: width 0.1s; }
+
+                .prs-error-alert { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #ef4444; }
 
                 .prs-btn-primary { width: 100%; padding: 16px; background: #7c3aed; color: white; font-weight: 800; border-radius: 16px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4); margin-bottom: 15px; }
                 .prs-btn-ghost { width: 100%; background: transparent; border: none; color: rgba(255,255,255,0.4); font-weight: 700; cursor: pointer; font-size: 12px; }

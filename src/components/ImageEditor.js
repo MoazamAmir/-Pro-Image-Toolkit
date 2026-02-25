@@ -1242,8 +1242,8 @@ const ImageEditor = ({
                         let layerWidth, layerHeight;
                         if (l.type === 'text') {
                             const textLength = (l.content || '').length;
-                            layerWidth = textLength * l.fontSize * 0.6;
-                            layerHeight = l.fontSize * 1.2;
+                            layerWidth = l.width || (textLength * l.fontSize * 0.6);
+                            layerHeight = l.height || (l.fontSize * 1.2);
                         } else if (l.type === 'form') {
                             layerWidth = l.width || 280;
                             layerHeight = l.height || 350;
@@ -1259,7 +1259,7 @@ const ImageEditor = ({
                         newX = Math.max(halfWidthPercent, Math.min(100 - halfWidthPercent, newX));
                         newY = Math.max(halfHeightPercent, Math.min(100 - halfHeightPercent, newY));
 
-                        return { ...l, x: newX, y: newY };
+                        return { ...l, x: newX, y: newY, width: layerWidth, height: layerHeight };
                     });
                 });
             }
@@ -1360,7 +1360,19 @@ const ImageEditor = ({
                             const direction = (handle.includes('w') || handle.includes('n')) ? -1 : 1;
                             const actualChange = movement * direction;
 
-                            fontSize = Math.max(8, fontSize + actualChange);
+                            const newFontSize = Math.max(8, fontSize + actualChange);
+
+                            // Check if new font size would push text out of horizontal bounds
+                            const textLength = (ly.content || '').length;
+                            const newEstimatedWidth = textLength * newFontSize * 0.6;
+                            const halfWPercent = (newEstimatedWidth / 2 / containerW) * 100;
+
+                            if (x - halfWPercent < 0 || x + halfWPercent > 100) {
+                                // Cap the font size if it hits the boundary
+                                // No change allowed if already at limit
+                            } else {
+                                fontSize = newFontSize;
+                            }
                         } else {
                             // Image/Frame/Shape resizing with proper anchoring
 
@@ -1390,10 +1402,26 @@ const ImageEditor = ({
 
                             // 5. Update position (x, y) to keep opposite side fixed
                             if (!isBackground) {
-                                if (handle.includes('e')) x += (actualDeltaW / 2 / containerW) * 100;
-                                if (handle.includes('w')) x -= (actualDeltaW / 2 / containerW) * 100;
-                                if (handle.includes('s')) y += (actualDeltaH / 2 / containerH) * 100;
-                                if (handle.includes('n')) y -= (actualDeltaH / 2 / containerH) * 100;
+                                const halfWPercent = (newWidth / 2 / containerW) * 100;
+                                const halfHPercent = (newHeight / 2 / containerH) * 100;
+
+                                // Prevent resizing beyond canvas boundaries
+                                if (handle.includes('e')) {
+                                    if (x + halfWPercent > 100) newWidth = width;
+                                    else x += (actualDeltaW / 2 / containerW) * 100;
+                                }
+                                if (handle.includes('w')) {
+                                    if (x - halfWPercent < 0) newWidth = width;
+                                    else x -= (actualDeltaW / 2 / containerW) * 100;
+                                }
+                                if (handle.includes('s')) {
+                                    if (y + halfHPercent > 100) newHeight = height;
+                                    else y += (actualDeltaH / 2 / containerH) * 100;
+                                }
+                                if (handle.includes('n')) {
+                                    if (y - halfHPercent < 0) newHeight = height;
+                                    else y -= (actualDeltaH / 2 / containerH) * 100;
+                                }
                             } else {
                                 // Background layer stays centered, canvas resizes around it
                                 x = 50;
@@ -1493,6 +1521,8 @@ const ImageEditor = ({
             letterSpacing: template.style.spacing || 0,
             x: 50,
             y: 50,
+            width: (template.name || '').length * (template.style.size || 32) * 0.6,
+            height: (template.style.size || 32) * 1.2,
             isSelected: true
         } : {
             id: Date.now(),
@@ -1504,6 +1534,8 @@ const ImageEditor = ({
             color: darkMode ? '#ffffff' : '#000000',
             x: 50,
             y: 50,
+            width: (type === 'heading' ? 13 : type === 'subheading' ? 16 : 28) * (type === 'heading' ? 48 : type === 'subheading' ? 32 : 18) * 0.6,
+            height: (type === 'heading' ? 48 : type === 'subheading' ? 32 : 18) * 1.2,
             isSelected: true
         };
         addLayerWithSync(newLayer);
@@ -4387,7 +4419,10 @@ const ImageEditor = ({
                                             suppressContentEditableWarning
                                             onBlur={(e) => {
                                                 setEditingLayerId(null);
-                                                setLayers(layers.map(l => l.id === layer.id ? { ...l, content: e.target.innerText } : l));
+                                                const content = e.target.innerText;
+                                                const width = content.length * layer.fontSize * 0.6;
+                                                const height = layer.fontSize * 1.2;
+                                                setLayers(layers.map(l => l.id === layer.id ? { ...l, content, width, height } : l));
                                             }}
                                             className={`px-1.5 py-0.5 outline-none ${editingLayerId === layer.id ? 'cursor-text' : 'cursor-move'} select-none ${activeLayerId === layer.id && hoverAnimation ? hoverAnimation : `${layer.animationClass || ''} ${layer.animationClass?.startsWith('reveal-') ? `reveal-style-${layer.animationStyle || 'seep'}` : ''}`.trim()}`}
                                             style={{

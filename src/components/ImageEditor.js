@@ -819,7 +819,20 @@ const ImageEditor = ({
         { name: 'Playfair Display', family: '"Playfair Display", serif' },
         { name: 'Montserrat', family: 'Montserrat, sans-serif' },
         { name: 'Oswald', family: 'Oswald, sans-serif' },
-        { name: 'Dancing Script', family: '"Dancing Script", cursive' }
+        { name: 'Dancing Script', family: '"Dancing Script", cursive' },
+        { name: 'Bebas Neue', family: '"Bebas Neue", sans-serif' },
+        { name: 'Pacifico', family: '"Pacifico", cursive' },
+        { name: 'Anton', family: '"Anton", sans-serif' },
+        { name: 'Raleway', family: '"Raleway", sans-serif' },
+        { name: 'Righteous', family: '"Righteous", cursive' },
+        { name: 'Lobster', family: '"Lobster", cursive' },
+        { name: 'Fredoka One', family: '"Fredoka One", cursive' },
+        { name: 'Satisfy', family: '"Satisfy", cursive' },
+        { name: 'Great Vibes', family: '"Great Vibes", cursive' },
+        { name: 'Amatic SC', family: '"Amatic SC", cursive' },
+        { name: 'Shadows Into Light', family: '"Shadows Into Light", cursive' },
+        { name: 'Abril Fatface', family: '"Abril Fatface", cursive' },
+        { name: 'Cinzel', family: '"Cinzel", serif' }
     ];
 
     const filters = [
@@ -1224,7 +1237,6 @@ const ImageEditor = ({
                         if (!connectedLayerIds.includes(l.id)) return l;
 
                         if (isPanningContent && (l.shapeType === 'image' || l.type === 'frame')) {
-                            // Internal Panning Logic
                             const moveX = e.movementX / (zoom || 1);
                             const moveY = e.movementY / (zoom || 1);
                             return {
@@ -1242,8 +1254,8 @@ const ImageEditor = ({
                         let layerWidth, layerHeight;
                         if (l.type === 'text') {
                             const textLength = (l.content || '').length;
-                            layerWidth = l.width || (textLength * l.fontSize * 0.6);
-                            layerHeight = l.height || (l.fontSize * 1.2);
+                            layerWidth = l.width || (textLength * (l.fontSize || 16) * 0.6);
+                            layerHeight = l.height || ((l.fontSize || 16) * 1.2);
                         } else if (l.type === 'form') {
                             layerWidth = l.width || 280;
                             layerHeight = l.height || 350;
@@ -1255,13 +1267,15 @@ const ImageEditor = ({
                         const halfWidthPercent = (layerWidth / 2 / rect.width) * 100;
                         const halfHeightPercent = (layerHeight / 2 / rect.height) * 100;
 
-                        // Constrain so element stays fully inside the image boundary
+                        // Constrain so element stays fully inside the canvas boundary
                         newX = Math.max(halfWidthPercent, Math.min(100 - halfWidthPercent, newX));
                         newY = Math.max(halfHeightPercent, Math.min(100 - halfHeightPercent, newY));
 
-                        return { ...l, x: newX, y: newY, width: layerWidth, height: layerHeight };
+                        // ✅ FIX: Sirf x aur y update karo - width/height mat badlo drag pe
+                        return { ...l, x: newX, y: newY };
                     });
                 });
+
             }
             else if (isResizingCanvas && isResizingCanvas.handle) {
                 const moveX = e.movementX / (zoom || 1);
@@ -1352,27 +1366,31 @@ const ImageEditor = ({
                         let newHeight = height;
 
                         if (isText) {
-                            // Text scaling logic
                             const movement = isCorner ?
                                 (handle === 'se' || handle === 'nw' ? (dx + dy) / 2 : (dx - dy) / 2) :
                                 (handle.includes('e') || handle.includes('w') ? dx : dy);
 
                             const direction = (handle.includes('w') || handle.includes('n')) ? -1 : 1;
                             const actualChange = movement * direction;
-
                             const newFontSize = Math.max(8, fontSize + actualChange);
 
-                            // Check if new font size would push text out of horizontal bounds
+                            // Canvas ke andar raho check karo
                             const textLength = (ly.content || '').length;
                             const newEstimatedWidth = textLength * newFontSize * 0.6;
                             const halfWPercent = (newEstimatedWidth / 2 / containerW) * 100;
+                            const halfHPercent = ((newFontSize * 1.2) / 2 / containerH) * 100;
 
-                            if (x - halfWPercent < 0 || x + halfWPercent > 100) {
-                                // Cap the font size if it hits the boundary
-                                // No change allowed if already at limit
-                            } else {
+                            // ✅ FIX: x aur y mat badlo - sirf fontSize badlo
+                            if (
+                                x - halfWPercent >= 0 && x + halfWPercent <= 100 &&
+                                y - halfHPercent >= 0 && y + halfHPercent <= 100
+                            ) {
                                 fontSize = newFontSize;
                             }
+
+                            // Width/height update karo naye fontSize se
+                            width = Math.max(20, textLength * fontSize * 0.6);
+                            height = Math.max(16, fontSize * 1.2);
                         } else {
                             // Image/Frame/Shape resizing with proper anchoring
 
@@ -1505,6 +1523,11 @@ const ImageEditor = ({
     };
 
     const addText = (type = 'body', template = null) => {
+        // Canvas size ke mutabiq max width calculate karo
+        const bgLayer = layers.find(l => l.id === 'background-layer');
+        const canvasW = bgLayer?.width || canvasSize.width;
+        const canvasH = bgLayer?.height || canvasSize.height;
+
         const newLayer = template ? {
             id: Date.now(),
             type: 'text',
@@ -1513,7 +1536,6 @@ const ImageEditor = ({
             fontFamily: template.style.font || selectedFont,
             fontWeight: template.style.weight || 'bold',
             color: template.style.color || (darkMode ? '#ffffff' : '#000000'),
-            // New properties for template fidelity
             fontStyle: template.style.italic ? 'italic' : 'normal',
             textDecoration: template.style.underline ? 'underline' : 'none',
             stroke: template.style.stroke || false,
@@ -1521,23 +1543,38 @@ const ImageEditor = ({
             letterSpacing: template.style.spacing || 0,
             x: 50,
             y: 50,
-            width: (template.name || '').length * (template.style.size || 32) * 0.6,
+            // ✅ FIX: canvas width se zyada wide mat karo
+            width: Math.min(
+                (template.name || '').length * (template.style.size || 32) * 0.6,
+                canvasW * 0.9
+            ),
             height: (template.style.size || 32) * 1.2,
             isSelected: true
-        } : {
-            id: Date.now(),
-            type: 'text',
-            content: type === 'heading' ? 'Add a heading' : type === 'subheading' ? 'Add a subheading' : 'Add a little bit of body text',
-            fontSize: type === 'heading' ? 48 : type === 'subheading' ? 32 : 18,
-            fontFamily: selectedFont,
-            fontWeight: type === 'heading' ? '900' : 'normal',
-            color: darkMode ? '#ffffff' : '#000000',
-            x: 50,
-            y: 50,
-            width: (type === 'heading' ? 13 : type === 'subheading' ? 16 : 28) * (type === 'heading' ? 48 : type === 'subheading' ? 32 : 18) * 0.6,
-            height: (type === 'heading' ? 48 : type === 'subheading' ? 32 : 18) * 1.2,
-            isSelected: true
-        };
+        } : (() => {
+            const fs = type === 'heading' ? 48 : type === 'subheading' ? 32 : 18;
+            const content = type === 'heading' ? 'Add a heading' :
+                type === 'subheading' ? 'Add a subheading' :
+                    'Add body text here';
+            // ✅ FIX: text ki width canvas width se 80% tak limit karo
+            const estimatedWidth = content.length * fs * 0.6;
+            const finalWidth = Math.min(estimatedWidth, canvasW * 0.8);
+
+            return {
+                id: Date.now(),
+                type: 'text',
+                content,
+                fontSize: fs,
+                fontFamily: selectedFont,
+                fontWeight: type === 'heading' ? '900' : 'normal',
+                color: darkMode ? '#ffffff' : '#000000',
+                x: 50,
+                y: 50,
+                width: finalWidth,
+                height: fs * 1.2,
+                isSelected: true
+            };
+        })();
+
         addLayerWithSync(newLayer);
     };
 
@@ -3614,7 +3651,19 @@ const ImageEditor = ({
                                             {fonts.map(font => (
                                                 <button
                                                     key={font.name}
-                                                    onClick={() => setSelectedFont(font.family)}
+                                                    onClick={() => {
+                                                        setSelectedFont(font.family);
+                                                        if (activeLayerId) {
+                                                            const activeLayer = layers.find(l => l.id === activeLayerId);
+                                                            if (activeLayer && activeLayer.type === 'text') {
+                                                                const updatedLayers = layers.map(l =>
+                                                                    l.id === activeLayerId ? { ...l, fontFamily: font.family } : l
+                                                                );
+                                                                setLayers(updatedLayers);
+                                                                saveToHistory(updatedLayers);
+                                                            }
+                                                        }
+                                                    }}
                                                     className={`w-full text-left px-3 py-2.5 rounded-xl border-2 transition-all group flex items-center justify-between ${selectedFont === font.family
                                                         ? (darkMode ? 'border-purple-600 bg-purple-600/20' : 'border-purple-600 bg-purple-50')
                                                         : (darkMode ? 'border-gray-800 hover:bg-gray-800' : 'border-gray-100 hover:bg-gray-50')

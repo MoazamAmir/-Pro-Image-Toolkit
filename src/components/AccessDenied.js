@@ -269,7 +269,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                             </div>
                         )}
 
-                        <div style={{
+                        {/* <div style={{
                             display: 'flex',
                             gap: '12px',
                             flexWrap: 'wrap'
@@ -340,7 +340,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                                 </svg>
                                 Switch Account
                             </button>
-                        </div>
+                        </div> */}
 
                         {/* Help text */}
                         <p style={{

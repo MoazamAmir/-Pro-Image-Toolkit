@@ -348,7 +348,7 @@ const useRecording = () => {
     return {
         phase, setPhase, elapsedTime, countdownValue, recordedBlob, processingProgress, error,
         cameras, microphones, selectedCamera, setSelectedCamera, selectedMicrophone, setSelectedMicrophone, audioLevel,
-        enumerateDevices, startAudioMonitor, startCameraPreview, startCountdown,
+        enumerateDevices, startAudioMonitor, stopAudioMonitor, startCameraPreview, startCountdown,
         prepareRecording, executeRecording, startRecording,
         pauseRecording, resumeRecording, stopRecording, downloadRecording, discardRecording, cleanup, formatTime
     };

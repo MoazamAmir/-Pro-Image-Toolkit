@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, Send, Radio, ChevronLeft, ChevronRight, ZoomIn, Maximize2, RotateCcw, Hash } from 'lucide-react';
+import { Heart, Send, Radio, ChevronLeft, ChevronRight, ZoomIn, Maximize2, RotateCcw, Hash, Mic, MicOff } from 'lucide-react';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
+import SlideRenderer from './SlideRenderer';
 import { onAuthChange } from '../services/firebase';
 
 const AudienceViewer = ({ sessionCode }) => {
@@ -11,11 +12,16 @@ const AudienceViewer = ({ sessionCode }) => {
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
     const [previewImages, setPreviewImages] = useState({});
     const [comments, setComments] = useState([]);
+    const [canvasSize, setCanvasSize] = useState({ width: 1920, height: 1080 });
+    const [adjustments, setAdjustments] = useState({});
     const [newComment, setNewComment] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [guestName, setGuestName] = useState('');
     const [isJoined, setIsJoined] = useState(false);
+    const [audioStream, setAudioStream] = useState(null);
+    const audioRef = useRef(null);
+    const peerConnRef = useRef(null);
 
     const commentsEndRef = useRef(null);
     const sessionUnsubRef = useRef(null);
@@ -84,8 +90,68 @@ const AudienceViewer = ({ sessionCode }) => {
                         setPages(data.pages);
                         renderPreviews(data.pages);
                     }
+                    if (data?.canvasSize) setCanvasSize(data.canvasSize);
+                    if (data?.adjustments) setAdjustments(data.adjustments);
                 });
 
+                // Listen for signals (WebRTC)
+                LiveSessionService.listenToSignals(found.id, async (signal) => {
+                    if (signal.type === 'host-voice-ready') {
+                        // Request voice stream from host
+                        LiveSessionService.sendSignal(found.id, {
+                            type: 'viewer-request-voice',
+                            fromId: user?.uid || `guest_${Date.now()}`,
+                            toId: signal.hostId,
+                            timestamp: Date.now()
+                        });
+                    } else if (signal.type === 'host-voice-offer' && signal.toId === (user?.uid || '')) {
+                        // Handle offer
+                        const pc = new RTCPeerConnection({
+                            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                        });
+                        peerConnRef.current = pc;
+
+                        pc.ontrack = (event) => {
+                            if (audioRef.current) {
+                                audioRef.current.srcObject = event.streams[0];
+                            }
+                            setAudioStream(event.streams[0]);
+                        };
+
+                        pc.onicecandidate = (event) => {
+                            if (event.candidate) {
+                                LiveSessionService.sendSignal(found.id, {
+                                    type: 'viewer-ice-candidate',
+                                    fromId: user?.uid || '',
+                                    toId: signal.fromId,
+                                    candidate: event.candidate.toJSON()
+                                });
+                            }
+                        };
+
+                        await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+
+                        await LiveSessionService.sendSignal(found.id, {
+                            type: 'viewer-voice-answer',
+                            fromId: user?.uid || '',
+                            toId: signal.fromId,
+                            answer: { sdp: answer.sdp, type: answer.type }
+                        });
+                    } else if (signal.type === 'host-ice-candidate' && signal.toId === (user?.uid || '')) {
+                        if (peerConnRef.current) {
+                            await peerConnRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                        }
+                    } else if (signal.type === 'host-voice-stopped') {
+                        if (peerConnRef.current) {
+                            peerConnRef.current.close();
+                            peerConnRef.current = null;
+                        }
+                        if (audioRef.current) audioRef.current.srcObject = null;
+                        setAudioStream(null);
+                    }
+                });
             } catch (err) {
                 console.error('Error joining session:', err);
                 setError('Failed to join session.');
@@ -204,12 +270,20 @@ const AudienceViewer = ({ sessionCode }) => {
 
     return (
         <div className="av-root">
+            {/* Hidden audio for WebRTC */}
+            <audio ref={audioRef} autoPlay />
             {/* Live header bar */}
             <div className="av-header">
                 <div className="av-live-badge">
                     <Radio size={12} />
                     <span>LIVE</span>
                 </div>
+                {audioStream && (
+                    <div className="av-voice-badge">
+                        <Mic size={12} />
+                        <span>HOST SPEAKING</span>
+                    </div>
+                )}
                 <span className="av-host-name">Hosted by {session?.hostName || 'Unknown'}</span>
             </div>
 
@@ -218,49 +292,52 @@ const AudienceViewer = ({ sessionCode }) => {
                 <div className="av-viewer">
                     <div className="av-slide-area">
                         <div className="av-slide-frame">
-                            {/* Drawings Layer */}
-                            <svg className="av-drawings-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                {pages[currentPageIndex] && (session?.drawings?.[pages[currentPageIndex].id] || []).map((path, idx) => (
-                                    <polyline
-                                        key={idx}
-                                        points={path.points.map(p => `${p.x} ${p.y}`).join(',')}
-                                        stroke={path.color}
-                                        strokeWidth={path.width}
-                                        strokeOpacity={path.opacity}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        style={path.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
-                                    />
-                                ))}
-                                {/* Real-time Current Path */}
-                                {session?.currentPath && (
-                                    <polyline
-                                        points={session.currentPath.points.map(p => `${p.x} ${p.y}`).join(',')}
-                                        stroke={session.currentPath.color}
-                                        strokeWidth={session.currentPath.width}
-                                        strokeOpacity={session.currentPath.opacity}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        style={session.currentPath.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
-                                    />
-                                )}
-                            </svg>
-                            {currentSrc ? (
-                                <img src={currentSrc} alt={`Slide ${currentPageIndex + 1}`} className="av-slide-img" draggable={false} />
-                            ) : (
-                                <div className="av-slide-empty">
-                                    <Hash size={48} strokeWidth={1} />
-                                    <span>Waiting for content...</span>
-                                </div>
-                            )}
-                            {session?.laserPos && (
-                                <div
-                                    className="av-laser-dot"
-                                    style={{ left: `${session.laserPos.x}%`, top: `${session.laserPos.y}%` }}
-                                />
-                            )}
+                            <SlideRenderer
+                                page={pages[currentPageIndex]}
+                                canvasSize={canvasSize}
+                                adjustments={adjustments}
+                                style={{ boxShadow: '0 20px 80px rgba(0,0,0,0.5)' }}
+                                overlays={
+                                    <>
+                                        {/* Drawings Layer */}
+                                        <svg className="av-drawings-layer" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, zIndex: 50, pointerEvents: 'none', width: '100%', height: '100%' }}>
+                                            {pages[currentPageIndex] && (session?.drawings?.[pages[currentPageIndex].id] || []).map((path, idx) => (
+                                                <polyline
+                                                    key={idx}
+                                                    points={path.points.map(p => `${p.x} ${p.y}`).join(',')}
+                                                    stroke={path.color}
+                                                    strokeWidth={path.width}
+                                                    strokeOpacity={path.opacity}
+                                                    fill="none"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    style={path.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
+                                                />
+                                            ))}
+                                            {/* Real-time Current Path */}
+                                            {session?.currentPath && (
+                                                <polyline
+                                                    points={session.currentPath.points.map(p => `${p.x} ${p.y}`).join(',')}
+                                                    stroke={session.currentPath.color}
+                                                    strokeWidth={session.currentPath.width}
+                                                    strokeOpacity={session.currentPath.opacity}
+                                                    fill="none"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    style={session.currentPath.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
+                                                />
+                                            )}
+                                        </svg>
+                                        {/* Laser Pointer */}
+                                        {session?.laserPos && (
+                                            <div
+                                                className="av-laser-dot"
+                                                style={{ left: `${session.laserPos.x}%`, top: `${session.laserPos.y}%` }}
+                                            />
+                                        )}
+                                    </>
+                                }
+                            />
                         </div>
                     </div>
 
@@ -415,6 +492,17 @@ const audienceStyles = `
     }
     .av-live-badge svg { animation: av-pulse 2s linear infinite; }
     @keyframes av-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    
+    .av-voice-badge {
+        display: flex; align-items: center; gap: 4px;
+        padding: 3px 10px; border-radius: 20px;
+        background: rgba(139, 61, 255, 0.15);
+        border: 1px solid rgba(139, 61, 255, 0.4);
+        color: #a78bfa; font-size: 10px; font-weight: 700;
+        animation: av-voice-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes av-voice-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
     .av-host-name { font-size: 13px; color: rgba(255,255,255,0.5); }
 
     /* Body */

@@ -260,6 +260,54 @@ class LiveSessionService {
     }
 
     /**
+     * WebRTC Signaling: Send a signal (offer, answer, candidate)
+     */
+    async sendSignal(sessionId, signalData) {
+        if (!sessionId) return;
+        try {
+            await addDoc(collection(db, 'live_sessions', sessionId, 'signaling'), {
+                ...signalData,
+                createdAt: serverTimestamp()
+            });
+        } catch (error) {
+            console.error('Error sending signal:', error);
+        }
+    }
+
+    /**
+     * WebRTC Signaling: Listen for signals
+     */
+    listenToSignals(sessionId, callback) {
+        if (!sessionId) return null;
+        const q = query(
+            collection(db, 'live_sessions', sessionId, 'signaling'),
+            orderBy('createdAt', 'desc'),
+            where('createdAt', '>', new Date(Date.now() - 30000)) // Only recent signals
+        );
+        return onSnapshot(q, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                    callback({ id: change.doc.id, ...change.doc.data() });
+                }
+            });
+        });
+    }
+
+    /**
+     * Clear all signals for a session (maintenance)
+     */
+    async clearSignals(sessionId) {
+        if (!sessionId) return;
+        try {
+            const q = query(collection(db, 'live_sessions', sessionId, 'signaling'));
+            const snap = await getDocs(q);
+            const batch = [];
+            snap.forEach(d => batch.push(deleteDoc(d.ref)));
+            await Promise.all(batch);
+        } catch (e) { }
+    }
+
+    /**
      * Listen to comments in real-time
      */
     listenToComments(sessionId, callback) {

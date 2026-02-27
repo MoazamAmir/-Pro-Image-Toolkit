@@ -142,6 +142,7 @@ const ImageEditor = ({
     const [isPanelOpen, setIsPanelOpen] = useState(false);
     const [isCropMode, setIsCropMode] = useState(false);
     const [cropRect, setCropRect] = useState(null);
+    const [croppingLayerId, setCroppingLayerId] = useState(null);
     const [elementsView, setElementsView] = useState('home'); // 'home', 'shapes', 'graphics', etc.
     const [formsView, setFormsView] = useState('home'); // 'home' or subcategory name
     const [contextMenu, setContextMenu] = useState(null); // { x, y, layerId }
@@ -599,6 +600,59 @@ const ImageEditor = ({
         }
         // Save state after page deletion
         saveEditorState({ layers, adjustments });
+    };
+
+    const handleDuplicatePage = (pageId) => {
+        if (isViewOnly) return;
+        const pageToDuplicate = pages.find(p => p.id === pageId);
+        if (!pageToDuplicate) return;
+
+        const newPageId = pages.length > 0 ? Math.max(...pages.map(p => p.id)) + 1 : 1;
+
+        // Deep clone layers to ensure independence
+        const duplicatedLayers = JSON.parse(JSON.stringify(pageToDuplicate.layers)).map(layer => ({
+            ...layer,
+            id: (layer.id === 'background-layer' || layer.isBackground) ? 'background-layer' : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            isSelected: false // Deselect all in the new page initially
+        }));
+
+        const newPage = {
+            ...pageToDuplicate,
+            id: newPageId,
+            layers: duplicatedLayers
+        };
+
+        // Insert new page after the current one
+        const pageIndex = pages.findIndex(p => p.id === pageId);
+        const updatedPages = [...pages];
+        updatedPages.splice(pageIndex + 1, 0, newPage);
+
+        setPages(updatedPages);
+        setActivePageId(newPageId);
+        setLayers(duplicatedLayers);
+        setCanvasSize(newPage.canvasSize);
+
+        // Select background or first layer
+        const bgLayer = duplicatedLayers.find(l => l.id === 'background-layer');
+        if (bgLayer) {
+            setActiveLayerId(bgLayer.id);
+            setLayers(duplicatedLayers.map(l => ({ ...l, isSelected: l.id === bgLayer.id })));
+        }
+
+        setHistory([duplicatedLayers]);
+        setHistoryIndex(0);
+
+        // Broadcast page addition/duplicate
+        if (designId && user?.uid) {
+            FirebaseSyncService.updatePresence(designId, user.uid, {
+                selectedLayerId: bgLayer ? bgLayer.id : null,
+                activePageId: newPageId,
+                name: user?.displayName || 'Guest',
+                color: userColor
+            });
+        }
+
+        saveEditorState({ layers: duplicatedLayers, adjustments, canvasSize: newPage.canvasSize });
     };
 
     // Canvas Resizing Logic
@@ -1105,7 +1159,7 @@ const ImageEditor = ({
     };
 
     const handleMouseDown = (e, layer) => {
-        if (isViewOnly || layer.isLocked || editingLayerId === layer.id) return;
+        if (isViewOnly || layer.isLocked || editingLayerId === layer.id || layer.id === 'background-layer') return;
         e.preventDefault();
         e.stopPropagation();
 
@@ -1380,10 +1434,14 @@ const ImageEditor = ({
                             const halfWPercent = (newEstimatedWidth / 2 / containerW) * 100;
                             const halfHPercent = ((newFontSize * 1.2) / 2 / containerH) * 100;
 
-                            // ✅ FIX: x aur y mat badlo - sirf fontSize badlo
+                            // ✅ FIX: Text ke width ko background layer ya canvas width se limit karo
+                            const bgLayer = prev.find(ly => ly.id === 'background-layer');
+                            const maxAllowedWidth = (bgLayer?.width || containerW) * 0.95; // 5% margin
+
                             if (
-                                x - halfWPercent >= 0 && x + halfWPercent <= 100 &&
-                                y - halfHPercent >= 0 && y + halfHPercent <= 100
+                                (x - halfWPercent >= 0 && x + halfWPercent <= 100 &&
+                                    y - halfHPercent >= 0 && y + halfHPercent <= 100) &&
+                                (newEstimatedWidth <= maxAllowedWidth)
                             ) {
                                 fontSize = newFontSize;
                             }
@@ -1579,82 +1637,131 @@ const ImageEditor = ({
     };
 
     const enterCropMode = () => {
-        if (!imageRef.current) return;
-        const img = imageRef.current;
-        const initialCrop = {
-            width: Math.round(img.naturalWidth * 0.8),
-            height: Math.round(img.naturalHeight * 0.8),
-            x: Math.round(img.naturalWidth * 0.1),
-            y: Math.round(img.naturalHeight * 0.1)
+        // Sirf active selected layer pe crop apply karo
+        let targetLayer = layers.find(l => l.id === activeLayerId);
+
+        // Agar koi layer selected nahi ya image nahi hai, to background pe jao
+        if (!targetLayer || (targetLayer.shapeType !== 'image' && targetLayer.type !== 'shape')) {
+            targetLayer = layers.find(l => l.id === 'background-layer');
+        }
+
+        if (!targetLayer || !targetLayer.content) {
+            alert('Please select an image layer first');
+            return;
+        }
+
+        // Image load karke uske actual size ke hisaab se crop rect set karo
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const naturalW = img.naturalWidth;
+            const naturalH = img.naturalHeight;
+
+            // Image size ke hisaab se initial crop area calculate karo
+            const initialCrop = {
+                width: Math.round(naturalW * 0.8),
+                height: Math.round(naturalH * 0.8),
+                x: Math.round(naturalW * 0.1),
+                y: Math.round(naturalH * 0.1)
+            };
+
+            setCroppingLayerId(targetLayer.id);
+            setCropRect(initialCrop);
+            setIsCropMode(true);
+            setIsPanelOpen(false);
+
+            // Canvas size ko image size ke hisaab se adjust karo (agar choti image hai)
+            if (naturalW < canvasSize.width || naturalH < canvasSize.height) {
+                setCanvasSize({
+                    width: Math.max(naturalW, 800),
+                    height: Math.max(naturalH, 600)
+                });
+            }
         };
-        setCropRect(initialCrop);
-        setIsCropMode(true);
-        setIsPanelOpen(false);
+        img.src = targetLayer.content;
     };
 
     const applyCrop = () => {
-        if (!cropRect || !imageRef.current) return;
+        if (!cropRect || !croppingLayerId) return;
 
-        const canvas = document.createElement('canvas');
-        // Round to avoid sub-pixel rendering issues
+        const img = imageRef.current;
         const cropW = Math.round(cropRect.width);
         const cropH = Math.round(cropRect.height);
         const cropX = Math.round(cropRect.x);
         const cropY = Math.round(cropRect.y);
 
+        const canvas = document.createElement('canvas');
         canvas.width = cropW;
         canvas.height = cropH;
         const ctx = canvas.getContext('2d');
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        const completeCrop = (source) => {
+            if (source) {
+                // Draw clipped portion of source onto canvas
+                ctx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            } else {
+                const bgLayer = layers.find(l => l.id === 'background-layer');
+                ctx.fillStyle = bgLayer?.color || '#ffffff';
+                ctx.fillRect(0, 0, cropW, cropH);
+            }
+
             const newDataUrl = canvas.toDataURL();
-            setImageSrc(newDataUrl);
 
-            // Update the background layer content and PHYSICAL size
-            // If we don't update width/height, it will stretch the new content to the old size
-            const bgLayer = layers.find(l => l.id === 'background-layer');
-            const oldW = bgLayer?.width || 1000;
-            const oldH = bgLayer?.height || 1000;
-
-            // New physical size in the editor
-            const newW = cropW * (oldW / imageRef.current.naturalWidth);
-            const newH = cropH * (oldH / imageRef.current.naturalHeight);
-
-            const nextLayers = layers.map(l => {
-                if (l.id === 'background-layer') {
-                    return { ...l, content: newDataUrl, width: newW, height: newH };
-                }
-
-                // Reposition other layers so they stay on the same part of the image
-                // Coordinates are in % of container (which is bgLayer size)
-                // This is a bit complex because % is relative to the NEW size
-                const xInPx = (l.x / 100) * oldW;
-                const yInPx = (l.y / 100) * oldH;
-
-                // Translate px to be relative to the cropped area
-                const cropXInPx = (cropX / imageRef.current.naturalWidth) * oldW;
-                const cropYInPx = (cropY / imageRef.current.naturalHeight) * oldH;
-
-                const newXInPx = xInPx - cropXInPx;
-                const newYInPx = yInPx - cropYInPx;
-
-                return {
-                    ...l,
-                    x: (newXInPx / newW) * 100,
-                    y: (newYInPx / newH) * 100
-                };
+            setLayers(prev => {
+                const nextLayers = prev.map(l => {
+                    if (l.id === croppingLayerId) {
+                        return {
+                            ...l,
+                            content: newDataUrl,
+                            // If we want the layer to shrink to the crop size visually:
+                            // width: (cropW / (source?.naturalWidth || 1)) * l.width,
+                            // height: (cropH / (source?.naturalHeight || 1)) * l.height,
+                        };
+                    }
+                    return l;
+                });
+                saveToHistory(nextLayers);
+                return nextLayers;
             });
 
-            setLayers(nextLayers);
-            saveToHistory(nextLayers);
+            if (croppingLayerId === 'background-layer') {
+                setImageSrc(newDataUrl);
+            }
 
             setIsCropMode(false);
             setCropRect(null);
+            setCroppingLayerId(null);
         };
-        img.src = imageSrc;
+
+        if (img) {
+            // Already have the img ref from the UI
+            completeCrop(img);
+        } else {
+            completeCrop(null);
+        }
     };
+
+    // Keyboard shortcuts for crop tool
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (!isCropMode) return;
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setIsCropMode(false);
+                setCropRect(null);
+                setCroppingLayerId(null);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                applyCrop();
+            }
+        };
+
+        if (isCropMode) {
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+        }
+    }, [isCropMode, cropRect, croppingLayerId]);
 
     const updateFormFieldValue = (layerId, fieldIdx, value) => {
         setLayers(prev => {
@@ -2463,8 +2570,8 @@ const ImageEditor = ({
                     setIsPanelOpen(true);
                 }
             }}
-            className={`group relative flex flex-col items-center justify-center w-full py-2.5 transition-all duration-200 ${activeTab === id && isPanelOpen
-                ? (darkMode ? 'bg-gray-800 text-white' : 'bg-white text-purple-600')
+            className={`group relative flex flex-col items-center justify-center w-full py-1.5 transition-all duration-200 ${activeTab === id && isPanelOpen
+                ? (darkMode ? 'bg-gray-800 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]' : 'bg-white text-purple-600 shadow-sm')
                 : (darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600')
                 }`}
         >
@@ -2543,7 +2650,7 @@ const ImageEditor = ({
     };
 
     const renderPresentationHeader = () => (
-        <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 bg-gray-900 border-b border-white/5 z-[100]">
+        <header className="h-12 flex-shrink-0 flex items-center justify-between px-6 bg-gray-900/90 backdrop-blur-md border-b border-white/5 z-[100]">
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg group cursor-pointer hover:scale-110 transition-all duration-300">
                     <Sparkles className="w-6 h-6 text-white fill-white/20" />
@@ -2595,7 +2702,7 @@ const ImageEditor = ({
         };
 
         return (
-            <div className="h-20 flex-shrink-0 flex items-center justify-between px-8 bg-gray-900/80 backdrop-blur-xl border-t border-white/5 z-[100]">
+            <div className="h-14 flex-shrink-0 flex items-center justify-between px-8 bg-gray-900/80 backdrop-blur-md border-t border-white/10 z-[100] shadow-2xl">
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-3 bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-inner">
                         <button
@@ -2670,10 +2777,10 @@ const ImageEditor = ({
     }
 
     return (
-        <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
+        <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-[#0a0b10] text-white' : 'bg-[#f8fafc] text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
             {/* TOP NAVIGATION BAR */}
             {isViewOnly ? renderPresentationHeader() : (
-                <header className={`h-14 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-[60]`}>
+                <header className={`h-11 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900/90 border-gray-800' : 'bg-white/90 border-gray-100'} backdrop-blur-md z-[60] shadow-sm`}>
                     <div className="flex items-center gap-4">
                         {(isOwner || !designId) && (
                             <button
@@ -2801,15 +2908,15 @@ const ImageEditor = ({
                         <TabButton id="brand" icon={Box} label="Brand" premium />
                         <TabButton id="forms" icon={FileText} label="Forms" />
                         <TabButton id="projects" icon={FolderKanban} label="Projects" />
-                        <button
+                        {/* <button
                             onClick={enterCropMode}
-                            className={`group relative flex flex-col items-center justify-center w-full py-2.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
+                            className={`group relative flex flex-col items-center justify-center w-full py-1.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
                         >
                             <div className="p-1.5 rounded-lg group-hover:bg-gray-100/50">
                                 <Crop className="w-5 h-5 stroke-[1.5px]" />
                             </div>
                             <span className="text-[8px] mt-1 font-bold uppercase tracking-tight">Crop</span>
-                        </button>
+                        </button> */}
                         <div className="flex-1" />
                     </div>
                 )}
@@ -4148,107 +4255,177 @@ const ImageEditor = ({
                                 <div className="relative group/canvas overflow-hidden w-full h-full">
                                     {/* Background handles its own rendering as a layer below */}
                                     {/* Crop Overlay */}
-                                    {isCropMode && cropRect && imageRef.current && (
+                                    {isCropMode && cropRect && (
                                         <>
-                                            <div
-                                                className="absolute inset-0 bg-black/60 z-40 pointer-events-none"
-                                                style={{
-                                                    clipPath: `polygon(
-                            0% 0%, 0% 100%,
-                            ${(cropRect.x / imageRef.current.naturalWidth) * 100}% 100%,
-                            ${(cropRect.x / imageRef.current.naturalWidth) * 100}% ${(cropRect.y / imageRef.current.naturalHeight) * 100}%,
-                            ${((cropRect.x + cropRect.width) / imageRef.current.naturalWidth) * 100}% ${(cropRect.y / imageRef.current.naturalHeight) * 100}%,
-                            ${((cropRect.x + cropRect.width) / imageRef.current.naturalWidth) * 100}% ${((cropRect.y + cropRect.height) / imageRef.current.naturalHeight) * 100}%,
-                            ${(cropRect.x / imageRef.current.naturalWidth) * 100}% ${((cropRect.y + cropRect.height) / imageRef.current.naturalHeight) * 100}%,
-                            ${(cropRect.x / imageRef.current.naturalWidth) * 100}% 100%,
-                            100% 100%, 100% 0%
-                          )`
-                                                }}
-                                            />
-                                            <div
-                                                onMouseDown={(e) => handleCropMouseDown(e, 'move')}
-                                                className="absolute z-50 border-2 border-white cursor-move"
-                                                style={{
-                                                    left: `${(cropRect.x / imageRef.current.naturalWidth) * 100}%`,
-                                                    top: `${(cropRect.y / imageRef.current.naturalHeight) * 100}%`,
-                                                    width: `${(cropRect.width / imageRef.current.naturalWidth) * 100}%`,
-                                                    height: `${(cropRect.height / imageRef.current.naturalHeight) * 100}%`,
-                                                }}
-                                            >
-                                                {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => (
-                                                    <div
-                                                        key={handle}
-                                                        onMouseDown={(e) => handleCropMouseDown(e, handle)}
-                                                        className={`absolute w-4 h-4 bg-white rounded-full border-2 border-purple-600 pointer-events-auto z-[60]
-                            ${handle === 'nw' ? '-top-2 -left-2 cursor-nw-resize' : ''}
-                            ${handle === 'n' ? '-top-2 left-1/2 -translate-x-1/2 cursor-n-resize' : ''}
-                            ${handle === 'ne' ? '-top-2 -right-2 cursor-ne-resize' : ''}
-                            ${handle === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 cursor-e-resize' : ''}
-                            ${handle === 'se' ? '-bottom-2 -right-2 cursor-se-resize' : ''}
-                            ${handle === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 cursor-s-resize' : ''}
-                            ${handle === 'sw' ? '-bottom-2 -left-2 cursor-sw-resize' : ''}
-                            ${handle === 'w' ? 'top-1/2 -left-2 -translate-y-1/2 cursor-w-resize' : ''}
-                            `}
-                                                    />
-                                                ))}
+                                            {(() => {
+                                                const targetLayer = layers.find(l => l.id === croppingLayerId);
+                                                if (!targetLayer) return null;
 
-                                            </div>
+                                                const img = imageRef.current;
+                                                const naturalW = img ? img.naturalWidth : (targetLayer.width || 1);
+                                                const naturalH = img ? img.naturalHeight : (targetLayer.height || 1);
+
+                                                const isBackground = targetLayer.id === 'background-layer';
+
+                                                return (
+                                                    <div
+                                                        className="absolute z-[100]"
+                                                        style={isBackground ? {
+                                                            inset: 0
+                                                        } : {
+                                                            left: `${targetLayer.x}%`,
+                                                            top: `${targetLayer.y}%`,
+                                                            width: `${targetLayer.width}px`,
+                                                            height: `${targetLayer.height}px`,
+                                                            transform: `translate(-50%, -50%) rotate(${targetLayer.rotation || 0}deg)`
+                                                        }}
+                                                    >
+                                                        {/* Dark Overlay with cut-out (local to the layer or global for bg) */}
+                                                        <div
+                                                            className={`absolute inset-0 bg-black/60 z-10 pointer-events-none ${isBackground ? '' : 'rounded-sm'}`}
+                                                            style={{
+                                                                clipPath: `polygon(
+                                                                    0% 0%, 0% 100%,
+                                                                    ${(cropRect.x / naturalW) * 100}% 100%,
+                                                                    ${(cropRect.x / naturalW) * 100}% ${(cropRect.y / naturalH) * 100}%,
+                                                                    ${((cropRect.x + cropRect.width) / naturalW) * 100}% ${(cropRect.y / naturalH) * 100}%,
+                                                                    ${((cropRect.x + cropRect.width) / naturalW) * 100}% ${((cropRect.y + cropRect.height) / naturalH) * 100}%,
+                                                                    ${(cropRect.x / naturalW) * 100}% ${((cropRect.y + cropRect.height) / naturalH) * 100}%,
+                                                                    ${(cropRect.x / naturalW) * 100}% 100%,
+                                                                    100% 100%, 100% 0%
+                                                                )`
+                                                            }}
+                                                        />
+                                                        {/* Crop Rectangle & Handles */}
+                                                        <div
+                                                            onMouseDown={(e) => handleCropMouseDown(e, 'move')}
+                                                            className="absolute z-20 border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.3)] cursor-move"
+                                                            style={{
+                                                                left: `${(cropRect.x / naturalW) * 100}%`,
+                                                                top: `${(cropRect.y / naturalH) * 100}%`,
+                                                                width: `${(cropRect.width / naturalW) * 100}%`,
+                                                                height: `${(cropRect.height / naturalH) * 100}%`,
+                                                            }}
+                                                        >
+                                                            {/* Rule of Thirds Grid */}
+                                                            <div className="absolute inset-0 flex flex-col pointer-events-none opacity-30">
+                                                                <div className="flex-1 border-b border-white"></div>
+                                                                <div className="flex-1 border-b border-white"></div>
+                                                                <div className="flex-1"></div>
+                                                            </div>
+                                                            <div className="absolute inset-0 flex pointer-events-none opacity-30">
+                                                                <div className="flex-1 border-r border-white"></div>
+                                                                <div className="flex-1 border-r border-white"></div>
+                                                                <div className="flex-1"></div>
+                                                            </div>
+
+                                                            {/* Premium Handles */}
+                                                            {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(handle => {
+                                                                const isCorner = ['nw', 'ne', 'se', 'sw'].includes(handle);
+                                                                return (
+                                                                    <div
+                                                                        key={handle}
+                                                                        onMouseDown={(e) => handleCropMouseDown(e, handle)}
+                                                                        className={`absolute pointer-events-auto z-[60] bg-white border-2 border-purple-600 shadow-lg hover:scale-125 transition-transform
+                                                                            ${isCorner ? 'w-4 h-4 rounded-full' : (handle === 'n' || handle === 's' ? 'w-8 h-2 rounded-full' : 'w-2 h-8 rounded-full')}
+                                                                            ${handle === 'nw' ? '-top-2 -left-2 cursor-nw-resize' : ''}
+                                                                            ${handle === 'n' ? '-top-1 left-1/2 -translate-x-1/2 cursor-n-resize' : ''}
+                                                                            ${handle === 'ne' ? '-top-2 -right-2 cursor-ne-resize' : ''}
+                                                                            ${handle === 'e' ? 'top-1/2 -right-1 -translate-y-1/2 cursor-e-resize' : ''}
+                                                                            ${handle === 'se' ? '-bottom-2 -right-2 cursor-se-resize' : ''}
+                                                                            ${handle === 's' ? '-bottom-1 left-1/2 -translate-x-1/2 cursor-s-resize' : ''}
+                                                                            ${handle === 'sw' ? '-bottom-2 -left-2 cursor-sw-resize' : ''}
+                                                                            ${handle === 'w' ? 'top-1/2 -left-1 -translate-y-1/2 cursor-w-resize' : ''}
+                                                                        `}
+                                                                    >
+                                                                        {/* Handle Inner Dot for style */}
+                                                                        {isCorner && <div className="absolute inset-1 bg-purple-600 rounded-full" />}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        {/* Layer Label Badge */}
+                                                        <div
+                                                            className="absolute z-[65] bg-purple-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg pointer-events-none"
+                                                            style={{
+                                                                left: `${(cropRect.x / naturalW) * 100}%`,
+                                                                top: `${(cropRect.y / naturalH) * 100}%`,
+                                                                transform: 'translate(-5px, -100%)'
+                                                            }}
+                                                        >
+                                                            ✂️ Crop: {targetLayer.id === 'background-layer' ? 'Background' : targetLayer.type}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </>
                                     )}
                                 </div>
                             )}
-                            {/* Floating Crop Confirmation Toolbar - Moved here to avoid overflow clipping */}
-                            {isCropMode && cropRect && imageRef.current && (
+                            {isCropMode && cropRect && (
                                 <div
-                                    className="absolute flex items-center gap-3 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 z-[70] animate-fadeIn min-w-[320px]"
+                                    className="absolute flex items-center gap-3 bg-white/95 backdrop-blur-md p-3 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-[70] animate-fadeIn"
                                     style={{
-                                        left: `${((cropRect.x + cropRect.width / 2) / imageRef.current.naturalWidth) * 100}%`,
-                                        top: `${(cropRect.y / imageRef.current.naturalHeight) * 100}%`,
-                                        transform: 'translate(-50%, -120%)'
+                                        left: '50%',
+                                        bottom: '20px',
+                                        transform: 'translateX(-50%)'
                                     }}
                                     onMouseDown={(e) => e.stopPropagation()}
                                 >
                                     <div className="flex items-center gap-2 px-2">
                                         <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-gray-400 uppercase">Width</span>
+                                            <span className="text-[9px] font-bold text-gray-500 uppercase">Width</span>
                                             <input
                                                 type="number"
                                                 value={Math.round(cropRect.width)}
                                                 onChange={(e) => {
+                                                    e.stopPropagation();
                                                     const val = parseInt(e.target.value) || 0;
-                                                    const maxWidth = imageRef.current.naturalWidth - cropRect.x;
+                                                    const maxWidth = (imageRef.current?.naturalWidth || canvasSize.width) - cropRect.x;
                                                     setCropRect(prev => ({ ...prev, width: Math.max(20, Math.min(val, maxWidth)) }));
                                                 }}
-                                                className="w-16 bg-gray-100 border-none rounded-md px-2 py-1 text-xs font-bold text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-20 bg-gray-100 border border-gray-300 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
                                             />
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-gray-400 uppercase">Height</span>
+                                            <span className="text-[9px] font-bold text-gray-500 uppercase">Height</span>
                                             <input
                                                 type="number"
                                                 value={Math.round(cropRect.height)}
                                                 onChange={(e) => {
+                                                    e.stopPropagation();
                                                     const val = parseInt(e.target.value) || 0;
-                                                    const maxHeight = imageRef.current.naturalHeight - cropRect.y;
+                                                    const maxHeight = (imageRef.current?.naturalHeight || canvasSize.height) - cropRect.y;
                                                     setCropRect(prev => ({ ...prev, height: Math.max(20, Math.min(val, maxHeight)) }));
                                                 }}
-                                                className="w-16 bg-gray-100 border-none rounded-md px-2 py-1 text-xs font-bold text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-20 bg-gray-100 border border-gray-300 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
                                             />
                                         </div>
                                     </div>
-                                    <div className="w-px h-8 bg-gray-200" />
-                                    <div className="flex items-center gap-1">
+                                    <div className="w-px h-10 bg-gray-300" />
+                                    <div className="flex items-center gap-2">
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
-                                            className="px-3 py-2 text-[10px] font-black uppercase text-gray-500 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsCropMode(false);
+                                                setCropRect(null);
+                                                setCroppingLayerId(null);
+                                            }}
+                                            className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-red-600 transition-all rounded-lg hover:bg-red-50 border border-transparent hover:border-red-200"
                                         >
                                             Cancel
                                         </button>
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); applyCrop(); }}
-                                            className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:shadow-lg hover:shadow-purple-500/30 transition-all flex items-center gap-1.5 active:scale-95"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                applyCrop();
+                                            }}
+                                            className="px-5 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold rounded-lg hover:shadow-lg hover:shadow-purple-500/40 transition-all flex items-center gap-2 active:scale-95"
                                         >
-                                            <Check className="w-3.5 h-3.5" />
+                                            <Check className="w-4 h-4" />
                                             Apply
                                         </button>
                                     </div>
@@ -4687,7 +4864,7 @@ const ImageEditor = ({
                                                     return (
                                                         <img
                                                             key={`${layer.id}-${layer.animationClass || ''}-${activeLayerId === layer.id ? (hoverAnimation || '') : ''}`}
-                                                            ref={layer.id === 'background-layer' ? imageRef : null}
+                                                            ref={layer.id === (croppingLayerId || 'background-layer') ? imageRef : null}
                                                             src={layer.content}
                                                             alt=""
                                                             draggable={false}
@@ -4841,9 +5018,10 @@ const ImageEditor = ({
                     </div>
                 </div >
 
-                {/* Floating Bottom Page Controls (Center) */}
+                {/* Floating Bottom Page Controls (Center) - FIXED TO STAY IN PLACE */}
                 {!isViewOnly && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[80vw] flex items-end justify-center">
+                    <div className={`absolute bottom-4 z-50 max-w-[60vw] flex items-end justify-start transition-all duration-300 ease-in-out ${isPanelOpen ? 'right-[800px] left-auto' : 'left-24'
+                        }`}>
                         <div className="flex items-center gap-3 overflow-x-auto p-2 scrollbar-hide bg-transparent rounded-xl">
                             {pages.map((page, index) => (
                                 <div key={page.id} className="relative group flex-shrink-0">
@@ -4867,16 +5045,26 @@ const ImageEditor = ({
                                         </div>
                                     </button>
 
-                                    {/* Delete Button on Hover */}
-                                    {pages.length > 1 && (
+                                    {/* Page Actions on Hover */}
+                                    <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all transform scale-75 hover:scale-100 z-10">
                                         <button
-                                            onClick={(e) => deletePage(e, page.id)}
-                                            className="absolute -top-1 -right-1 bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-gray-200 dark:border-gray-600 transform scale-75 hover:scale-100"
-                                            title="Delete Page"
+                                            onClick={(e) => { e.stopPropagation(); handleDuplicatePage(page.id); }}
+                                            className="bg-white dark:bg-gray-700 text-purple-600 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+                                            title="Duplicate Page"
                                         >
-                                            <X className="w-3 h-3" />
+                                            <Copy className="w-3 h-3" />
                                         </button>
-                                    )}
+
+                                        {pages.length > 1 && (
+                                            <button
+                                                onClick={(e) => deletePage(e, page.id)}
+                                                className="bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                                title="Delete Page"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
 
@@ -4950,16 +5138,26 @@ const ImageEditor = ({
                                                 </div>
                                             )}
 
-                                            {/* Delete Button (Only on Hover, not for single page) */}
-                                            {pages.length > 1 && (
+                                            {/* Page Actions (Only on Hover) */}
+                                            <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                                 <button
-                                                    onClick={(e) => deletePage(e, page.id)}
-                                                    className="absolute bottom-2 right-2 p-1.5 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                                                    title="Delete Page"
+                                                    onClick={(e) => { e.stopPropagation(); handleDuplicatePage(page.id); }}
+                                                    className="p-1.5 bg-white/90 dark:bg-gray-800/90 hover:bg-purple-500 hover:text-white text-purple-600 rounded-lg shadow-sm backdrop-blur-sm transition-all"
+                                                    title="Duplicate Page"
                                                 >
-                                                    <Trash className="w-4 h-4" />
+                                                    <Copy className="w-4 h-4" />
                                                 </button>
-                                            )}
+
+                                                {pages.length > 1 && (
+                                                    <button
+                                                        onClick={(e) => deletePage(e, page.id)}
+                                                        className="p-1.5 bg-white/90 dark:bg-gray-800/90 hover:bg-red-500 hover:text-white text-red-500 rounded-lg shadow-sm backdrop-blur-sm transition-all"
+                                                        title="Delete Page"
+                                                    >
+                                                        <Trash className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Label */}
@@ -5046,22 +5244,22 @@ const ImageEditor = ({
                     const layer = layers.find(l => l.id === activeLayerId);
                     if (!layer) return null;
                     return (
-                        <div className="fixed top-14 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white dark:bg-gray-800 p-1 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 pointer-events-auto z-[200] animate-fadeIn">
-                            <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="Duplicate">
-                                <Copy className="w-4 h-4" />
+                        <div className="fixed top-14 left-1/2 -translate-x-1/2 flex items-center flex-nowrap sm:flex-wrap gap-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-800/90 py-0.5 px-1.5 rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 pointer-events-auto z-[200] animate-fadeIn max-w-[95vw] overflow-x-auto custom-scrollbar sm:overflow-visible">
+                            <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300" title="Duplicate">
+                                <Copy className="w-3 h-3" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(layer.id); }} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md text-red-500" title="Delete">
-                                <Trash className="w-4 h-4" />
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(layer.id); }} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all text-red-500" title="Delete">
+                                <Trash className="w-3 h-3" />
                             </button>
                             <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
-                            <button onClick={(e) => { e.stopPropagation(); handleRotate(layer.id); }} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300" title="Rotate 90°">
-                                <RotateCw className="w-3.5 h-3.5" />
+                            <button onClick={(e) => { e.stopPropagation(); handleRotate(layer.id); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300" title="Rotate 90°">
+                                <RotateCw className="w-3 h-3" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipX ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Horizontal">
-                                <FlipHorizontal className="w-3.5 h-3.5" />
+                            <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${layer.flipX ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Horizontal">
+                                <FlipHorizontal className="w-3 h-3" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
-                                <FlipHorizontal className="w-3.5 h-3.5 rotate-90" />
+                            <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
+                                <FlipHorizontal className="w-3 h-3 rotate-90" />
                             </button>
 
                             <button
@@ -5070,10 +5268,10 @@ const ImageEditor = ({
                                     setActiveTab('animations');
                                     setIsPanelOpen(true);
                                 }}
-                                className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300 ${activeTab === 'animations' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
+                                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${activeTab === 'animations' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
                                 title="Animate"
                             >
-                                <Sparkles className="w-4 h-4" />
+                                <Sparkles className="w-3 h-3" />
                             </button>
 
                             {(layer.shapeType === 'image' || layer.type === 'frame') && (
@@ -5082,10 +5280,10 @@ const ImageEditor = ({
                                         e.stopPropagation();
                                         setIsPanningContent(!isPanningContent);
                                     }}
-                                    className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md ${isPanningContent ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 ring-1 ring-purple-500' : 'text-gray-700 dark:text-gray-300'}`}
+                                    className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all ${isPanningContent ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 ring-1 ring-purple-500' : 'text-gray-700 dark:text-gray-300'}`}
                                     title="Move Internally"
                                 >
-                                    <Move className="w-4 h-4" />
+                                    <Move className="w-3 h-3" />
                                 </button>
                             )}
 
@@ -5098,10 +5296,10 @@ const ImageEditor = ({
                                             const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentScale: Math.max(0.1, (l.contentScale || 1) - 0.1) } : l);
                                             setLayers(updated);
                                         }}
-                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300"
+                                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300"
                                         title="Content Zoom Out"
                                     >
-                                        <Minus className="w-3.5 h-3.5" />
+                                        <Minus className="w-3 h-3" />
                                     </button>
                                     <span className="text-[10px] font-bold text-gray-500 w-8 text-center">{Math.round((layer.contentScale || 1) * 100)}%</span>
                                     <button
@@ -5110,10 +5308,10 @@ const ImageEditor = ({
                                             const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentScale: (l.contentScale || 1) + 0.1 } : l);
                                             setLayers(updated);
                                         }}
-                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300"
+                                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300"
                                         title="Content Zoom In"
                                     >
-                                        <Plus className="w-3.5 h-3.5" />
+                                        <Plus className="w-3 h-3" />
                                     </button>
                                     <button
                                         onClick={(e) => {
@@ -5121,10 +5319,10 @@ const ImageEditor = ({
                                             const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentX: 0, contentY: 0, contentScale: 1 } : l);
                                             setLayers(updated);
                                         }}
-                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md text-gray-700 dark:text-gray-300"
+                                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300"
                                         title="Reset Content"
                                     >
-                                        <RefreshCw className="w-3.5 h-3.5" />
+                                        <RefreshCw className="w-3 h-3" />
                                     </button>
                                 </>
                             )}
@@ -5139,7 +5337,7 @@ const ImageEditor = ({
                                         setShowColorPicker(!showColorPicker);
                                         setContextMenu(null);
                                     }}
-                                    className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md ${showColorPicker && (activeColorProperty === 'color' || activeColorProperty === 'backgroundColor') ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
+                                    className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all ${showColorPicker && (activeColorProperty === 'color' || activeColorProperty === 'backgroundColor') ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
                                     title={layer.type === 'frame' ? "Background Color" : "Color"}
                                 >
                                     <div
@@ -5162,7 +5360,7 @@ const ImageEditor = ({
                                             setShowColorPicker(!showColorPicker);
                                             setContextMenu(null);
                                         }}
-                                        className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md ${showColorPicker && activeColorProperty === 'borderColor' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
+                                        className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all ${showColorPicker && activeColorProperty === 'borderColor' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
                                         title="Border Color"
                                     >
                                         <div className="relative w-5 h-5">
@@ -5181,7 +5379,7 @@ const ImageEditor = ({
                                             setLayers(updated);
                                         }}
                                         onMouseUp={() => saveToHistory(layers)}
-                                        className="w-16 accent-purple-600 h-1 bg-gray-200 rounded-lg cursor-pointer"
+                                        className="w-16 accent-purple-600 h-[3px] bg-gray-200 rounded-lg cursor-pointer"
                                         title="Border Width"
                                     />
                                 </>
@@ -5201,7 +5399,7 @@ const ImageEditor = ({
                                             onClick={() => setShowColorPicker(false)}
                                             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
                                         >
-                                            <X className="w-4 h-4 text-gray-500" />
+                                            <X className="w-3 h-3 text-gray-500" />
                                         </button>
                                     </div>
 
@@ -5221,7 +5419,7 @@ const ImageEditor = ({
                                         {/* Document Colors */}
                                         <div>
                                             <div className="flex items-center gap-2 mb-2">
-                                                <Palette className="w-4 h-4 text-gray-400" />
+                                                <Palette className="w-3 h-3 text-gray-400" />
                                                 <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Document colors</span>
                                             </div>
                                             <div className="flex flex-wrap gap-2">
@@ -5259,7 +5457,7 @@ const ImageEditor = ({
                                         {extractedColors.length > 0 && (
                                             <div>
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <Camera className="w-4 h-4 text-gray-400" />
+                                                    <Camera className="w-3 h-3 text-gray-400" />
                                                     <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Photo colors</span>
                                                 </div>
                                                 <div className="grid grid-cols-7 gap-2">
@@ -5283,7 +5481,7 @@ const ImageEditor = ({
                                         <div>
                                             <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2">
-                                                    <CircleIcon className="w-4 h-4 text-gray-400" />
+                                                    <CircleIcon className="w-3 h-3 text-gray-400" />
                                                     <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Default solid colors</span>
                                                 </div>
                                                 <button
@@ -5367,10 +5565,10 @@ const ImageEditor = ({
                                         setContextMenu({ x: e.clientX, y: e.clientY + 20, layerId: layer.id });
                                     }
                                 }}
-                                className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 ${contextMenu?.layerId === layer.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+                                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${contextMenu?.layerId === layer.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
                                 title="More"
                             >
-                                <MoreVertical className="w-4 h-4" />
+                                <MoreVertical className="w-3 h-3" />
                             </button>
 
                             {/* Context Menu */}
@@ -5381,27 +5579,27 @@ const ImageEditor = ({
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <button onClick={() => handleCopy(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                        <Copy className="w-3.5 h-3.5" /> Copy
+                                        <Copy className="w-3 h-3" /> Copy
                                     </button>
                                     <button onClick={() => handlePaste()} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200 ${!clipboard ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                        <Clipboard className="w-3.5 h-3.5" /> Paste
+                                        <Clipboard className="w-3 h-3" /> Paste
                                     </button>
                                     <button onClick={() => handleDuplicate(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                        <Copy className="w-3.5 h-3.5" /> Duplicate
+                                        <Copy className="w-3 h-3" /> Duplicate
                                     </button>
                                     <button onClick={() => handleDelete(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500 flex items-center gap-2">
-                                        <Trash className="w-3.5 h-3.5" /> Delete
+                                        <Trash className="w-3 h-3" /> Delete
                                     </button>
                                     <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
                                     <button onClick={() => handleLayerOrder(layer.id, 'front')} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                        <ArrowUp className="w-3.5 h-3.5" /> Bring to Front
+                                        <ArrowUp className="w-3 h-3" /> Bring to Front
                                     </button>
                                     <button onClick={() => handleLayerOrder(layer.id, 'back')} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                        <ArrowDown className="w-3.5 h-3.5" /> Send to Back
+                                        <ArrowDown className="w-3 h-3" /> Send to Back
                                     </button>
                                     <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
                                     <button onClick={() => handleLock(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
-                                        {layer.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />} {layer.isLocked ? 'Unlock' : 'Lock'}
+                                        {layer.isLocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />} {layer.isLocked ? 'Unlock' : 'Lock'}
                                     </button>
                                 </div>
                             )}

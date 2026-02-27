@@ -4,18 +4,27 @@ import {
     PenTool, Keyboard, Timer, Clipboard, MoreHorizontal,
     RotateCcw, ZoomIn, Edit3, Radio, Settings, Users, Copy, Hash,
     ThumbsUp, Clock, ChevronDown, Eraser, Highlighter, Pen, Undo,
-    Video, CheckCircle, Download, Trash2
+    Video, CheckCircle, Check, Download, Trash2,
+    Palette, Search, ImageIcon, LayoutGrid, Layers, MousePointer2,
+    Type, Square as SquareIcon, Circle as CircleIcon, Triangle as TriangleIcon,
+    Pentagon as PentagonIcon, Hexagon as HexagonIcon, Octagon as OctagonIcon,
+    Star as StarIcon, ArrowRight, Minus, RefreshCw, Lock, Unlock,
+    ArrowUp, ArrowDown, Move, RotateCw, FlipHorizontal, Sparkles, MoreVertical,
+    Mic, MicOff
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import useRecording from './PresentAndRecord/useRecording';
+import SlideRenderer from './SlideRenderer';
 
 const PresenterWindow = ({ designId, user }) => {
     // Design state
     const [pages, setPages] = useState([]);
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
-    const [canvasSize, setCanvasSize] = useState({ width: 1080, height: 720 });
+    const [canvasSize, setCanvasSize] = useState({ width: 1920, height: 1080 });
     const [adjustments, setAdjustments] = useState({});
+    const [isMicOn, setIsMicOn] = useState(false);
     const [previewImages, setPreviewImages] = useState({});
     const [isLoading, setIsLoading] = useState(true);
 
@@ -181,6 +190,12 @@ const PresenterWindow = ({ designId, user }) => {
                 setPages(data.pages);
                 renderAllPreviews(data.pages);
             }
+            if (data?.canvasSize) {
+                setCanvasSize(data.canvasSize);
+            }
+            if (data?.adjustments) {
+                setAdjustments(data.adjustments);
+            }
         });
 
         return () => { if (unsub) unsub(); };
@@ -188,14 +203,18 @@ const PresenterWindow = ({ designId, user }) => {
 
     // Render page previews from layer data
     const renderAllPreviews = useCallback((pp) => {
-        pp.forEach((page, idx) => {
+        pp.forEach((page) => {
             const pageLayers = page.layers || [];
             // Find the best image to use as preview
             const bgLayer = pageLayers.find(l => l.id === 'background-layer' || l.isBackground);
             const imageLayer = pageLayers.find(l => l.shapeType === 'image' && l.content);
-            const src = bgLayer?.content || imageLayer?.content || null;
-            if (src) {
+            const src = imageLayer?.content || bgLayer?.content || null;
+
+            if (src && typeof src === 'string' && src.startsWith('http')) {
                 setPreviewImages(prev => ({ ...prev, [page.id]: src }));
+            } else if (bgLayer && bgLayer.color) {
+                // If it's just a background color, store the color
+                setPreviewImages(prev => ({ ...prev, [page.id]: { type: 'color', value: bgLayer.color } }));
             }
         });
     }, []);
@@ -310,7 +329,11 @@ const PresenterWindow = ({ designId, user }) => {
     }, []);
 
     const copyInvitation = () => {
-        const url = `${window.location.origin}/live/${sessionCode.replace(/\s/g, '')}`;
+        if (!sessionCode) return;
+        // Normalize code: remove spaces for the URL, keep it simple
+        const normalizedCode = sessionCode.replace(/\s/g, '');
+        const url = `${window.location.origin}/live/${normalizedCode}`;
+
         navigator.clipboard.writeText(url).then(() => {
             setCopiedInvite(true);
             setTimeout(() => setCopiedInvite(false), 2000);
@@ -418,6 +441,107 @@ const PresenterWindow = ({ designId, user }) => {
         }
     };
 
+    const toggleMic = async () => {
+        if (!isMicOn) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                window.localStream = stream;
+                setIsMicOn(true);
+                if (liveSession?.id) {
+                    await LiveSessionService.sendSignal(liveSession.id, {
+                        type: 'host-voice-ready',
+                        hostId: user.uid,
+                        timestamp: Date.now()
+                    });
+                }
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                alert('Microphone access is required for voice broadcast.');
+            }
+        } else {
+            if (window.localStream) {
+                window.localStream.getTracks().forEach(t => t.stop());
+                window.localStream = null;
+            }
+            setIsMicOn(false);
+            if (liveSession?.id) {
+                await LiveSessionService.sendSignal(liveSession.id, {
+                    type: 'host-voice-stopped',
+                    hostId: user.uid,
+                    timestamp: Date.now()
+                });
+            }
+        }
+    };
+
+    // Voice Cleanup & Peer Management
+    useEffect(() => {
+        if (!liveSession?.id || !isMicOn) return;
+
+        const pcs = {}; // viewerId -> RTCPeerConnection
+
+        const unsub = LiveSessionService.listenToSignals(liveSession.id, async (signal) => {
+            // Case 1: Viewer requesting voice stream
+            if (signal.type === 'viewer-request-voice' && signal.toId === user.uid) {
+                const viewerId = signal.fromId;
+                if (pcs[viewerId]) return;
+
+                const pc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                pcs[viewerId] = pc;
+
+                if (window.localStream) {
+                    window.localStream.getTracks().forEach(track => pc.addTrack(track, window.localStream));
+                }
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        LiveSessionService.sendSignal(liveSession.id, {
+                            type: 'host-ice-candidate',
+                            fromId: user.uid,
+                            toId: viewerId,
+                            candidate: event.candidate.toJSON()
+                        });
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                await LiveSessionService.sendSignal(liveSession.id, {
+                    type: 'host-voice-offer',
+                    fromId: user.uid,
+                    toId: viewerId,
+                    offer: { sdp: offer.sdp, type: offer.type }
+                });
+            }
+            // Case 2: Viewer providing an answer to our offer
+            else if (signal.type === 'viewer-voice-answer' && signal.toId === user.uid) {
+                const pc = pcs[signal.fromId];
+                if (pc && pc.signalingState !== 'stable') {
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+                }
+            }
+            // Case 3: Viewer providing ICE candidate
+            else if (signal.type === 'viewer-ice-candidate' && signal.toId === user.uid) {
+                const pc = pcs[signal.fromId];
+                if (pc) {
+                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+            }
+        });
+
+        return () => {
+            unsub();
+            Object.values(pcs).forEach(pc => pc.close());
+            if (window.localStream) {
+                window.localStream.getTracks().forEach(t => t.stop());
+                window.localStream = null;
+            }
+        };
+    }, [liveSession?.id, isMicOn, user?.uid]);
+
     const currentPage = pages[currentPageIndex];
     const currentSrc = currentPage ? previewImages[currentPage.id] : null;
 
@@ -439,6 +563,12 @@ const PresenterWindow = ({ designId, user }) => {
             <div className="pw-topbar">
                 <div className="pw-topbar-left">
                     <span className="pw-clock">{currentTime}</span>
+                    {isMicOn && (
+                        <div className="pw-voice-badge">
+                            <Mic size={12} />
+                            <span>BROADCASTING</span>
+                        </div>
+                    )}
                     <span className="pw-divider">|</span>
                     <span className="pw-timer">{formattedTimer}</span>
                     <button className="pw-icon-btn" title="Reset timer" onClick={() => { setElapsed(0); setTimerRunning(false); if (phase === 'recording') stopRecording(); }}>
@@ -471,6 +601,14 @@ const PresenterWindow = ({ designId, user }) => {
                 </div>
                 <div className="pw-topbar-tools">
                     <div className="pw-tool-group">
+                        <button
+                            className={`pw-tool-btn ${isMicOn ? 'active' : ''}`}
+                            title={isMicOn ? "Turn off Microphone" : "Turn on Microphone"}
+                            onClick={toggleMic}
+                        >
+                            {isMicOn ? <Mic size={18} className="text-purple-400" /> : <MicOff size={18} />}
+                        </button>
+
                         <button
                             className={`pw-tool-btn ${activeTool === 'draw' ? 'active' : ''}`}
                             title="Draw on page"
@@ -604,54 +742,68 @@ const PresenterWindow = ({ designId, user }) => {
                         )}
                         <div
                             className="pw-slide-frame"
-                            style={activeTool === 'laser' ? { cursor: 'none' } : activeTool === 'draw' ? { cursor: 'crosshair' } : {}}
+                            ref={canvasRef}
+                            style={{
+                                width: `${canvasSize.width}px`,
+                                height: `${canvasSize.height}px`,
+                                maxWidth: '100%',
+                                maxHeight: 'calc(100vh - 220px)',
+                                objectFit: 'contain',
+                                position: 'relative',
+                                containerType: 'size',
+                                ...(activeTool === 'laser' ? { cursor: 'none' } : activeTool === 'draw' ? { cursor: 'crosshair' } : {})
+                            }}
                             onMouseMove={handleMouseMove}
                             onMouseDown={handleMouseDown}
                             onMouseUp={handleMouseUp}
                             onMouseLeave={handleMouseUp}
                         >
-                            {/* Drawings Layer */}
-                            <svg className="pw-drawings-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                {pages[currentPageIndex] && (drawingPaths[pages[currentPageIndex].id] || []).map((path, idx) => (
-                                    <polyline
-                                        key={idx}
-                                        points={path.points.map(p => `${p.x} ${p.y}`).join(',')}
-                                        stroke={path.color}
-                                        strokeWidth={path.width}
-                                        strokeOpacity={path.opacity}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        style={path.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
-                                    />
-                                ))}
-                                {currentPath && (
-                                    <polyline
-                                        points={currentPath.points.map(p => `${p.x} ${p.y}`).join(',')}
-                                        stroke={currentPath.color}
-                                        strokeWidth={currentPath.width}
-                                        strokeOpacity={currentPath.opacity}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        style={currentPath.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
-                                    />
-                                )}
-                            </svg>
-                            {currentSrc ? (
-                                <img src={currentSrc} alt={`Slide ${currentPageIndex + 1}`} className="pw-slide-img" draggable={false} />
-                            ) : (
-                                <div className="pw-slide-empty">
-                                    <Hash size={48} strokeWidth={1} />
-                                    <span>No preview available</span>
-                                </div>
-                            )}
-                            {activeTool === 'laser' && (
-                                <div
-                                    className="pw-laser-dot"
-                                    style={{ left: `${laserPos.x}%`, top: `${laserPos.y}%` }}
-                                />
-                            )}
+                            {/* Faithful Layer Rendering using shared component */}
+                            <SlideRenderer
+                                page={pages[currentPageIndex]}
+                                canvasSize={canvasSize}
+                                adjustments={adjustments}
+                                overlays={
+                                    <>
+                                        {/* Drawings Layer Overlay */}
+                                        <svg className="pw-drawings-layer" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, zIndex: 50, pointerEvents: 'none', width: '100%', height: '100%' }}>
+                                            {pages[currentPageIndex] && (drawingPaths[pages[currentPageIndex].id] || []).map((path, idx) => (
+                                                <polyline
+                                                    key={idx}
+                                                    points={path.points.map(p => `${p.x} ${p.y}`).join(',')}
+                                                    stroke={path.color}
+                                                    strokeWidth={path.width}
+                                                    strokeOpacity={path.opacity}
+                                                    fill="none"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    style={path.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
+                                                />
+                                            ))}
+                                            {currentPath && (
+                                                <polyline
+                                                    points={currentPath.points.map(p => `${p.x} ${p.y}`).join(',')}
+                                                    stroke={currentPath.color}
+                                                    strokeWidth={currentPath.width}
+                                                    strokeOpacity={currentPath.opacity}
+                                                    fill="none"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    style={currentPath.tool === 'eraser' ? { mixBlendMode: 'destination-out' } : {}}
+                                                />
+                                            )}
+                                        </svg>
+                                        {/* Laser Pointer Overlay */}
+                                        {activeTool === 'laser' && (
+                                            <div
+                                                className="pw-laser-dot"
+                                                style={{ left: `${laserPos.x}%`, top: `${laserPos.y}%` }}
+                                            />
+                                        )}
+                                    </>
+                                }
+                            />
+
 
                             {/* Floating Reactions */}
                             {reactions.map(r => (
@@ -777,7 +929,16 @@ const PresenterWindow = ({ designId, user }) => {
                                 onClick={() => goToPage(idx)}
                             >
                                 {previewImages[page.id] ? (
-                                    <img src={previewImages[page.id]} alt={`Page ${idx + 1}`} />
+                                    typeof previewImages[page.id] === 'string' ? (
+                                        <img src={previewImages[page.id]} alt={`Page ${idx + 1}`} />
+                                    ) : previewImages[page.id].type === 'color' ? (
+                                        <div
+                                            className="pw-thumb-color"
+                                            style={{ backgroundColor: previewImages[page.id].value, width: '100%', height: '100%' }}
+                                        />
+                                    ) : (
+                                        <div className="pw-thumb-empty" />
+                                    )
                                 ) : (
                                     <div className="pw-thumb-empty" />
                                 )}
@@ -853,11 +1014,22 @@ const PresenterWindow = ({ designId, user }) => {
                                 {showInvitePopup && (
                                     <div className="pw-invite-popup">
                                         <h4>Invite people to join</h4>
-                                        <p>Ask your audience to visit <strong>{window.location.origin}/live</strong> on their device and enter the code <strong>{sessionCode}</strong> to participate.</p>
-                                        <button className="pw-copy-btn" onClick={copyInvitation}>
-                                            <Copy size={14} />
-                                            {copiedInvite ? 'Copied!' : 'Copy invitation'}
-                                        </button>
+                                        <div className="pw-invite-code-box">
+                                            <span className="pw-invite-label">Session Code</span>
+                                            <div className="pw-invite-code">{sessionCode}</div>
+                                        </div>
+                                        <p className="pw-invite-text">Share this direct link with your audience:</p>
+                                        <div className="pw-direct-link-box">
+                                            <input
+                                                readOnly
+                                                value={`${window.location.origin}/live/${sessionCode.replace(/\s/g, '')}`}
+                                                className="pw-link-input"
+                                            />
+                                            <button className="pw-copy-action-btn" onClick={copyInvitation} title="Copy invitation link">
+                                                {copiedInvite ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                                            </button>
+                                        </div>
+                                        {copiedInvite && <div className="pw-copied-toast">Invitation copied!</div>}
                                     </div>
                                 )}
 
@@ -1088,9 +1260,13 @@ const presenterStyles = `
         background: radial-gradient(ellipse at center, #222244 0%, #1a1a2e 60%);
     }
     .pw-slide-frame {
-        max-width: 80%; max-height: 100%;
         display: flex; align-items: center; justify-content: center;
         position: relative;
+        background: #fff;
+        border-radius: 6px;
+        box-shadow: 0 20px 80px rgba(0,0,0,0.5);
+        overflow: hidden;
+        container-type: size;
     }
     .pw-slide-img {
         max-width: 100%; max-height: calc(100vh - 220px);
@@ -1288,14 +1464,52 @@ const presenterStyles = `
 
     /* Invite popup */
     .pw-invite-popup {
-        background: rgba(40, 40, 60, 0.98);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px; padding: 16px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+        position: absolute; top: 50px; left: 0; z-index: 100;
+        width: 280px;
+        background: #1e1e32;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px; padding: 20px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+        display: flex; flex-direction: column; gap: 16px;
     }
-    .pw-invite-popup h4 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-    .pw-invite-popup p { font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.5; margin-bottom: 12px; }
-    .pw-invite-popup strong { color: rgba(255,255,255,0.8); }
+    .pw-invite-popup h4 { font-size: 15px; font-weight: 700; color: #fff; margin: 0; }
+    
+    .pw-invite-code-box {
+        background: rgba(139, 61, 255, 0.1);
+        border: 1px dashed rgba(139, 61, 255, 0.4);
+        border-radius: 8px; padding: 12px;
+        text-align: center; display: flex; flex-direction: column; gap: 4px;
+    }
+    .pw-invite-label { font-size: 10px; font-weight: 700; color: #a78bfa; text-transform: uppercase; letter-spacing: 1px; }
+    .pw-invite-code { font-size: 24px; font-weight: 800; color: #fff; letter-spacing: 2px; }
+
+    .pw-invite-text { font-size: 11px; color: rgba(255,255,255,0.5); margin: 0; }
+    
+    .pw-direct-link-box {
+        display: flex; align-items: center; gap: 4px;
+        background: rgba(0,0,0,0.2); border-radius: 6px;
+        border: 1px solid rgba(255,255,255,0.1); padding: 2px;
+    }
+    .pw-link-input {
+        flex: 1; background: transparent; border: none;
+        color: rgba(255,255,255,0.4); font-size: 11px;
+        padding: 6px 8px; outline: none;
+        text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+    }
+    .pw-copy-action-btn {
+        width: 28px; height: 28px;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.06); border: none;
+        color: rgba(255,255,255,0.7); border-radius: 4px;
+        cursor: pointer; transition: all 0.2s;
+    }
+    .pw-copy-action-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    
+    .pw-copied-toast {
+        font-size: 10px; color: #4ade80; font-weight: 600;
+        text-align: center; animation: pw-fade-in 0.3s ease-out;
+    }
+    @keyframes pw-fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
     /* Comments / Q&A */
     .pw-live-qa-header { padding: 4px 0 8px; }
@@ -1393,6 +1607,17 @@ const presenterStyles = `
         display: flex; align-items: center; justify-content: center;
         background: rgba(15, 15, 30, 0.8);
         backdrop-filter: blur(8px);
+    }
+
+    .pw-layers-rendering-container {
+        position: absolute;
+        inset: 0;
+        z-index: 50;
+        container-type: size;
+        transform-origin: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .pw-countdown-num {

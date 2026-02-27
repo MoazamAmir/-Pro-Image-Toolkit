@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Heart, Send, Radio, ChevronLeft, ChevronRight, ZoomIn, Maximize2, RotateCcw, Hash, Mic, MicOff } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Heart, Send, Radio, ChevronLeft, ChevronRight, ZoomIn, Maximize2, RotateCcw, Mic, MicOff } from 'lucide-react';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import SlideRenderer from './SlideRenderer';
@@ -34,6 +34,16 @@ const AudienceViewer = ({ sessionCode }) => {
         return () => unsub();
     }, []);
 
+    const renderPreviews = useCallback((pp) => {
+        pp.forEach(page => {
+            const layers = page.layers || [];
+            const bgLayer = layers.find(l => l.id === 'background-layer' || l.isBackground);
+            const imgLayer = layers.find(l => l.shapeType === 'image' && l.content);
+            const src = bgLayer?.content || imgLayer?.content || null;
+            if (src) setPreviewImages(prev => ({ ...prev, [page.id]: src }));
+        });
+    }, []);
+
     // Find session by code
     useEffect(() => {
         if (!sessionCode) return;
@@ -57,10 +67,24 @@ const AudienceViewer = ({ sessionCode }) => {
                 }
 
                 setSession(found);
+                // Ensure unique ID even if same user is in multiple tabs
+                const viewerId = user?.uid ? `${user.uid}_${Math.random().toString(36).substr(2, 5)}` : `guest_${Math.random().toString(36).substr(2, 9)}`;
 
-                // Listen to session updates (page changes)
+                // Listen to session updates (page changes + mic status)
                 sessionUnsubRef.current = LiveSessionService.listenToSession(found.id, (data) => {
-                    setSession(prev => ({ ...prev, ...data }));
+                    setSession(prev => {
+                        // If host just turned mic ON and we don't have a stream yet, request it
+                        if (data.isMicOn && !prev?.isMicOn && !peerConnRef.current) {
+                            LiveSessionService.sendSignal(found.id, {
+                                type: 'viewer-request-voice',
+                                fromId: viewerId,
+                                toId: data.hostId || found.hostId, // Use session hostId as fallback
+                                timestamp: Date.now()
+                            });
+                        }
+                        return { ...prev, ...data };
+                    });
+
                     if (data.activePageIndex !== undefined) {
                         setCurrentPageIndex(data.activePageIndex);
                     }
@@ -96,18 +120,27 @@ const AudienceViewer = ({ sessionCode }) => {
 
                 // Listen for signals (WebRTC)
                 LiveSessionService.listenToSignals(found.id, async (signal) => {
+                    // Ignore our own signals
+                    if (signal.fromId === viewerId) return;
+
                     if (signal.type === 'host-voice-ready') {
                         // Request voice stream from host
                         LiveSessionService.sendSignal(found.id, {
                             type: 'viewer-request-voice',
-                            fromId: user?.uid || `guest_${Date.now()}`,
+                            fromId: viewerId,
                             toId: signal.hostId,
                             timestamp: Date.now()
                         });
-                    } else if (signal.type === 'host-voice-offer' && signal.toId === (user?.uid || '')) {
+                    } else if (signal.type === 'host-voice-offer' && signal.toId === viewerId) {
                         // Handle offer
                         const pc = new RTCPeerConnection({
-                            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:stun1.l.google.com:19302' },
+                                { urls: 'stun:stun2.l.google.com:19302' },
+                                { urls: 'stun:stun3.l.google.com:19302' },
+                                { urls: 'stun:stun4.l.google.com:19302' }
+                            ]
                         });
                         peerConnRef.current = pc;
 
@@ -122,10 +155,18 @@ const AudienceViewer = ({ sessionCode }) => {
                             if (event.candidate) {
                                 LiveSessionService.sendSignal(found.id, {
                                     type: 'viewer-ice-candidate',
-                                    fromId: user?.uid || '',
+                                    fromId: viewerId,
                                     toId: signal.fromId,
                                     candidate: event.candidate.toJSON()
                                 });
+                            }
+                        };
+
+                        pc.onconnectionstatechange = () => {
+                            console.log(`[Voice] Connection state: ${pc.connectionState}`);
+                            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                                peerConnRef.current = null;
+                                setAudioStream(null);
                             }
                         };
 
@@ -135,12 +176,12 @@ const AudienceViewer = ({ sessionCode }) => {
 
                         await LiveSessionService.sendSignal(found.id, {
                             type: 'viewer-voice-answer',
-                            fromId: user?.uid || '',
+                            fromId: viewerId,
                             toId: signal.fromId,
                             answer: { sdp: answer.sdp, type: answer.type }
                         });
-                    } else if (signal.type === 'host-ice-candidate' && signal.toId === (user?.uid || '')) {
-                        if (peerConnRef.current) {
+                    } else if (signal.type === 'host-ice-candidate' && signal.toId === viewerId) {
+                        if (peerConnRef.current && peerConnRef.current.remoteDescription) {
                             await peerConnRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
                         }
                     } else if (signal.type === 'host-voice-stopped') {
@@ -165,24 +206,17 @@ const AudienceViewer = ({ sessionCode }) => {
             if (sessionUnsubRef.current) sessionUnsubRef.current();
             if (commentsUnsubRef.current) commentsUnsubRef.current();
             if (designUnsubRef.current) designUnsubRef.current();
+            // Optional: don't leave session on mere re-render if code is same
             if (session?.id) LiveSessionService.leaveSession(session.id);
         };
-    }, [sessionCode, session?.id]);
+    }, [sessionCode, renderPreviews]); // Removed session?.id to avoid re-run loops
 
     // Scroll comments
     useEffect(() => {
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [comments]);
 
-    const renderPreviews = (pp) => {
-        pp.forEach(page => {
-            const layers = page.layers || [];
-            const bgLayer = layers.find(l => l.id === 'background-layer' || l.isBackground);
-            const imgLayer = layers.find(l => l.shapeType === 'image' && l.content);
-            const src = bgLayer?.content || imgLayer?.content || null;
-            if (src) setPreviewImages(prev => ({ ...prev, [page.id]: src }));
-        });
-    };
+
 
     const handleSendComment = async () => {
         if (!newComment.trim() || !session) return;
@@ -205,7 +239,6 @@ const AudienceViewer = ({ sessionCode }) => {
 
     const totalPages = pages.length;
     const currentPage = pages[currentPageIndex];
-    const currentSrc = currentPage ? previewImages[currentPage.id] : null;
 
     // Auto-join for logged-in users
     useEffect(() => {
@@ -271,17 +304,23 @@ const AudienceViewer = ({ sessionCode }) => {
     return (
         <div className="av-root">
             {/* Hidden audio for WebRTC */}
-            <audio ref={audioRef} autoPlay />
+            <audio ref={audioRef} autoPlay playsInline controls={false} />
             {/* Live header bar */}
             <div className="av-header">
                 <div className="av-live-badge">
                     <Radio size={12} />
                     <span>LIVE</span>
                 </div>
-                {audioStream && (
+                {session?.isMicOn && (
                     <div className="av-voice-badge">
                         <Mic size={12} />
                         <span>HOST SPEAKING</span>
+                        <div className="av-voice-wave">
+                            <div className="av-wave-bar"></div>
+                            <div className="av-wave-bar"></div>
+                            <div className="av-wave-bar"></div>
+                            <div className="av-wave-bar"></div>
+                        </div>
                     </div>
                 )}
                 <span className="av-host-name">Hosted by {session?.hostName || 'Unknown'}</span>
@@ -494,14 +533,33 @@ const audienceStyles = `
     @keyframes av-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     
     .av-voice-badge {
-        display: flex; align-items: center; gap: 4px;
-        padding: 3px 10px; border-radius: 20px;
+        display: flex; align-items: center; gap: 6px;
+        padding: 4px 12px; border-radius: 20px;
         background: rgba(139, 61, 255, 0.15);
         border: 1px solid rgba(139, 61, 255, 0.4);
-        color: #a78bfa; font-size: 10px; font-weight: 700;
-        animation: av-voice-pulse 1.5s ease-in-out infinite;
+        color: #a78bfa; font-size: 10px; font-weight: 800;
+        letter-spacing: 0.5px;
+        animation: av-pulse 2s infinite;
     }
-    @keyframes av-voice-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+    .av-voice-wave {
+        display: flex; align-items: flex-end; gap: 2px;
+        height: 10px;
+    }
+    .av-wave-bar {
+        width: 2px; height: 3px;
+        background: #a78bfa;
+        border-radius: 1px;
+        animation: av-wave 1s ease-in-out infinite;
+    }
+    .av-wave-bar:nth-child(2) { animation-delay: 0.1s; height: 6px; }
+    .av-wave-bar:nth-child(3) { animation-delay: 0.2s; height: 8px; }
+    .av-wave-bar:nth-child(4) { animation-delay: 0.3s; height: 5px; }
+
+    @keyframes av-wave {
+        0%, 100% { transform: scaleY(1); }
+        50% { transform: scaleY(2); }
+    }
 
     .av-host-name { font-size: 13px; color: rgba(255,255,255,0.5); }
 

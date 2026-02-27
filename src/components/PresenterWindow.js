@@ -17,6 +17,7 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import useRecording from './PresentAndRecord/useRecording';
 import SlideRenderer from './SlideRenderer';
+import { getBestAudioDevice } from '../utils/audioUtils';
 
 const PresenterWindow = ({ designId, user }) => {
     // Design state
@@ -72,6 +73,7 @@ const PresenterWindow = ({ designId, user }) => {
     // Magic Shortcuts State
     const [activeMagicEffect, setActiveMagicEffect] = useState(null); // 'blur' | 'quiet' | 'bubbles' | 'confetti' | 'drumroll' | 'curtain' | 'mic-drop'
     const [showMagicPopup, setShowMagicPopup] = useState(false);
+    const [showRecSetup, setShowRecSetup] = useState(false);
     const audioRef = useRef(null);
 
     const magicShortcuts = [
@@ -122,11 +124,12 @@ const PresenterWindow = ({ designId, user }) => {
 
     const {
         phase, setPhase, elapsedTime: recordElapsed, countdownValue,
-        recordedBlob, processingProgress,
+        recordedBlob, processingProgress, error: recError,
+        microphones, selectedMicrophone, setSelectedMicrophone, audioLevel,
         startCountdown, prepareRecording, executeRecording,
         pauseRecording, resumeRecording, stopRecording,
         downloadRecording, discardRecording, formatTime: formatRecordTime,
-        enumerateDevices
+        enumerateDevices, startAudioMonitor, stopAudioMonitor
     } = useRecording();
 
     // -- Clock --
@@ -149,6 +152,15 @@ const PresenterWindow = ({ designId, user }) => {
         enumerateDevices();
     }, [enumerateDevices]);
 
+    // Handle microphone meter in setup
+    useEffect(() => {
+        if (showRecSetup && selectedMicrophone) {
+            startAudioMonitor(selectedMicrophone);
+        } else if (!showRecSetup) {
+            stopAudioMonitor();
+        }
+    }, [showRecSetup, selectedMicrophone, startAudioMonitor, stopAudioMonitor]);
+
     // -- Timer --
     useEffect(() => {
         if (timerRunning) {
@@ -160,6 +172,24 @@ const PresenterWindow = ({ designId, user }) => {
     }, [timerRunning]);
 
     const formattedTimer = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+
+    // Render page previews from layer data
+    const renderAllPreviews = useCallback((pp) => {
+        pp.forEach((page) => {
+            const pageLayers = page.layers || [];
+            // Find the best image to use as preview
+            const bgLayer = pageLayers.find(l => l.id === 'background-layer' || l.isBackground);
+            const imageLayer = pageLayers.find(l => l.shapeType === 'image' && l.content);
+            const src = imageLayer?.content || bgLayer?.content || null;
+
+            if (src && typeof src === 'string' && src.startsWith('http')) {
+                setPreviewImages(prev => ({ ...prev, [page.id]: src }));
+            } else if (bgLayer && bgLayer.color) {
+                // If it's just a background color, store the color
+                setPreviewImages(prev => ({ ...prev, [page.id]: { type: 'color', value: bgLayer.color } }));
+            }
+        });
+    }, []);
 
     // -- Load design from Firebase --
     useEffect(() => {
@@ -199,38 +229,20 @@ const PresenterWindow = ({ designId, user }) => {
         });
 
         return () => { if (unsub) unsub(); };
-    }, [designId]);
-
-    // Render page previews from layer data
-    const renderAllPreviews = useCallback((pp) => {
-        pp.forEach((page) => {
-            const pageLayers = page.layers || [];
-            // Find the best image to use as preview
-            const bgLayer = pageLayers.find(l => l.id === 'background-layer' || l.isBackground);
-            const imageLayer = pageLayers.find(l => l.shapeType === 'image' && l.content);
-            const src = imageLayer?.content || bgLayer?.content || null;
-
-            if (src && typeof src === 'string' && src.startsWith('http')) {
-                setPreviewImages(prev => ({ ...prev, [page.id]: src }));
-            } else if (bgLayer && bgLayer.color) {
-                // If it's just a background color, store the color
-                setPreviewImages(prev => ({ ...prev, [page.id]: { type: 'color', value: bgLayer.color } }));
-            }
-        });
-    }, []);
+    }, [designId, renderAllPreviews]);
 
     // -- Navigation --
     const totalPages = pages.length;
-    const goToPage = (idx) => {
+    const goToPage = useCallback((idx) => {
         if (idx >= 0 && idx < totalPages) {
             setCurrentPageIndex(idx);
-            if (liveSession) {
+            if (liveSession?.id) {
                 LiveSessionService.updateActivePage(liveSession.id, idx);
             }
         }
-    };
-    const goNext = () => goToPage(currentPageIndex + 1);
-    const goPrev = () => goToPage(currentPageIndex - 1);
+    }, [totalPages, liveSession]); // Using liveSession since found is local to other effect
+    const goNext = useCallback(() => goToPage(currentPageIndex + 1), [goToPage, currentPageIndex]);
+    const goPrev = useCallback(() => goToPage(currentPageIndex - 1), [goToPage, currentPageIndex]);
 
     // Keyboard
     useEffect(() => {
@@ -254,7 +266,7 @@ const PresenterWindow = ({ designId, user }) => {
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [currentPageIndex, totalPages, triggerMagicEffect, showMagicPopup]);
+    }, [currentPageIndex, totalPages, triggerMagicEffect, showMagicPopup, goNext, goPrev]);
 
     // -- Live Session --
     const startLiveSession = async () => {
@@ -293,7 +305,7 @@ const PresenterWindow = ({ designId, user }) => {
                 }, 4000);
             });
 
-            setLiveSession({ id: sessionId });
+            // The session is already set via setLiveSession in the listener above
         } catch (err) {
             console.error('Failed to start live session:', err);
         }
@@ -329,11 +341,7 @@ const PresenterWindow = ({ designId, user }) => {
     }, []);
 
     const copyInvitation = () => {
-        if (!sessionCode) return;
-        // Normalize code: remove spaces for the URL, keep it simple
-        const normalizedCode = sessionCode.replace(/\s/g, '');
-        const url = `${window.location.origin}/live/${normalizedCode}`;
-
+        const url = `${window.location.origin}/live/${sessionCode.replace(/\s/g, '')}`;
         navigator.clipboard.writeText(url).then(() => {
             setCopiedInvite(true);
             setTimeout(() => setCopiedInvite(false), 2000);
@@ -444,10 +452,21 @@ const PresenterWindow = ({ designId, user }) => {
     const toggleMic = async () => {
         if (!isMicOn) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const bestDeviceId = await getBestAudioDevice();
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        deviceId: bestDeviceId ? { ideal: bestDeviceId } : undefined,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
                 window.localStream = stream;
                 setIsMicOn(true);
                 if (liveSession?.id) {
+                    // Sync mic status to Firebase for audience visibility
+                    await LiveSessionService.updateMicStatus(liveSession.id, true);
+                    // Also send signal for WebRTC setup
                     await LiveSessionService.sendSignal(liveSession.id, {
                         type: 'host-voice-ready',
                         hostId: user.uid,
@@ -465,6 +484,7 @@ const PresenterWindow = ({ designId, user }) => {
             }
             setIsMicOn(false);
             if (liveSession?.id) {
+                await LiveSessionService.updateMicStatus(liveSession.id, false);
                 await LiveSessionService.sendSignal(liveSession.id, {
                     type: 'host-voice-stopped',
                     hostId: user.uid,
@@ -474,38 +494,101 @@ const PresenterWindow = ({ designId, user }) => {
         }
     };
 
-    // Voice Cleanup & Peer Management
+    // Auto-switch microphone on device change (e.g. Bluetooth connect)
     useEffect(() => {
-        if (!liveSession?.id || !isMicOn) return;
+        const handleDeviceChange = async () => {
+            if (!isMicOn) return;
 
-        const pcs = {}; // viewerId -> RTCPeerConnection
+            console.log('[Audio] Device change detected, checking for better microphone...');
+            const bestDeviceId = await getBestAudioDevice();
 
-        const unsub = LiveSessionService.listenToSignals(liveSession.id, async (signal) => {
-            // Case 1: Viewer requesting voice stream
-            if (signal.type === 'viewer-request-voice' && signal.toId === user.uid) {
-                const viewerId = signal.fromId;
-                if (pcs[viewerId]) return;
+            // If the current best device isn't the one we are using, restart stream
+            const currentTrack = window.localStream?.getAudioTracks()[0];
+            const settings = currentTrack?.getSettings();
 
-                const pc = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
-                pcs[viewerId] = pc;
-
+            if (bestDeviceId && settings?.deviceId !== bestDeviceId) {
+                console.log('[Audio] Switching to better microphone device...');
+                // Stop current
                 if (window.localStream) {
-                    window.localStream.getTracks().forEach(track => pc.addTrack(track, window.localStream));
+                    window.localStream.getTracks().forEach(t => t.stop());
                 }
 
-                pc.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        LiveSessionService.sendSignal(liveSession.id, {
-                            type: 'host-ice-candidate',
-                            fromId: user.uid,
-                            toId: viewerId,
-                            candidate: event.candidate.toJSON()
-                        });
-                    }
-                };
+                // Start new
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            deviceId: { exact: bestDeviceId },
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    window.localStream = stream;
+                    // Note: Re-starting mic locally doesn't strictly require signaling update 
+                    // if the tracks flow into the same PeerConnections, but in some browsers 
+                    // we might need to replaceTrack. For simplicity here, we restart.
+                    // If we wanted 100% seamless, we'd use sender.replaceTrack(newTrack).
+                } catch (e) {
+                    console.error('[Audio] Failed to switch device:', e);
+                }
+            }
+        };
 
+        navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+        return () => navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+    }, [isMicOn]);
+
+    // Voice Cleanup & Peer Management
+    useEffect(() => {
+        if (!liveSession?.id || !isMicOn || !user?.uid) return;
+
+        const pcs = {}; // viewerId -> RTCPeerConnection
+        const iceConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' }
+            ]
+        };
+
+        const createPeerConnection = async (viewerId) => {
+            // Close existing connection if any
+            if (pcs[viewerId]) {
+                try { pcs[viewerId].close(); } catch (e) { }
+            }
+
+            const pc = new RTCPeerConnection(iceConfig);
+            pcs[viewerId] = pc;
+
+            // Add all audio tracks from local stream
+            if (window.localStream) {
+                window.localStream.getAudioTracks().forEach(track => {
+                    pc.addTrack(track, window.localStream);
+                });
+            }
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    LiveSessionService.sendSignal(liveSession.id, {
+                        type: 'host-ice-candidate',
+                        fromId: user.uid,
+                        toId: viewerId,
+                        candidate: event.candidate.toJSON()
+                    });
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                console.log(`[Voice] Peer ${viewerId} state: ${pc.connectionState}`);
+                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    try { pc.close(); } catch (e) { }
+                    delete pcs[viewerId];
+                }
+            };
+
+            try {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
@@ -515,30 +598,42 @@ const PresenterWindow = ({ designId, user }) => {
                     toId: viewerId,
                     offer: { sdp: offer.sdp, type: offer.type }
                 });
+            } catch (err) {
+                console.error('[Voice] Failed to create offer:', err);
             }
-            // Case 2: Viewer providing an answer to our offer
-            else if (signal.type === 'viewer-voice-answer' && signal.toId === user.uid) {
-                const pc = pcs[signal.fromId];
-                if (pc && pc.signalingState !== 'stable') {
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+        };
+
+        const unsub = LiveSessionService.listenToSignals(liveSession.id, async (signal) => {
+            try {
+                // Ignore our own signals (if viewerId matches hostId)
+                if (signal.fromId === user.uid) return;
+
+                // Case 1: Viewer requesting voice stream
+                if (signal.type === 'viewer-request-voice' && signal.toId === user.uid) {
+                    await createPeerConnection(signal.fromId);
                 }
-            }
-            // Case 3: Viewer providing ICE candidate
-            else if (signal.type === 'viewer-ice-candidate' && signal.toId === user.uid) {
-                const pc = pcs[signal.fromId];
-                if (pc) {
-                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                // Case 2: Viewer providing an answer to our offer
+                else if (signal.type === 'viewer-voice-answer' && signal.toId === user.uid) {
+                    const pc = pcs[signal.fromId];
+                    if (pc && pc.signalingState === 'have-local-offer') {
+                        await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+                    }
                 }
+                // Case 3: Viewer providing ICE candidate
+                else if (signal.type === 'viewer-ice-candidate' && signal.toId === user.uid) {
+                    const pc = pcs[signal.fromId];
+                    if (pc && pc.remoteDescription) {
+                        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                    }
+                }
+            } catch (err) {
+                console.error('[Voice] Signal handling error:', err);
             }
         });
 
         return () => {
             unsub();
-            Object.values(pcs).forEach(pc => pc.close());
-            if (window.localStream) {
-                window.localStream.getTracks().forEach(t => t.stop());
-                window.localStream = null;
-            }
+            Object.values(pcs).forEach(pc => { try { pc.close(); } catch (e) { } });
         };
     }, [liveSession?.id, isMicOn, user?.uid]);
 
@@ -566,7 +661,14 @@ const PresenterWindow = ({ designId, user }) => {
                     {isMicOn && (
                         <div className="pw-voice-badge">
                             <Mic size={12} />
-                            <span>BROADCASTING</span>
+                            <span>VOICE RECORDING</span>
+                            <div className="pw-voice-wave">
+                                <span className="pw-wave-bar"></span>
+                                <span className="pw-wave-bar"></span>
+                                <span className="pw-wave-bar"></span>
+                                <span className="pw-wave-bar"></span>
+                                <span className="pw-wave-bar"></span>
+                            </div>
                         </div>
                     )}
                     <span className="pw-divider">|</span>
@@ -579,13 +681,7 @@ const PresenterWindow = ({ designId, user }) => {
                         title={phase === 'recording' ? 'Pause Recording' : 'Start Recording'}
                         onClick={async () => {
                             if (phase === 'setup' || phase === 'done') {
-                                const ok = await prepareRecording();
-                                if (ok) {
-                                    startCountdown(() => {
-                                        executeRecording();
-                                        setTimerRunning(true);
-                                    });
-                                }
+                                setShowRecSetup(true);
                             } else if (phase === 'recording') {
                                 pauseRecording();
                                 setTimerRunning(false);
@@ -804,7 +900,6 @@ const PresenterWindow = ({ designId, user }) => {
                                 }
                             />
 
-
                             {/* Floating Reactions */}
                             {reactions.map(r => (
                                 <div
@@ -899,6 +994,75 @@ const PresenterWindow = ({ designId, user }) => {
                                         </button>
                                         <button className="pw-btn-close" onClick={() => setPhase('setup')}>
                                             Close
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {showRecSetup && (
+                            <div className="pw-rec-overlay pw-setup-overlay">
+                                <div className="pw-setup-card">
+                                    <div className="pw-setup-header">
+                                        <h3>Recording Studio</h3>
+                                        <button className="pw-setup-close" onClick={() => setShowRecSetup(false)}><X size={20} /></button>
+                                    </div>
+                                    <div className="pw-setup-body">
+                                        <div className="pw-setup-section">
+                                            <label>Select Microphone</label>
+                                            <select
+                                                value={selectedMicrophone}
+                                                onChange={(e) => setSelectedMicrophone(e.target.value)}
+                                                className="pw-setup-select"
+                                            >
+                                                <option value="none">No Microphone</option>
+                                                {microphones.map(m => (
+                                                    <option key={m.deviceId} value={m.deviceId}>
+                                                        {m.label.toLowerCase().includes('bluetooth') ? '🎧 ' : '🎙️ '}
+                                                        {m.label || `Microphone ${m.deviceId.slice(0, 5)}`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="pw-setup-section">
+                                            <label>Input Level</label>
+                                            <div className="pw-mic-meter-container">
+                                                <div className="pw-mic-meter-bg">
+                                                    <div
+                                                        className="pw-mic-meter-fill"
+                                                        style={{
+                                                            width: `${audioLevel * 100}%`,
+                                                            background: audioLevel > 0.8 ? '#ef4444' : audioLevel > 0.5 ? '#f59e0b' : '#10b981'
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="pw-mic-meter-markers">
+                                                    {[...Array(5)].map((_, i) => <div key={i} className="pw-meter-mark" />)}
+                                                </div>
+                                            </div>
+                                            <p className="pw-mic-hint">
+                                                {audioLevel > 0.05 ? 'Sound detected' : 'Speak into your microphone to test'}
+                                            </p>
+                                        </div>
+
+                                        {recError && <div className="pw-rec-error">{recError}</div>}
+                                    </div>
+                                    <div className="pw-setup-footer">
+                                        <button
+                                            className="pw-start-rec-btn"
+                                            onClick={async () => {
+                                                setShowRecSetup(false);
+                                                const ok = await prepareRecording();
+                                                if (ok) {
+                                                    startCountdown(() => {
+                                                        executeRecording();
+                                                        setTimerRunning(true);
+                                                    });
+                                                }
+                                            }}
+                                        >
+                                            Start Recording
                                         </button>
                                     </div>
                                 </div>
@@ -1014,22 +1178,11 @@ const PresenterWindow = ({ designId, user }) => {
                                 {showInvitePopup && (
                                     <div className="pw-invite-popup">
                                         <h4>Invite people to join</h4>
-                                        <div className="pw-invite-code-box">
-                                            <span className="pw-invite-label">Session Code</span>
-                                            <div className="pw-invite-code">{sessionCode}</div>
-                                        </div>
-                                        <p className="pw-invite-text">Share this direct link with your audience:</p>
-                                        <div className="pw-direct-link-box">
-                                            <input
-                                                readOnly
-                                                value={`${window.location.origin}/live/${sessionCode.replace(/\s/g, '')}`}
-                                                className="pw-link-input"
-                                            />
-                                            <button className="pw-copy-action-btn" onClick={copyInvitation} title="Copy invitation link">
-                                                {copiedInvite ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-                                            </button>
-                                        </div>
-                                        {copiedInvite && <div className="pw-copied-toast">Invitation copied!</div>}
+                                        <p>Ask your audience to visit <strong>{window.location.origin}/live</strong> on their device and enter the code <strong>{sessionCode}</strong> to participate.</p>
+                                        <button className="pw-copy-btn" onClick={copyInvitation}>
+                                            <Copy size={14} />
+                                            {copiedInvite ? 'Copied!' : 'Copy invitation'}
+                                        </button>
                                     </div>
                                 )}
 
@@ -1135,8 +1288,45 @@ const presenterStyles = `
         background: rgba(15, 15, 30, 0.95);
         border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .pw-topbar-left { display: flex; align-items: center; gap: 8px; }
+    .pw-topbar-left { display: flex; align-items: center; gap: 12px; }
     .pw-clock { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+    
+    .pw-voice-badge {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 12px; border-radius: 20px;
+        background: rgba(139, 61, 255, 0.15);
+        border: 1px solid rgba(139, 61, 255, 0.4);
+        color: #a78bfa; font-size: 11px; font-weight: 800;
+        letter-spacing: 0.5px;
+        animation: pw-pulse 2s infinite;
+    }
+
+    .pw-voice-wave {
+        display: flex; align-items: flex-end; gap: 2px;
+        height: 12px;
+    }
+
+    .pw-wave-bar {
+        width: 2px; height: 4px;
+        background: #a78bfa;
+        border-radius: 1px;
+        animation: pw-wave 1s ease-in-out infinite;
+    }
+    .pw-wave-bar:nth-child(2) { animation-delay: 0.1s; height: 8px; }
+    .pw-wave-bar:nth-child(3) { animation-delay: 0.2s; height: 10px; }
+    .pw-wave-bar:nth-child(4) { animation-delay: 0.3s; height: 7px; }
+    .pw-wave-bar:nth-child(5) { animation-delay: 0.4s; height: 5px; }
+
+    @keyframes pw-wave {
+        0%, 100% { transform: scaleY(1); }
+        50% { transform: scaleY(2); }
+    }
+
+    @keyframes pw-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+
     .pw-divider { color: rgba(255,255,255,0.2); font-size: 18px; margin: 0 4px; }
     .pw-timer { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.7); font-variant-numeric: tabular-nums; }
 
@@ -1386,6 +1576,74 @@ const presenterStyles = `
     }
     .pw-notes-input::placeholder { color: rgba(255,255,255,0.2); }
 
+    /* Recording Setup Overlay */
+    .pw-rec-overlay {
+        position: absolute; inset: 0; z-index: 2000;
+        background: rgba(10, 10, 25, 0.85);
+        backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        animation: pw-fade-in 0.3s ease;
+    }
+    @keyframes pw-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+    .pw-setup-card {
+        width: 400px; background: #22223b;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px; padding: 24px;
+        box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+    }
+    .pw-setup-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 24px;
+    }
+    .pw-setup-header h3 { margin: 0; font-size: 20px; font-weight: 700; color: #fff; }
+    .pw-setup-close { border: none; background: transparent; color: #6b7280; cursor: pointer; }
+    .pw-setup-close:hover { color: #fff; }
+
+    .pw-setup-section { margin-bottom: 24px; }
+    .pw-setup-section label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; color: #9ca3af; }
+    
+    .pw-setup-select {
+        width: 100%; padding: 12px; border-radius: 12px;
+        background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+        color: #fff; font-size: 14px; outline: none; transition: border-color 0.2s;
+    }
+    .pw-setup-select:focus { border-color: #8B3DFF; }
+
+    .pw-mic-meter-container {
+        position: relative; height: 12px; margin-bottom: 8px;
+    }
+    .pw-mic-meter-bg {
+        width: 100%; height: 100%; background: rgba(0,0,0,0.3);
+        border-radius: 6px; overflow: hidden;
+    }
+    .pw-mic-meter-fill {
+        height: 100%; transition: width 0.05s ease-out;
+    }
+    .pw-mic-meter-markers {
+        position: absolute; inset: 0; display: flex; justify-content: space-between; padding: 0 10%;
+    }
+    .pw-meter-mark { width: 1px; height: 100%; background: rgba(255,255,255,0.1); }
+    
+    .pw-mic-hint { font-size: 11px; color: #6b7280; margin: 0; }
+    .pw-rec-error { color: #ef4444; font-size: 12px; margin-top: 12px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; }
+
+    .pw-start-rec-btn {
+        width: 100%; padding: 14px; border-radius: 14px;
+        background: #8B3DFF; border: none; color: #fff;
+        font-weight: 700; font-size: 15px; cursor: pointer;
+        transition: all 0.2s;
+    }
+    .pw-start-rec-btn:hover { background: #9b5aeb; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(139, 61, 255, 0.3); }
+
+    .pw-rec-indicator {
+        position: absolute; top: 0; right: 0;
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #ef4444; animation: pw-blink 1s infinite;
+    }
+    @keyframes pw-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+
     /* Canva Live - Initial */
     .pw-live-tab-initial {
         display: flex; flex-direction: column; align-items: center;
@@ -1464,52 +1722,14 @@ const presenterStyles = `
 
     /* Invite popup */
     .pw-invite-popup {
-        position: absolute; top: 50px; left: 0; z-index: 100;
-        width: 280px;
-        background: #1e1e32;
-        border: 1px solid rgba(255,255,255,0.15);
-        border-radius: 12px; padding: 20px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-        display: flex; flex-direction: column; gap: 16px;
+        background: rgba(40, 40, 60, 0.98);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px; padding: 16px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.4);
     }
-    .pw-invite-popup h4 { font-size: 15px; font-weight: 700; color: #fff; margin: 0; }
-    
-    .pw-invite-code-box {
-        background: rgba(139, 61, 255, 0.1);
-        border: 1px dashed rgba(139, 61, 255, 0.4);
-        border-radius: 8px; padding: 12px;
-        text-align: center; display: flex; flex-direction: column; gap: 4px;
-    }
-    .pw-invite-label { font-size: 10px; font-weight: 700; color: #a78bfa; text-transform: uppercase; letter-spacing: 1px; }
-    .pw-invite-code { font-size: 24px; font-weight: 800; color: #fff; letter-spacing: 2px; }
-
-    .pw-invite-text { font-size: 11px; color: rgba(255,255,255,0.5); margin: 0; }
-    
-    .pw-direct-link-box {
-        display: flex; align-items: center; gap: 4px;
-        background: rgba(0,0,0,0.2); border-radius: 6px;
-        border: 1px solid rgba(255,255,255,0.1); padding: 2px;
-    }
-    .pw-link-input {
-        flex: 1; background: transparent; border: none;
-        color: rgba(255,255,255,0.4); font-size: 11px;
-        padding: 6px 8px; outline: none;
-        text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
-    }
-    .pw-copy-action-btn {
-        width: 28px; height: 28px;
-        display: flex; align-items: center; justify-content: center;
-        background: rgba(255,255,255,0.06); border: none;
-        color: rgba(255,255,255,0.7); border-radius: 4px;
-        cursor: pointer; transition: all 0.2s;
-    }
-    .pw-copy-action-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
-    
-    .pw-copied-toast {
-        font-size: 10px; color: #4ade80; font-weight: 600;
-        text-align: center; animation: pw-fade-in 0.3s ease-out;
-    }
-    @keyframes pw-fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    .pw-invite-popup h4 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .pw-invite-popup p { font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.5; margin-bottom: 12px; }
+    .pw-invite-popup strong { color: rgba(255,255,255,0.8); }
 
     /* Comments / Q&A */
     .pw-live-qa-header { padding: 4px 0 8px; }

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { getBestAudioDevice } from '../../utils/audioUtils';
 
 /**
  * Custom hook for handling full studio recording (Screen Capture + Audio Mixing).
@@ -38,7 +39,16 @@ const useRecording = () => {
             setCameras(devices.filter(d => d.kind === 'videoinput'));
             const mics = devices.filter(d => d.kind === 'audioinput');
             setMicrophones(mics);
-            if (mics.length > 0 && !selectedMicrophone) setSelectedMicrophone(mics[0].deviceId);
+
+            if (mics.length > 0) {
+                // Smart select Bluetooth if available
+                const bestId = await getBestAudioDevice();
+                if (bestId && !selectedMicrophone) {
+                    setSelectedMicrophone(bestId);
+                } else if (!selectedMicrophone) {
+                    setSelectedMicrophone(mics[0].deviceId);
+                }
+            }
         } catch (err) {
             console.error('enumerateDevices error:', err);
             setError('Device enumeration failed.');
@@ -147,7 +157,11 @@ const useRecording = () => {
             const constraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
             try {
-                if (selectedMicrophone && selectedMicrophone !== 'none') {
+                // Check if localStream already exists (e.g. from PresenterWindow mic)
+                if (window.localStream && window.localStream.getAudioTracks().length > 0) {
+                    micStream = window.localStream;
+                    console.log('Using existing localStream for recording audio track.');
+                } else if (selectedMicrophone && selectedMicrophone !== 'none') {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: { deviceId: { ideal: selectedMicrophone }, ...constraints }
                     });
@@ -158,7 +172,12 @@ const useRecording = () => {
                 console.warn('Mic capture failed:', err);
             }
 
-            if (micStream) micStreamRef.current = micStream;
+            if (micStream) {
+                micStreamRef.current = micStream;
+                console.log('[Recorder] Microphone captured:', micStream.getAudioTracks()[0]?.label);
+            } else {
+                console.warn('[Recorder] No microphone stream available for recording.');
+            }
 
             // 3. Mix Audio
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
@@ -224,7 +243,16 @@ const useRecording = () => {
                 setPhase('processing');
                 [displayStreamRef, micStreamRef, combinedStreamRef, cameraStreamRef].forEach(ref => {
                     if (ref.current) {
-                        ref.current.getTracks().forEach(t => t.stop());
+                        // CRITICAL: Do NOT stop tracks if they belong to window.localStream
+                        // because they are needed for the live broadcast!
+                        if (ref.current !== window.localStream) {
+                            ref.current.getTracks().forEach(t => {
+                                console.log('[Recorder] Stopping track:', t.label);
+                                t.stop();
+                            });
+                        } else {
+                            console.log('[Recorder] Keeping window.localStream tracks alive for broadcast.');
+                        }
                         ref.current = null;
                     }
                 });

@@ -30,6 +30,7 @@ class LiveSessionService {
                 hostName: hostName || 'Host',
                 sessionCode,
                 isActive: true,
+                isMicOn: false, // Default to off
                 activePageIndex: 0,
                 viewerCount: 0,
                 createdAt: serverTimestamp(),
@@ -76,6 +77,19 @@ class LiveSessionService {
         } catch (error) {
             console.error('Error finding session:', error);
             return null;
+        }
+    }
+
+    /**
+     * Update host microphone status (broadcasting state)
+     */
+    async updateMicStatus(sessionId, isMicOn) {
+        if (!sessionId) return;
+        try {
+            const ref = doc(db, 'live_sessions', sessionId);
+            await updateDoc(ref, { isMicOn, updatedAt: serverTimestamp() });
+        } catch (error) {
+            console.error('Error updating mic status:', error);
         }
     }
 

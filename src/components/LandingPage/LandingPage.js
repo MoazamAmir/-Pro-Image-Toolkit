@@ -3,7 +3,7 @@ import { Sparkles, Zap, Wand2, Layers, Palette, ArrowRight, Check, Star, Github,
 import AuthModal from '../Auth/AuthModal';
 import './LandingPage.css';
 
-const LandingPage = ({ onLoginSuccess }) => {
+const LandingPage = ({ onLoginSuccess, isSessionLink }) => {
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [pendingTool, setPendingTool] = useState(null);
     const [scrollY, setScrollY] = useState(0);
@@ -14,6 +14,12 @@ const LandingPage = ({ onLoginSuccess }) => {
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    useEffect(() => {
+        if (isSessionLink) {
+            setShowAuthModal(true);
+        }
+    }, [isSessionLink]);
 
     const features = [
         {

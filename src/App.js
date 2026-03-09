@@ -950,11 +950,6 @@ const App = () => {
     }
   };
 
-  // Audience Live Viewer route (standalone, no auth required — must be before auth check)
-  if (location.pathname.startsWith('/live/') && sessionCode) {
-    return <AudienceViewer sessionCode={sessionCode} />;
-  }
-
   // Show loading while Firebase auth is initializing
   if (authInitializing) {
     return (
@@ -983,18 +978,25 @@ const App = () => {
     );
   }
 
-  // Presenter Window route (standalone)
-  if (location.pathname.startsWith('/presenter/') && designId) {
-    return <PresenterWindow designId={designId} user={user} />;
-  }
-
   // If no user is logged in, show Landing Page
   if (!user) {
+    const isSessionLink = location.pathname.startsWith('/live/') || location.pathname.startsWith('/presenter/');
     return (
       <LandingPage
         onLoginSuccess={handleLandingPageLogin}
+        isSessionLink={isSessionLink}
       />
     );
+  }
+
+  // Audience Live Viewer route (standalone)
+  if (location.pathname.startsWith('/live/') && sessionCode) {
+    return <AudienceViewer sessionCode={sessionCode} user={user} />;
+  }
+
+  // Presenter Window route (standalone)
+  if (location.pathname.startsWith('/presenter/') && designId) {
+    return <PresenterWindow designId={designId} user={user} />;
   }
 
   // User is logged in, show main app

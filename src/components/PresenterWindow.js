@@ -2,22 +2,16 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     X, ChevronLeft, ChevronRight, Maximize2, Play, Pause,
     PenTool, Keyboard, Timer, Clipboard, MoreHorizontal,
-    RotateCcw, ZoomIn, Edit3, Radio, Settings, Users, Copy, Hash,
+    RotateCcw, ZoomIn, Edit3, Radio, Settings, Users, Copy,
     ThumbsUp, Clock, ChevronDown, Eraser, Highlighter, Pen, Undo,
-    Video, CheckCircle, Check, Download, Trash2,
-    Palette, Search, ImageIcon, LayoutGrid, Layers, MousePointer2,
-    Type, Square as SquareIcon, Circle as CircleIcon, Triangle as TriangleIcon,
-    Pentagon as PentagonIcon, Hexagon as HexagonIcon, Octagon as OctagonIcon,
-    Star as StarIcon, ArrowRight, Minus, RefreshCw, Lock, Unlock,
-    ArrowUp, ArrowDown, Move, RotateCw, FlipHorizontal, Sparkles, MoreVertical,
+    Download, Trash2, CheckCircle,
     Mic, MicOff
 } from 'lucide-react';
-import * as LucideIcons from 'lucide-react';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import useRecording from './PresentAndRecord/useRecording';
 import SlideRenderer from './SlideRenderer';
-import { getBestAudioDevice } from '../utils/audioUtils';
+import zegoVoiceService from '../services/ZegoVoiceService';
 
 const PresenterWindow = ({ designId, user }) => {
     // Design state
@@ -69,7 +63,7 @@ const PresenterWindow = ({ designId, user }) => {
 
     const [reactions, setReactions] = useState([]); // { id, type, x, y }
     const lastDrawingSyncRef = useRef(0);
-    const pcsRef = useRef({}); // viewerId -> RTCPeerConnection
+
 
     // Magic Shortcuts State
     const [activeMagicEffect, setActiveMagicEffect] = useState(null); // 'blur' | 'quiet' | 'bubbles' | 'confetti' | 'drumroll' | 'curtain' | 'mic-drop'
@@ -278,6 +272,15 @@ const PresenterWindow = ({ designId, user }) => {
             );
             setSessionCode(code);
 
+            // Initialize ZegoCloud voice — host joins room (ready to publish when mic is ON)
+            zegoVoiceService.initEngine();
+            await zegoVoiceService.joinRoom(
+                sessionId,
+                user.uid,
+                user.displayName || user.email || 'Host',
+                false // Don't publish yet — wait for mic toggle
+            );
+
             // Listen to session
             sessionUnsubRef.current = LiveSessionService.listenToSession(sessionId, (data) => {
                 setLiveSession({ id: sessionId, ...data });
@@ -292,27 +295,27 @@ const PresenterWindow = ({ designId, user }) => {
             // Listen to reactions
             reactionUnsubRef.current = LiveSessionService.listenToReactions(sessionId, (reaction) => {
                 const id = reaction.id || Date.now();
-                // Random position for variety
                 const newReaction = {
                     id,
                     type: reaction.type,
-                    x: 20 + Math.random() * 60, // Keep in middle area
-                    y: 80 // Start from bottom
+                    x: 20 + Math.random() * 60,
+                    y: 80
                 };
-                setReactions(prev => [...prev.slice(-15), newReaction]); // Keep last 15
-                // Auto-remove after animation
+                setReactions(prev => [...prev.slice(-15), newReaction]);
                 setTimeout(() => {
                     setReactions(prev => prev.filter(r => r.id !== id));
                 }, 4000);
             });
-
-            // The session is already set via setLiveSession in the listener above
         } catch (err) {
             console.error('Failed to start live session:', err);
         }
     };
 
     const endLiveSession = async () => {
+        // Leave ZegoCloud room
+        await zegoVoiceService.leaveRoom();
+        setIsMicOn(false);
+
         if (liveSession?.id) {
             await LiveSessionService.endSession(liveSession.id);
         }
@@ -450,210 +453,42 @@ const PresenterWindow = ({ designId, user }) => {
         }
     };
 
+    // Toggle microphone — uses ZegoCloud for reliable voice broadcast
     const toggleMic = async () => {
         if (!isMicOn) {
             try {
-                const bestDeviceId = await getBestAudioDevice();
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        deviceId: bestDeviceId ? { ideal: bestDeviceId } : undefined,
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
+                // Start publishing audio via ZegoCloud
+                const success = await zegoVoiceService.toggleMic(true);
+                if (success) {
+                    setIsMicOn(true);
+                    if (liveSession?.id) {
+                        await LiveSessionService.updateMicStatus(liveSession.id, true);
                     }
-                });
-                window.localStream = stream;
-                setIsMicOn(true);
-                if (liveSession?.id) {
-                    // Sync mic status to Firebase for audience visibility
-                    await LiveSessionService.updateMicStatus(liveSession.id, true);
-                    // Also send signal for WebRTC setup
-                    await LiveSessionService.sendSignal(liveSession.id, {
-                        type: 'host-voice-ready',
-                        hostId: user.uid,
-                        timestamp: Date.now()
-                    });
+                } else {
+                    alert('Microphone access is required for voice broadcast.');
                 }
             } catch (err) {
                 console.error('Microphone access denied:', err);
                 alert('Microphone access is required for voice broadcast.');
             }
         } else {
-            if (window.localStream) {
-                window.localStream.getTracks().forEach(t => t.stop());
-                window.localStream = null;
-            }
+            // Stop publishing
+            await zegoVoiceService.toggleMic(false);
             setIsMicOn(false);
             if (liveSession?.id) {
                 await LiveSessionService.updateMicStatus(liveSession.id, false);
-                await LiveSessionService.sendSignal(liveSession.id, {
-                    type: 'host-voice-stopped',
-                    hostId: user.uid,
-                    timestamp: Date.now()
-                });
             }
         }
     };
 
-    // Auto-switch microphone on device change (e.g. Bluetooth connect)
+    // Cleanup ZegoCloud on unmount
     useEffect(() => {
-        const handleDeviceChange = async () => {
-            if (!isMicOn) return;
-
-            console.log('[Audio] Device change detected, checking for better microphone...');
-            const bestDeviceId = await getBestAudioDevice();
-
-            // If the current best device isn't the one we are using, restart stream
-            const currentTrack = window.localStream?.getAudioTracks()[0];
-            const settings = currentTrack?.getSettings();
-
-            if (bestDeviceId && settings?.deviceId !== bestDeviceId) {
-                console.log('[Audio] Switching to better microphone device...');
-
-                try {
-                    const newStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            deviceId: { exact: bestDeviceId },
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
-                        }
-                    });
-
-                    const newTrack = newStream.getAudioTracks()[0];
-
-                    // Seamlessly replace track in all active peer connections
-                    const pcEntries = Object.entries(pcsRef.current);
-                    console.log(`[Audio] Replacing track for ${pcEntries.length} active peers`);
-
-                    for (const [viewerId, pc] of pcEntries) {
-                        const senders = pc.getSenders();
-                        const audioSender = senders.find(s => s.track?.kind === 'audio');
-                        if (audioSender) {
-                            await audioSender.replaceTrack(newTrack).catch(e => {
-                                console.warn(`[Audio] Failed to replace track for peer ${viewerId}:`, e);
-                            });
-                        }
-                    }
-
-                    // Stop old stream and update local reference
-                    if (window.localStream) {
-                        window.localStream.getTracks().forEach(t => t.stop());
-                    }
-                    window.localStream = newStream;
-
-                } catch (e) {
-                    console.error('[Audio] Failed to switch device:', e);
-                }
-            }
-        };
-
-        navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
-        return () => navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
-    }, [isMicOn]);
-
-    // Voice Cleanup & Peer Management
-    useEffect(() => {
-        if (!liveSession?.id || !isMicOn || !user?.uid) return;
-
-        const iceConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
-            ]
-        };
-
-        const createPeerConnection = async (viewerId) => {
-            // Close existing connection if any
-            if (pcsRef.current[viewerId]) {
-                try { pcsRef.current[viewerId].close(); } catch (e) { }
-            }
-
-            const pc = new RTCPeerConnection(iceConfig);
-            pcsRef.current[viewerId] = pc;
-
-            // Add all audio tracks from local stream
-            if (window.localStream) {
-                window.localStream.getAudioTracks().forEach(track => {
-                    pc.addTrack(track, window.localStream);
-                });
-            }
-
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    LiveSessionService.sendSignal(liveSession.id, {
-                        type: 'host-ice-candidate',
-                        fromId: user.uid,
-                        toId: viewerId,
-                        candidate: event.candidate.toJSON()
-                    });
-                }
-            };
-
-            pc.onconnectionstatechange = () => {
-                console.log(`[Voice] Peer ${viewerId} state: ${pc.connectionState}`);
-                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                    try { pc.close(); } catch (e) { }
-                    delete pcsRef.current[viewerId];
-                }
-            };
-
-            try {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                await LiveSessionService.sendSignal(liveSession.id, {
-                    type: 'host-voice-offer',
-                    fromId: user.uid,
-                    toId: viewerId,
-                    offer: { sdp: offer.sdp, type: offer.type }
-                });
-            } catch (err) {
-                console.error('[Voice] Failed to create offer:', err);
-            }
-        };
-
-        const unsub = LiveSessionService.listenToSignals(liveSession.id, async (signal) => {
-            try {
-                // Ignore our own signals (if viewerId matches hostId)
-                if (signal.fromId === user.uid) return;
-
-                // Case 1: Viewer requesting voice stream
-                if (signal.type === 'viewer-request-voice' && signal.toId === user.uid) {
-                    console.log(`[Voice] Received request from viewer: ${signal.fromId}`);
-                    await createPeerConnection(signal.fromId);
-                }
-                // Case 2: Viewer providing an answer to our offer
-                else if (signal.type === 'viewer-voice-answer' && signal.toId === user.uid) {
-                    const pc = pcsRef.current[signal.fromId];
-                    if (pc && pc.signalingState === 'have-local-offer') {
-                        await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
-                    }
-                }
-                // Case 3: Viewer providing ICE candidate
-                else if (signal.type === 'viewer-ice-candidate' && signal.toId === user.uid) {
-                    const pc = pcsRef.current[signal.fromId];
-                    if (pc && pc.remoteDescription) {
-                        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-                    }
-                }
-            } catch (err) {
-                console.error('[Voice] Signal handling error:', err);
-            }
-        });
-
         return () => {
-            unsub();
-            Object.values(pcsRef.current).forEach(pc => { try { pc.close(); } catch (e) { } });
-            pcsRef.current = {};
+            zegoVoiceService.leaveRoom();
         };
-    }, [liveSession?.id, isMicOn, user?.uid]);
+    }, []);
 
-    const currentPage = pages[currentPageIndex];
-    const currentSrc = currentPage ? previewImages[currentPage.id] : null;
+    const currentSrc = pages[currentPageIndex] ? previewImages[pages[currentPageIndex].id] : null;
 
     if (isLoading) {
         return (

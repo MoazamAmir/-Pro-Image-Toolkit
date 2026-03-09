@@ -4,6 +4,7 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import SlideRenderer from './SlideRenderer';
 import { onAuthChange } from '../services/firebase';
+import zegoVoiceService from '../services/ZegoVoiceService';
 
 const AudienceViewer = ({ sessionCode }) => {
     const [user, setUser] = useState(null);
@@ -19,10 +20,6 @@ const AudienceViewer = ({ sessionCode }) => {
     const [error, setError] = useState(null);
     const [guestName, setGuestName] = useState('');
     const [isJoined, setIsJoined] = useState(false);
-    const [audioStream, setAudioStream] = useState(null);
-    const audioRef = useRef(null);
-    const peerConnRef = useRef(null);
-    const iceQueueRef = useRef([]); // Queue for candidates arriving before remote description
 
     const commentsEndRef = useRef(null);
     const sessionUnsubRef = useRef(null);
@@ -53,7 +50,6 @@ const AudienceViewer = ({ sessionCode }) => {
             try {
                 // Normalize code — remove spaces
                 const normalizedCode = sessionCode.toUpperCase().replace(/\s/g, '');
-                // Try with spaces inserted
                 const codeWithSpaces = normalizedCode.length === 8
                     ? `${normalizedCode.slice(0, 4)} ${normalizedCode.slice(4)}`
                     : normalizedCode;
@@ -68,31 +64,28 @@ const AudienceViewer = ({ sessionCode }) => {
                 }
 
                 setSession(found);
-                // Ensure unique ID even if same user is in multiple tabs
-                const viewerId = user?.uid ? `${user.uid}_${Math.random().toString(36).substr(2, 5)}` : `guest_${Math.random().toString(36).substr(2, 9)}`;
+                const viewerId = user?.uid || `guest_${Math.random().toString(36).substr(2, 9)}`;
+
+                // Join ZegoCloud room as viewer (listen only, no publish)
+                zegoVoiceService.initEngine();
+                await zegoVoiceService.joinRoom(
+                    found.id,
+                    viewerId,
+                    user?.displayName || guestName || 'Viewer',
+                    false // Viewer mode — don't publish, just listen
+                );
+                console.log('[AudienceViewer] Joined ZegoCloud room for voice');
 
                 // Listen to session updates (page changes + mic status)
                 sessionUnsubRef.current = LiveSessionService.listenToSession(found.id, (data) => {
-                    setSession(prev => {
-                        // FIX: Request voice if host is ALREADY speaking or just turned it on
-                        const wasMicOff = prev ? !prev.isMicOn : true;
-                        if (data.isMicOn && (wasMicOff || !peerConnRef.current)) {
-                            console.log('[Voice] Requesting voice stream as host is speaking...');
-                            LiveSessionService.sendSignal(found.id, {
-                                type: 'viewer-request-voice',
-                                fromId: viewerId,
-                                toId: data.hostId || found.hostId,
-                                timestamp: Date.now()
-                            });
-                        }
-                        return { ...prev, ...data };
-                    });
+                    setSession(prev => ({ ...prev, ...data }));
 
                     if (data.activePageIndex !== undefined) {
                         setCurrentPageIndex(data.activePageIndex);
                     }
                     if (!data.isActive) {
                         setError('This session has ended.');
+                        zegoVoiceService.leaveRoom();
                     }
                 });
 
@@ -120,103 +113,6 @@ const AudienceViewer = ({ sessionCode }) => {
                     if (data?.canvasSize) setCanvasSize(data.canvasSize);
                     if (data?.adjustments) setAdjustments(data.adjustments);
                 });
-
-                // Listen for signals (WebRTC)
-                LiveSessionService.listenToSignals(found.id, async (signal) => {
-                    // Ignore our own signals
-                    if (signal.fromId === viewerId) return;
-
-                    if (signal.type === 'host-voice-ready') {
-                        // Request voice stream from host
-                        LiveSessionService.sendSignal(found.id, {
-                            type: 'viewer-request-voice',
-                            fromId: viewerId,
-                            toId: signal.hostId,
-                            timestamp: Date.now()
-                        });
-                    } else if (signal.type === 'host-voice-offer' && signal.toId === viewerId) {
-                        // Handle offer
-                        const pc = new RTCPeerConnection({
-                            iceServers: [
-                                { urls: 'stun:stun.l.google.com:19302' },
-                                { urls: 'stun:stun1.l.google.com:19302' },
-                                { urls: 'stun:stun2.l.google.com:19302' },
-                                { urls: 'stun:stun3.l.google.com:19302' },
-                                { urls: 'stun:stun4.l.google.com:19302' }
-                            ]
-                        });
-                        peerConnRef.current = pc;
-
-                        pc.ontrack = (event) => {
-                            console.log('[Voice] Receiving remote track');
-                            if (audioRef.current) {
-                                audioRef.current.srcObject = event.streams[0];
-                                // Explicitly play as browsers might block background autoplay
-                                audioRef.current.play().catch(e => {
-                                    console.warn('[Voice] Play blocked by browser. User interaction might be required.', e);
-                                });
-                            }
-                            setAudioStream(event.streams[0]);
-                        };
-
-                        pc.onicecandidate = (event) => {
-                            if (event.candidate) {
-                                LiveSessionService.sendSignal(found.id, {
-                                    type: 'viewer-ice-candidate',
-                                    fromId: viewerId,
-                                    toId: signal.fromId,
-                                    candidate: event.candidate.toJSON()
-                                });
-                            }
-                        };
-
-                        pc.onconnectionstatechange = () => {
-                            console.log(`[Voice] Connection state: ${pc.connectionState}`);
-                            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                                peerConnRef.current = null;
-                                setAudioStream(null);
-                            }
-                        };
-
-                        await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
-
-                        // Process queued ICE candidates
-                        while (iceQueueRef.current.length > 0) {
-                            const candidate = iceQueueRef.current.shift();
-                            await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {
-                                console.warn('[Voice] Failed to add queued ICE candidate:', e);
-                            });
-                        }
-
-                        const answer = await pc.createAnswer();
-                        await pc.setLocalDescription(answer);
-
-                        await LiveSessionService.sendSignal(found.id, {
-                            type: 'viewer-voice-answer',
-                            fromId: viewerId,
-                            toId: signal.fromId,
-                            answer: { sdp: answer.sdp, type: answer.type }
-                        });
-                    } else if (signal.type === 'host-ice-candidate' && signal.toId === viewerId) {
-                        const pc = peerConnRef.current;
-                        if (pc && pc.remoteDescription) {
-                            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(e => {
-                                console.warn('[Voice] Failed to add ICE candidate:', e);
-                            });
-                        } else {
-                            // Queue candidate if remote description is not set yet
-                            iceQueueRef.current.push(signal.candidate);
-                        }
-                    } else if (signal.type === 'host-voice-stopped') {
-                        if (peerConnRef.current) {
-                            peerConnRef.current.close();
-                            peerConnRef.current = null;
-                        }
-                        iceQueueRef.current = [];
-                        if (audioRef.current) audioRef.current.srcObject = null;
-                        setAudioStream(null);
-                    }
-                });
             } catch (err) {
                 console.error('Error joining session:', err);
                 setError('Failed to join session.');
@@ -230,10 +126,10 @@ const AudienceViewer = ({ sessionCode }) => {
             if (sessionUnsubRef.current) sessionUnsubRef.current();
             if (commentsUnsubRef.current) commentsUnsubRef.current();
             if (designUnsubRef.current) designUnsubRef.current();
-            // Optional: don't leave session on mere re-render if code is same
+            zegoVoiceService.leaveRoom();
             if (session?.id) LiveSessionService.leaveSession(session.id);
         };
-    }, [sessionCode, renderPreviews]); // Removed session?.id to avoid re-run loops
+    }, [sessionCode, renderPreviews]);
 
     // Scroll comments
     useEffect(() => {
@@ -327,8 +223,7 @@ const AudienceViewer = ({ sessionCode }) => {
 
     return (
         <div className="av-root">
-            {/* Hidden audio for WebRTC */}
-            <audio ref={audioRef} autoPlay playsInline controls={false} />
+            {/* ZegoCloud handles audio playback automatically via hidden audio element */}
             {/* Live header bar */}
             <div className="av-header">
                 <div className="av-live-badge">

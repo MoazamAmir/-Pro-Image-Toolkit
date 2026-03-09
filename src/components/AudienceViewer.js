@@ -22,6 +22,7 @@ const AudienceViewer = ({ sessionCode }) => {
     const [audioStream, setAudioStream] = useState(null);
     const audioRef = useRef(null);
     const peerConnRef = useRef(null);
+    const iceQueueRef = useRef([]); // Queue for candidates arriving before remote description
 
     const commentsEndRef = useRef(null);
     const sessionUnsubRef = useRef(null);
@@ -73,12 +74,14 @@ const AudienceViewer = ({ sessionCode }) => {
                 // Listen to session updates (page changes + mic status)
                 sessionUnsubRef.current = LiveSessionService.listenToSession(found.id, (data) => {
                     setSession(prev => {
-                        // If host just turned mic ON and we don't have a stream yet, request it
-                        if (data.isMicOn && !prev?.isMicOn && !peerConnRef.current) {
+                        // FIX: Request voice if host is ALREADY speaking or just turned it on
+                        const wasMicOff = prev ? !prev.isMicOn : true;
+                        if (data.isMicOn && (wasMicOff || !peerConnRef.current)) {
+                            console.log('[Voice] Requesting voice stream as host is speaking...');
                             LiveSessionService.sendSignal(found.id, {
                                 type: 'viewer-request-voice',
                                 fromId: viewerId,
-                                toId: data.hostId || found.hostId, // Use session hostId as fallback
+                                toId: data.hostId || found.hostId,
                                 timestamp: Date.now()
                             });
                         }
@@ -145,8 +148,13 @@ const AudienceViewer = ({ sessionCode }) => {
                         peerConnRef.current = pc;
 
                         pc.ontrack = (event) => {
+                            console.log('[Voice] Receiving remote track');
                             if (audioRef.current) {
                                 audioRef.current.srcObject = event.streams[0];
+                                // Explicitly play as browsers might block background autoplay
+                                audioRef.current.play().catch(e => {
+                                    console.warn('[Voice] Play blocked by browser. User interaction might be required.', e);
+                                });
                             }
                             setAudioStream(event.streams[0]);
                         };
@@ -171,6 +179,15 @@ const AudienceViewer = ({ sessionCode }) => {
                         };
 
                         await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
+
+                        // Process queued ICE candidates
+                        while (iceQueueRef.current.length > 0) {
+                            const candidate = iceQueueRef.current.shift();
+                            await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {
+                                console.warn('[Voice] Failed to add queued ICE candidate:', e);
+                            });
+                        }
+
                         const answer = await pc.createAnswer();
                         await pc.setLocalDescription(answer);
 
@@ -181,14 +198,21 @@ const AudienceViewer = ({ sessionCode }) => {
                             answer: { sdp: answer.sdp, type: answer.type }
                         });
                     } else if (signal.type === 'host-ice-candidate' && signal.toId === viewerId) {
-                        if (peerConnRef.current && peerConnRef.current.remoteDescription) {
-                            await peerConnRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                        const pc = peerConnRef.current;
+                        if (pc && pc.remoteDescription) {
+                            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(e => {
+                                console.warn('[Voice] Failed to add ICE candidate:', e);
+                            });
+                        } else {
+                            // Queue candidate if remote description is not set yet
+                            iceQueueRef.current.push(signal.candidate);
                         }
                     } else if (signal.type === 'host-voice-stopped') {
                         if (peerConnRef.current) {
                             peerConnRef.current.close();
                             peerConnRef.current = null;
                         }
+                        iceQueueRef.current = [];
                         if (audioRef.current) audioRef.current.srcObject = null;
                         setAudioStream(null);
                     }

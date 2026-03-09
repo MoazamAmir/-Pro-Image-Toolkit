@@ -293,16 +293,21 @@ class LiveSessionService {
      */
     listenToSignals(sessionId, callback) {
         if (!sessionId) return null;
+
+        // Use a shorter window (60s) but filter in-memory if needed
+        const startTime = Date.now() - 60000;
+
         const q = query(
             collection(db, 'live_sessions', sessionId, 'signaling'),
             orderBy('createdAt', 'desc'),
-            where('createdAt', '>', new Date(Date.now() - 30000)) // Only recent signals
+            where('createdAt', '>', new Date(startTime))
         );
+
         return onSnapshot(q, (snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === "added") {
-                    callback({ id: change.doc.id, ...change.doc.data() });
-                }
+            // Process in reverse to maintain chronological order for the callback
+            const changes = snapshot.docChanges().filter(c => c.type === 'added').reverse();
+            changes.forEach((change) => {
+                callback({ id: change.doc.id, ...change.doc.data() });
             });
         });
     }

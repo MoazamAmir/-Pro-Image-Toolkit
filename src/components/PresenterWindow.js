@@ -69,6 +69,7 @@ const PresenterWindow = ({ designId, user }) => {
 
     const [reactions, setReactions] = useState([]); // { id, type, x, y }
     const lastDrawingSyncRef = useRef(0);
+    const pcsRef = useRef({}); // viewerId -> RTCPeerConnection
 
     // Magic Shortcuts State
     const [activeMagicEffect, setActiveMagicEffect] = useState(null); // 'blur' | 'quiet' | 'bubbles' | 'confetti' | 'drumroll' | 'curtain' | 'mic-drop'
@@ -508,14 +509,9 @@ const PresenterWindow = ({ designId, user }) => {
 
             if (bestDeviceId && settings?.deviceId !== bestDeviceId) {
                 console.log('[Audio] Switching to better microphone device...');
-                // Stop current
-                if (window.localStream) {
-                    window.localStream.getTracks().forEach(t => t.stop());
-                }
 
-                // Start new
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
+                    const newStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
                             deviceId: { exact: bestDeviceId },
                             echoCancellation: true,
@@ -523,11 +519,29 @@ const PresenterWindow = ({ designId, user }) => {
                             autoGainControl: true
                         }
                     });
-                    window.localStream = stream;
-                    // Note: Re-starting mic locally doesn't strictly require signaling update 
-                    // if the tracks flow into the same PeerConnections, but in some browsers 
-                    // we might need to replaceTrack. For simplicity here, we restart.
-                    // If we wanted 100% seamless, we'd use sender.replaceTrack(newTrack).
+
+                    const newTrack = newStream.getAudioTracks()[0];
+
+                    // Seamlessly replace track in all active peer connections
+                    const pcEntries = Object.entries(pcsRef.current);
+                    console.log(`[Audio] Replacing track for ${pcEntries.length} active peers`);
+
+                    for (const [viewerId, pc] of pcEntries) {
+                        const senders = pc.getSenders();
+                        const audioSender = senders.find(s => s.track?.kind === 'audio');
+                        if (audioSender) {
+                            await audioSender.replaceTrack(newTrack).catch(e => {
+                                console.warn(`[Audio] Failed to replace track for peer ${viewerId}:`, e);
+                            });
+                        }
+                    }
+
+                    // Stop old stream and update local reference
+                    if (window.localStream) {
+                        window.localStream.getTracks().forEach(t => t.stop());
+                    }
+                    window.localStream = newStream;
+
                 } catch (e) {
                     console.error('[Audio] Failed to switch device:', e);
                 }
@@ -542,7 +556,6 @@ const PresenterWindow = ({ designId, user }) => {
     useEffect(() => {
         if (!liveSession?.id || !isMicOn || !user?.uid) return;
 
-        const pcs = {}; // viewerId -> RTCPeerConnection
         const iceConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -555,12 +568,12 @@ const PresenterWindow = ({ designId, user }) => {
 
         const createPeerConnection = async (viewerId) => {
             // Close existing connection if any
-            if (pcs[viewerId]) {
-                try { pcs[viewerId].close(); } catch (e) { }
+            if (pcsRef.current[viewerId]) {
+                try { pcsRef.current[viewerId].close(); } catch (e) { }
             }
 
             const pc = new RTCPeerConnection(iceConfig);
-            pcs[viewerId] = pc;
+            pcsRef.current[viewerId] = pc;
 
             // Add all audio tracks from local stream
             if (window.localStream) {
@@ -584,7 +597,7 @@ const PresenterWindow = ({ designId, user }) => {
                 console.log(`[Voice] Peer ${viewerId} state: ${pc.connectionState}`);
                 if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
                     try { pc.close(); } catch (e) { }
-                    delete pcs[viewerId];
+                    delete pcsRef.current[viewerId];
                 }
             };
 
@@ -610,18 +623,19 @@ const PresenterWindow = ({ designId, user }) => {
 
                 // Case 1: Viewer requesting voice stream
                 if (signal.type === 'viewer-request-voice' && signal.toId === user.uid) {
+                    console.log(`[Voice] Received request from viewer: ${signal.fromId}`);
                     await createPeerConnection(signal.fromId);
                 }
                 // Case 2: Viewer providing an answer to our offer
                 else if (signal.type === 'viewer-voice-answer' && signal.toId === user.uid) {
-                    const pc = pcs[signal.fromId];
+                    const pc = pcsRef.current[signal.fromId];
                     if (pc && pc.signalingState === 'have-local-offer') {
                         await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
                     }
                 }
                 // Case 3: Viewer providing ICE candidate
                 else if (signal.type === 'viewer-ice-candidate' && signal.toId === user.uid) {
-                    const pc = pcs[signal.fromId];
+                    const pc = pcsRef.current[signal.fromId];
                     if (pc && pc.remoteDescription) {
                         await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
                     }
@@ -633,7 +647,8 @@ const PresenterWindow = ({ designId, user }) => {
 
         return () => {
             unsub();
-            Object.values(pcs).forEach(pc => { try { pc.close(); } catch (e) { } });
+            Object.values(pcsRef.current).forEach(pc => { try { pc.close(); } catch (e) { } });
+            pcsRef.current = {};
         };
     }, [liveSession?.id, isMicOn, user?.uid]);
 

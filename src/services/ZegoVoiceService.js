@@ -26,8 +26,9 @@ class ZegoVoiceService {
         if (this.engine) return;
 
         try {
-            this.engine = new ZegoExpressEngine(APP_ID, 'wss://webliveroom-api.zego.im/ws');
-            console.log('[ZegoVoice] Engine initialized with AppID:', APP_ID);
+            const serverUrl = `wss://webliveroom${APP_ID}-api.zego.im/ws`;
+            this.engine = new ZegoExpressEngine(APP_ID, serverUrl);
+            console.log('[ZegoVoice] Engine initialized with AppID:', APP_ID, 'Server:', serverUrl);
 
             // Listen for remote streams (viewer side)
             this.engine.on('roomStreamUpdate', async (roomID, updateType, streamList) => {

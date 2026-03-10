@@ -58,6 +58,11 @@ const PresenterWindow = ({ designId, user }) => {
     const lastLaserSyncRef = useRef(0);
 
     const sessionUnsubRef = useRef(null);
+
+    // Audio device selection state
+    const [showMicSelectModal, setShowMicSelectModal] = useState(false);
+    const [availableMics, setAvailableMics] = useState([]);
+    const [selectedMicId, setSelectedMicId] = useState('');
     const commentsUnsubRef = useRef(null);
     const reactionUnsubRef = useRef(null);
 
@@ -453,24 +458,31 @@ const PresenterWindow = ({ designId, user }) => {
         }
     };
 
-    // Toggle microphone — uses ZegoCloud for reliable voice broadcast
+    // Fetch available microphones (called when opening the mic selection modal)
+    const fetchMicrophones = async () => {
+        try {
+            // Request permission first to get hardware labels (otherwise they show as generic entries)
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            setAvailableMics(audioInputs);
+            if (audioInputs.length > 0) {
+                // Pre-select the default or first device
+                const defaultDevice = audioInputs.find(d => d.deviceId === 'default') || audioInputs[0];
+                setSelectedMicId(defaultDevice.deviceId);
+            }
+        } catch (err) {
+            console.error('Error fetching microphones:', err);
+            alert('Cannot access microphones. Please check your browser permissions.');
+        }
+    };
+
+    // Toggle microphone — opening popup first before starting
     const toggleMic = async () => {
         if (!isMicOn) {
-            try {
-                // Start publishing audio via ZegoCloud
-                const success = await zegoVoiceService.toggleMic(true);
-                if (success) {
-                    setIsMicOn(true);
-                    if (liveSession?.id) {
-                        await LiveSessionService.updateMicStatus(liveSession.id, true);
-                    }
-                } else {
-                    alert('Microphone access is required for voice broadcast.');
-                }
-            } catch (err) {
-                console.error('Microphone access denied:', err);
-                alert('Microphone access is required for voice broadcast.');
-            }
+            // Instead of instantly broadcasting, show the setup modal so user can pick Bluetooth or external mic
+            await fetchMicrophones();
+            setShowMicSelectModal(true);
         } else {
             // Stop publishing
             await zegoVoiceService.toggleMic(false);
@@ -478,6 +490,26 @@ const PresenterWindow = ({ designId, user }) => {
             if (liveSession?.id) {
                 await LiveSessionService.updateMicStatus(liveSession.id, false);
             }
+        }
+    };
+
+    // Called when user clicks "Connect Device" from the modal
+    const handleConfirmMic = async () => {
+        setShowMicSelectModal(false);
+        try {
+            // Start publishing audio via ZegoCloud using the chosen device
+            const success = await zegoVoiceService.toggleMic(true, selectedMicId);
+            if (success) {
+                setIsMicOn(true);
+                if (liveSession?.id) {
+                    await LiveSessionService.updateMicStatus(liveSession.id, true);
+                }
+            } else {
+                alert('Microphone broadcast failed. Try another device.');
+            }
+        } catch (err) {
+            console.error('Microphone connection error:', err);
+            alert('An error occurred connecting the microphone.');
         }
     };
 
@@ -677,6 +709,45 @@ const PresenterWindow = ({ designId, user }) => {
 
             {/* === BODY === */}
             <div className="pw-body">
+                {/* Audio Device Selection Modal */}
+                {showMicSelectModal && (
+                    <div className="pw-mic-modal-overlay">
+                        <div className="pw-mic-modal-content">
+                            <div className="pw-mic-modal-header">
+                                <Radio size={20} className="pw-mic-modal-icon" />
+                                <h3>Select Microphone</h3>
+                                <button className="pw-icon-btn pw-close-modal" onClick={() => setShowMicSelectModal(false)}>
+                                    <X size={16} />
+                                </button>
+                            </div>
+                            <div className="pw-mic-modal-body">
+                                <p>Choose your preferred audio input device (like Bluetooth headset or external mic).</p>
+                                <div className="pw-device-selector">
+                                    <Mic size={16} />
+                                    <select
+                                        value={selectedMicId}
+                                        onChange={(e) => setSelectedMicId(e.target.value)}
+                                        className="pw-device-select"
+                                    >
+                                        {availableMics.length === 0 && <option value="">No microphones found</option>}
+                                        {availableMics.map(mic => (
+                                            <option key={mic.deviceId} value={mic.deviceId}>
+                                                {mic.label || `Microphone ${mic.deviceId.substring(0, 5)}...`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="pw-mic-modal-footer">
+                                <button className="pw-btn pw-btn-cancel" onClick={() => setShowMicSelectModal(false)}>Cancel</button>
+                                <button className="pw-btn pw-btn-connect" onClick={handleConfirmMic} disabled={!selectedMicId}>
+                                    Connect Target Mic
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Slide area */}
                 <div className="pw-slide-area">
                     <div className="pw-slide-container">
@@ -1670,6 +1741,78 @@ const presenterStyles = `
         50% { transform: scale(1.5); opacity: 0.5; }
         100% { transform: scale(1); opacity: 1; }
     }
+
+    /* === MICROPHONE SELECTION MODAL === */
+    .pw-mic-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 99999;
+    }
+    .pw-mic-modal-content {
+        width: 400px;
+        background: #1f2937;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        color: #fff;
+        display: flex; flex-direction: column;
+        animation: pw-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes pw-pop {
+        0% { transform: scale(0.95); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    .pw-mic-modal-header {
+        display: flex; align-items: center; gap: 10px;
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .pw-mic-modal-icon { color: #8B3DFF; }
+    .pw-mic-modal-header h3 { font-size: 16px; font-weight: 600; margin: 0; flex: 1; }
+    .pw-close-modal { padding: 4px; color: rgba(255,255,255,0.5); border: none; background: transparent; cursor: pointer; }
+    .pw-close-modal:hover { color: #fff; }
+    
+    .pw-mic-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .pw-mic-modal-body p { font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.5; margin: 0; }
+    
+    .pw-device-selector {
+        display: flex; align-items: center; gap: 12px;
+        background: rgba(0,0,0,0.2);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 8px;
+        padding: 10px 14px;
+    }
+    .pw-device-selector svg { color: #a78bfa; flex-shrink: 0; }
+    .pw-device-select {
+        flex: 1; background: transparent; border: none;
+        color: #fff; font-size: 14px; outline: none;
+        font-family: inherit; cursor: pointer;
+    }
+    .pw-device-select option { background: #1f2937; color: #fff; }
+
+    .pw-mic-modal-footer {
+        display: flex; justify-content: flex-end; gap: 12px;
+        padding: 16px 20px;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.1);
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+    }
+    .pw-btn {
+        padding: 8px 16px; font-size: 13px; font-weight: 600;
+        border-radius: 6px; cursor: pointer; border: none; transition: all 0.2s;
+    }
+    .pw-btn-cancel {
+        background: transparent; color: rgba(255,255,255,0.7);
+    }
+    .pw-btn-cancel:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .pw-btn-connect {
+        background: #8B3DFF; color: #fff;
+    }
+    .pw-btn-connect:hover { background: #7a32e6; }
+    .pw-btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .pw-rec-overlay {
         position: absolute; inset: 0;

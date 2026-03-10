@@ -64,17 +64,6 @@ const AudienceViewer = ({ sessionCode }) => {
                 }
 
                 setSession(found);
-                const viewerId = user?.uid || `guest_${Math.random().toString(36).substr(2, 9)}`;
-
-                // Join ZegoCloud room as viewer (listen only, no publish)
-                zegoVoiceService.initEngine();
-                await zegoVoiceService.joinRoom(
-                    found.id,
-                    viewerId,
-                    user?.displayName || guestName || 'Viewer',
-                    false // Viewer mode — don't publish, just listen
-                );
-                console.log('[AudienceViewer] Joined ZegoCloud room for voice');
 
                 // Listen to session updates (page changes + mic status)
                 sessionUnsubRef.current = LiveSessionService.listenToSession(found.id, (data) => {
@@ -89,8 +78,7 @@ const AudienceViewer = ({ sessionCode }) => {
                     }
                 });
 
-                // Join session (increment viewer count)
-                LiveSessionService.joinSession(found.id);
+                // Viewer count increment moved to isJoined effect
 
                 // Listen to comments
                 commentsUnsubRef.current = LiveSessionService.listenToComments(found.id, (c) => {
@@ -126,10 +114,40 @@ const AudienceViewer = ({ sessionCode }) => {
             if (sessionUnsubRef.current) sessionUnsubRef.current();
             if (commentsUnsubRef.current) commentsUnsubRef.current();
             if (designUnsubRef.current) designUnsubRef.current();
-            zegoVoiceService.leaveRoom();
-            if (session?.id) LiveSessionService.leaveSession(session.id);
         };
     }, [sessionCode, renderPreviews]);
+
+    // Join Zego voice and notify presence ONLY after explicit user interaction
+    useEffect(() => {
+        if (isJoined && session?.id && !error) {
+            const sessionId = session.id;
+            const joinVoiceAndSession = async () => {
+                try {
+                    const viewerId = user?.uid || `guest_${Math.random().toString(36).substr(2, 9)}`;
+
+                    zegoVoiceService.initEngine();
+                    await zegoVoiceService.joinRoom(
+                        sessionId,
+                        viewerId,
+                        user?.displayName || guestName || 'Viewer',
+                        false
+                    );
+
+                    LiveSessionService.joinSession(sessionId);
+                    console.log('[AudienceViewer] Joined ZegoCloud & session presence');
+                } catch (err) {
+                    console.error('Error joining voice session:', err);
+                }
+            };
+
+            joinVoiceAndSession();
+
+            return () => {
+                zegoVoiceService.leaveRoom();
+                LiveSessionService.leaveSession(sessionId);
+            };
+        }
+    }, [isJoined, session?.id, error, user, guestName]);
 
     // Scroll comments
     useEffect(() => {
@@ -157,13 +175,18 @@ const AudienceViewer = ({ sessionCode }) => {
         }
     };
 
+    // Removed auto-join to ensure browser records explicit user interaction, 
+    // satisfying WebRTC autoplay policies for ZegoCloud voice.
+
+    // Explictly unlock Audio context on click before Zego attaches stream
+    const handleJoinClick = useCallback(() => {
+        // Unlock the persistent shared audio element for ZegoCloud
+        zegoVoiceService.unlockAudio();
+        setIsJoined(true);
+    }, []);
+
     const totalPages = pages.length;
     const currentPage = pages[currentPageIndex];
-
-    // Auto-join for logged-in users
-    useEffect(() => {
-        if (user) setIsJoined(true);
-    }, [user]);
 
     const handleSendReaction = async (type) => {
         if (!session) return;
@@ -197,24 +220,35 @@ const AudienceViewer = ({ sessionCode }) => {
         );
     }
 
-    // Guest name entry (only for non-logged-in users)
-    if (!user && !isJoined) {
+    // Interaction screen (ensure user click is registered to unlock audio autoplay)
+    if (!isJoined) {
         return (
             <div className="av-root">
                 <div className="av-join-screen">
                     <Radio size={36} className="av-join-icon" />
                     <h2>Join Live Session</h2>
-                    <p>Enter your name to participate</p>
-                    <input
-                        className="av-name-input"
-                        placeholder="Your name..."
-                        value={guestName}
-                        onChange={e => setGuestName(e.target.value)}
-                        onKeyPress={e => { if (e.key === 'Enter' && guestName.trim()) setIsJoined(true); }}
-                    />
-                    <button className="av-join-btn" onClick={() => { if (guestName.trim()) setIsJoined(true); }} disabled={!guestName.trim()}>
-                        Join Session
-                    </button>
+                    {user ? (
+                        <>
+                            <p>Joining as <strong>{user.displayName || user.email || 'User'}</strong></p>
+                            <button className="av-join-btn" onClick={handleJoinClick}>
+                                Join Session
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <p>Enter your name to participate</p>
+                            <input
+                                className="av-name-input"
+                                placeholder="Your name..."
+                                value={guestName}
+                                onChange={e => setGuestName(e.target.value)}
+                                onKeyPress={e => { if (e.key === 'Enter' && guestName.trim()) handleJoinClick(); }}
+                            />
+                            <button className="av-join-btn" onClick={() => { if (guestName.trim()) handleJoinClick(); }} disabled={!guestName.trim()}>
+                                Join Session
+                            </button>
+                        </>
+                    )}
                 </div>
                 <style>{audienceStyles}</style>
             </div>

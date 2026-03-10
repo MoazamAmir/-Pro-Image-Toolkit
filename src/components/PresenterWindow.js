@@ -11,7 +11,7 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import useRecording from './PresentAndRecord/useRecording';
 import SlideRenderer from './SlideRenderer';
-import zegoVoiceService from '../services/ZegoVoiceService';
+import firebaseVoiceService from '../services/FirebaseVoiceService';
 
 const PresenterWindow = ({ designId, user }) => {
     // Design state
@@ -277,14 +277,8 @@ const PresenterWindow = ({ designId, user }) => {
             );
             setSessionCode(code);
 
-            // Initialize ZegoCloud voice — host joins room (ready to publish when mic is ON)
-            zegoVoiceService.initEngine();
-            await zegoVoiceService.joinRoom(
-                sessionId,
-                user.uid,
-                user.displayName || user.email || 'Host',
-                false // Don't publish yet — wait for mic toggle
-            );
+            // Initialize Firebase WebRTC voice — host starts (ready to publish when mic is ON)
+            await firebaseVoiceService.startHost(sessionId);
 
             // Listen to session
             sessionUnsubRef.current = LiveSessionService.listenToSession(sessionId, (data) => {
@@ -317,8 +311,8 @@ const PresenterWindow = ({ designId, user }) => {
     };
 
     const endLiveSession = async () => {
-        // Leave ZegoCloud room
-        await zegoVoiceService.leaveRoom();
+        // Stop Firebase voice
+        await firebaseVoiceService.stop();
         setIsMicOn(false);
 
         if (liveSession?.id) {
@@ -485,7 +479,7 @@ const PresenterWindow = ({ designId, user }) => {
             setShowMicSelectModal(true);
         } else {
             // Stop publishing
-            await zegoVoiceService.toggleMic(false);
+            await firebaseVoiceService.toggleMic(false);
             setIsMicOn(false);
             if (liveSession?.id) {
                 await LiveSessionService.updateMicStatus(liveSession.id, false);
@@ -497,8 +491,8 @@ const PresenterWindow = ({ designId, user }) => {
     const handleConfirmMic = async () => {
         setShowMicSelectModal(false);
         try {
-            // Start publishing audio via ZegoCloud using the chosen device
-            const success = await zegoVoiceService.toggleMic(true, selectedMicId);
+            // Start publishing audio via Firebase WebRTC using the chosen device
+            const success = await firebaseVoiceService.toggleMic(true, selectedMicId);
             if (success) {
                 setIsMicOn(true);
                 if (liveSession?.id) {
@@ -513,10 +507,10 @@ const PresenterWindow = ({ designId, user }) => {
         }
     };
 
-    // Cleanup ZegoCloud on unmount
+    // Cleanup Firebase voice on unmount
     useEffect(() => {
         return () => {
-            zegoVoiceService.leaveRoom();
+            firebaseVoiceService.stop();
         };
     }, []);
 

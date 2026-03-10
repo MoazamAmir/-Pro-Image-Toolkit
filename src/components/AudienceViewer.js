@@ -4,7 +4,7 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import SlideRenderer from './SlideRenderer';
 import { onAuthChange } from '../services/firebase';
-import zegoVoiceService from '../services/ZegoVoiceService';
+import firebaseVoiceService from '../services/FirebaseVoiceService';
 
 const AudienceViewer = ({ sessionCode }) => {
     const [user, setUser] = useState(null);
@@ -74,7 +74,7 @@ const AudienceViewer = ({ sessionCode }) => {
                     }
                     if (!data.isActive) {
                         setError('This session has ended.');
-                        zegoVoiceService.leaveRoom();
+                        firebaseVoiceService.stop();
                     }
                 });
 
@@ -117,7 +117,7 @@ const AudienceViewer = ({ sessionCode }) => {
         };
     }, [sessionCode, renderPreviews]);
 
-    // Join Zego voice and notify presence ONLY after explicit user interaction
+    // Join voice and notify presence ONLY after explicit user interaction
     useEffect(() => {
         if (isJoined && session?.id && !error) {
             const sessionId = session.id;
@@ -125,16 +125,10 @@ const AudienceViewer = ({ sessionCode }) => {
                 try {
                     const viewerId = user?.uid || `guest_${Math.random().toString(36).substr(2, 9)}`;
 
-                    zegoVoiceService.initEngine();
-                    await zegoVoiceService.joinRoom(
-                        sessionId,
-                        viewerId,
-                        user?.displayName || guestName || 'Viewer',
-                        false
-                    );
+                    await firebaseVoiceService.startViewer(sessionId, viewerId);
 
                     LiveSessionService.joinSession(sessionId);
-                    console.log('[AudienceViewer] Joined ZegoCloud & session presence');
+                    console.log('[AudienceViewer] Joined Firebase WebRTC voice & session presence');
                 } catch (err) {
                     console.error('Error joining voice session:', err);
                 }
@@ -143,7 +137,7 @@ const AudienceViewer = ({ sessionCode }) => {
             joinVoiceAndSession();
 
             return () => {
-                zegoVoiceService.leaveRoom();
+                firebaseVoiceService.stop();
                 LiveSessionService.leaveSession(sessionId);
             };
         }
@@ -176,12 +170,12 @@ const AudienceViewer = ({ sessionCode }) => {
     };
 
     // Removed auto-join to ensure browser records explicit user interaction, 
-    // satisfying WebRTC autoplay policies for ZegoCloud voice.
+    // satisfying WebRTC autoplay policies for voice.
 
-    // Explictly unlock Audio context on click before Zego attaches stream
+    // Explicitly unlock Audio context on click before attaching stream
     const handleJoinClick = useCallback(() => {
-        // Unlock the persistent shared audio element for ZegoCloud
-        zegoVoiceService.unlockAudio();
+        // Unlock audio context for autoplay policy
+        firebaseVoiceService.unlockAudio();
         setIsJoined(true);
     }, []);
 
@@ -257,7 +251,7 @@ const AudienceViewer = ({ sessionCode }) => {
 
     return (
         <div className="av-root">
-            {/* ZegoCloud handles audio playback automatically via hidden audio element */}
+            {/* Firebase WebRTC handles audio playback via hidden audio element */}
             {/* Live header bar */}
             <div className="av-header">
                 <div className="av-live-badge">

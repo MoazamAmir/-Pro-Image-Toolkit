@@ -11,7 +11,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
-    "@zegocloud/zego-uikit-prebuilt": "^2.17.2",
     "animate.css": "^4.1.1",
     "axios": "^1.13.1",
     "browser-image-compression": "^2.0.2",
@@ -30,7 +29,6 @@
     "lucide-react": "^0.546.0",
     "mammoth": "^1.11.0",
     "pdfjs-dist": "^5.4.449",
-    "peerjs": "^1.5.5",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.0",
     "react-colorful": "^5.6.1",
@@ -40,8 +38,7 @@
     "react-scripts": "^5.0.1",
     "tailwind-merge": "^3.4.0",
     "utif": "^3.1.0",
-    "web-vitals": "^2.1.4",
-    "zego-express-engine-webrtc": "^3.12.0"
+    "web-vitals": "^2.1.4"
   },
   "scripts": {
     "start": "craco start",

@@ -11,7 +11,8 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import useRecording from './PresentAndRecord/useRecording';
 import SlideRenderer from './SlideRenderer';
-import firebaseVoiceService from '../services/FirebaseVoiceService';
+// import firebaseVoiceService from '../services/FirebaseVoiceService';
+import agoraVoiceService from '../services/AgoraVoiceService';
 
 const PresenterWindow = ({ designId, user }) => {
     // Design state
@@ -22,6 +23,19 @@ const PresenterWindow = ({ designId, user }) => {
     const [isMicOn, setIsMicOn] = useState(false);
     const [previewImages, setPreviewImages] = useState({});
     const [isLoading, setIsLoading] = useState(true);
+    const [voiceLevel, setVoiceLevel] = useState(0);
+    const [includeSystemAudio, setIncludeSystemAudio] = useState(false);
+
+    // Audio level monitoring for host visualizer (Agora)
+    useEffect(() => {
+        agoraVoiceService.onLevelChange((levels) => {
+            if (isMicOn) {
+                setVoiceLevel(levels.local);
+            } else {
+                setVoiceLevel(0);
+            }
+        });
+    }, [isMicOn]);
 
     // Clock & Timer
     const [currentTime, setCurrentTime] = useState('');
@@ -277,8 +291,11 @@ const PresenterWindow = ({ designId, user }) => {
             );
             setSessionCode(code);
 
-            // Initialize Firebase WebRTC voice — host starts (ready to publish when mic is ON)
-            await firebaseVoiceService.startHost(sessionId);
+            // Initialize Firebase WebRTC voice (COMMENTED OUT)
+            // await firebaseVoiceService.startHost(sessionId);
+            
+            // Initialize Agora Voice
+            await agoraVoiceService.startHost(sessionId, selectedMicId, includeSystemAudio);
 
             // Listen to session
             sessionUnsubRef.current = LiveSessionService.listenToSession(sessionId, (data) => {
@@ -311,8 +328,12 @@ const PresenterWindow = ({ designId, user }) => {
     };
 
     const endLiveSession = async () => {
-        // Stop Firebase voice
-        await firebaseVoiceService.stop();
+        // Stop Firebase voice (COMMENTED OUT)
+        // await firebaseVoiceService.stop();
+        
+        // Stop Agora voice
+        await agoraVoiceService.stop();
+        
         setIsMicOn(false);
 
         if (liveSession?.id) {
@@ -478,8 +499,12 @@ const PresenterWindow = ({ designId, user }) => {
             await fetchMicrophones();
             setShowMicSelectModal(true);
         } else {
-            // Stop publishing
-            await firebaseVoiceService.toggleMic(false);
+            // Stop publishing (Agora)
+            await agoraVoiceService.toggleMic(false);
+            
+            // Stop publishing (Firebase - COMMENTED OUT)
+            // await firebaseVoiceService.toggleMic(false);
+            
             setIsMicOn(false);
             if (liveSession?.id) {
                 await LiveSessionService.updateMicStatus(liveSession.id, false);
@@ -491,15 +516,19 @@ const PresenterWindow = ({ designId, user }) => {
     const handleConfirmMic = async () => {
         setShowMicSelectModal(false);
         try {
-            // Start publishing audio via Firebase WebRTC using the chosen device
-            const success = await firebaseVoiceService.toggleMic(true, selectedMicId);
-            if (success) {
-                setIsMicOn(true);
-                if (liveSession?.id) {
-                    await LiveSessionService.updateMicStatus(liveSession.id, true);
-                }
+            // If already hosting, we might need to switch or restart
+            if (liveSession?.id) {
+                // If we already have a session, just toggle/publish
+                await agoraVoiceService.toggleMic(true, selectedMicId);
             } else {
-                alert('Microphone broadcast failed. Try another device.');
+                // If starting for the first time, this is handled in startLiveSession
+                // but if they click it later, toggleMic handles it
+                await agoraVoiceService.toggleMic(true, selectedMicId);
+            }
+            
+            setIsMicOn(true);
+            if (liveSession?.id) {
+                await LiveSessionService.updateMicStatus(liveSession.id, true);
             }
         } catch (err) {
             console.error('Microphone connection error:', err);
@@ -507,10 +536,11 @@ const PresenterWindow = ({ designId, user }) => {
         }
     };
 
-    // Cleanup Firebase voice on unmount
+    // Cleanup on unmount
     useEffect(() => {
         return () => {
-            firebaseVoiceService.stop();
+            // firebaseVoiceService.stop();
+            agoraVoiceService.stop();
         };
     }, []);
 
@@ -539,11 +569,10 @@ const PresenterWindow = ({ designId, user }) => {
                             <Mic size={12} />
                             <span>VOICE RECORDING</span>
                             <div className="pw-voice-wave">
-                                <span className="pw-wave-bar"></span>
-                                <span className="pw-wave-bar"></span>
-                                <span className="pw-wave-bar"></span>
-                                <span className="pw-wave-bar"></span>
-                                <span className="pw-wave-bar"></span>
+                                <span className="pw-wave-bar" style={{ height: `${Math.max(4, voiceLevel * 0.4)}px` }}></span>
+                                <span className="pw-wave-bar" style={{ height: `${Math.max(4, voiceLevel * 0.8)}px` }}></span>
+                                <span className="pw-wave-bar" style={{ height: `${Math.max(4, voiceLevel * 0.5)}px` }}></span>
+                                <span className="pw-wave-bar" style={{ height: `${Math.max(4, voiceLevel * 0.3)}px` }}></span>
                             </div>
                         </div>
                     )}
@@ -726,16 +755,29 @@ const PresenterWindow = ({ designId, user }) => {
                                         {availableMics.length === 0 && <option value="">No microphones found</option>}
                                         {availableMics.map(mic => (
                                             <option key={mic.deviceId} value={mic.deviceId}>
+                                                {mic.label.toLowerCase().includes('bluetooth') ? '🎧 ' : '🎙️ '}
                                                 {mic.label || `Microphone ${mic.deviceId.substring(0, 5)}...`}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
+                                
+                                <div className="pw-system-audio-toggle">
+                                    <label className="pw-toggle-label">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={includeSystemAudio}
+                                            onChange={(e) => setIncludeSystemAudio(e.target.checked)}
+                                        />
+                                        <span>Include System Audio (Share desktop sound)</span>
+                                    </label>
+                                    <p className="pw-toggle-hint">Useful for sharing audio from videos or music playing on your computer.</p>
+                                </div>
                             </div>
                             <div className="pw-mic-modal-footer">
                                 <button className="pw-btn pw-btn-cancel" onClick={() => setShowMicSelectModal(false)}>Cancel</button>
                                 <button className="pw-btn pw-btn-connect" onClick={handleConfirmMic} disabled={!selectedMicId}>
-                                    Connect Target Mic
+                                    Connect Target Device
                                 </button>
                             </div>
                         </div>
@@ -1956,6 +1998,66 @@ const presenterStyles = `
     
     z-index: 9999;
 }
+    /* Mic Selection Modal */
+    .pw-mic-modal-overlay {
+        position: fixed; inset: 0; z-index: 2000;
+        background: rgba(0,0,0,0.8);
+        display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(8px);
+    }
+    .pw-mic-modal-content {
+        width: 400px; background: #1a1a2e;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 16px; overflow: hidden;
+        box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+    }
+    .pw-mic-modal-header {
+        padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06);
+        display: flex; align-items: center; gap: 12px;
+    }
+    .pw-mic-modal-header h3 { font-size: 16px; font-weight: 700; color: #fff; margin: 0; }
+    .pw-mic-modal-body { padding: 20px; }
+    .pw-mic-modal-body p { font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.5; margin-bottom: 20px; }
+    
+    .pw-device-selector {
+        display: flex; align-items: center; gap: 12px;
+        background: rgba(255,255,255,0.05); padding: 12px 16px;
+        border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+        margin-bottom: 20px;
+    }
+    .pw-device-select {
+        flex: 1; background: transparent; border: none;
+        color: #fff; font-size: 14px; outline: none;
+    }
+    .pw-device-select option { background: #1a1a2e; color: #fff; }
+
+    .pw-system-audio-toggle {
+        background: rgba(139, 61, 255, 0.05);
+        border: 1px dashed rgba(139, 61, 255, 0.3);
+        border-radius: 10px; padding: 12px;
+    }
+    .pw-toggle-label {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 13px; font-weight: 600; color: #c4a0ff;
+        cursor: pointer;
+    }
+    .pw-toggle-label input { width: 16px; height: 16px; accent-color: #8B3DFF; }
+    .pw-toggle-hint { font-size: 11px; color: rgba(255,255,255,0.4); margin: 6px 0 0 26px; }
+
+    .pw-mic-modal-footer {
+        padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.06);
+        display: flex; justify-content: flex-end; gap: 10px;
+    }
+    .pw-btn {
+        padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.2s; border: none;
+    }
+    .pw-btn-cancel { background: transparent; color: rgba(255,255,255,0.5); }
+    .pw-btn-cancel:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .pw-btn-connect { background: #8B3DFF; color: #fff; }
+    .pw-btn-connect:hover { background: #7a32e6; transform: translateY(-1px); }
+    .pw-btn-connect:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
     @keyframes pw-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
     /* Quiet */

@@ -235,7 +235,7 @@ const SlideRenderer = ({
                 ))}
             </div>
 
-            <style jsx>{`
+            <style>{`
                 .slide-renderer-root {
                     user-select: none;
                     background-size: cover;

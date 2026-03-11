@@ -4,7 +4,8 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import LiveSessionService from '../services/LiveSessionService';
 import SlideRenderer from './SlideRenderer';
 import { onAuthChange } from '../services/firebase';
-import firebaseVoiceService from '../services/FirebaseVoiceService';
+// import firebaseVoiceService from '../services/FirebaseVoiceService';
+import agoraVoiceService from '../services/AgoraVoiceService';
 
 const AudienceViewer = ({ sessionCode }) => {
     const [user, setUser] = useState(null);
@@ -12,6 +13,14 @@ const AudienceViewer = ({ sessionCode }) => {
     const [pages, setPages] = useState([]);
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
     const [previewImages, setPreviewImages] = useState({});
+    const [audioLevel, setAudioLevel] = useState(0);
+
+    // Monitor audio levels for visual feedback (Agora)
+    useEffect(() => {
+        agoraVoiceService.onLevelChange((levels) => {
+            setAudioLevel(levels.remote);
+        });
+    }, []);
     const [comments, setComments] = useState([]);
     const [canvasSize, setCanvasSize] = useState({ width: 1920, height: 1080 });
     const [adjustments, setAdjustments] = useState({});
@@ -74,7 +83,8 @@ const AudienceViewer = ({ sessionCode }) => {
                     }
                     if (!data.isActive) {
                         setError('This session has ended.');
-                        firebaseVoiceService.stop();
+                        // firebaseVoiceService.stop();
+                        agoraVoiceService.stop();
                     }
                 });
 
@@ -123,12 +133,13 @@ const AudienceViewer = ({ sessionCode }) => {
             const sessionId = session.id;
             const joinVoiceAndSession = async () => {
                 try {
-                    const viewerId = user?.uid || `guest_${Math.random().toString(36).substr(2, 9)}`;
+                    // const viewerId = user?.uid || `guest_${Math.random().toString(36).substr(2, 9)}`;
 
-                    await firebaseVoiceService.startViewer(sessionId, viewerId);
+                    // await firebaseVoiceService.startViewer(sessionId, viewerId);
+                    await agoraVoiceService.startViewer(sessionId);
 
                     LiveSessionService.joinSession(sessionId);
-                    console.log('[AudienceViewer] Joined Firebase WebRTC voice & session presence');
+                    console.log('[AudienceViewer] Joined Agora voice & session presence');
                 } catch (err) {
                     console.error('Error joining voice session:', err);
                 }
@@ -137,11 +148,12 @@ const AudienceViewer = ({ sessionCode }) => {
             joinVoiceAndSession();
 
             return () => {
-                firebaseVoiceService.stop();
+                // firebaseVoiceService.stop();
+                agoraVoiceService.stop();
                 LiveSessionService.leaveSession(sessionId);
             };
         }
-    }, [isJoined, session?.id, error, user, guestName]);
+    }, [isJoined, session?.id, error]);
 
     // Scroll comments
     useEffect(() => {
@@ -175,7 +187,7 @@ const AudienceViewer = ({ sessionCode }) => {
     // Explicitly unlock Audio context on click before attaching stream
     const handleJoinClick = useCallback(() => {
         // Unlock audio context for autoplay policy
-        firebaseVoiceService.unlockAudio();
+        // firebaseVoiceService.unlockAudio();
         setIsJoined(true);
     }, []);
 
@@ -263,10 +275,10 @@ const AudienceViewer = ({ sessionCode }) => {
                         <Mic size={12} />
                         <span>HOST SPEAKING</span>
                         <div className="av-voice-wave">
-                            <div className="av-wave-bar"></div>
-                            <div className="av-wave-bar"></div>
-                            <div className="av-wave-bar"></div>
-                            <div className="av-wave-bar"></div>
+                            <div className="av-wave-bar" style={{ height: `${Math.max(4, audioLevel * 0.4)}px` }}></div>
+                            <div className="av-wave-bar" style={{ height: `${Math.max(4, audioLevel * 0.8)}px` }}></div>
+                            <div className="av-wave-bar" style={{ height: `${Math.max(4, audioLevel * 0.5)}px` }}></div>
+                            <div className="av-wave-bar" style={{ height: `${Math.max(4, audioLevel * 0.3)}px` }}></div>
                         </div>
                     </div>
                 )}
@@ -494,18 +506,10 @@ const audienceStyles = `
         height: 10px;
     }
     .av-wave-bar {
-        width: 2px; height: 3px;
+        width: 2px;
         background: #a78bfa;
         border-radius: 1px;
-        animation: av-wave 1s ease-in-out infinite;
-    }
-    .av-wave-bar:nth-child(2) { animation-delay: 0.1s; height: 6px; }
-    .av-wave-bar:nth-child(3) { animation-delay: 0.2s; height: 8px; }
-    .av-wave-bar:nth-child(4) { animation-delay: 0.3s; height: 5px; }
-
-    @keyframes av-wave {
-        0%, 100% { transform: scaleY(1); }
-        50% { transform: scaleY(2); }
+        transition: height 0.1s ease;
     }
 
     .av-host-name { font-size: 13px; color: rgba(255,255,255,0.5); }

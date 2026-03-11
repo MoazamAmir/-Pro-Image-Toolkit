@@ -1,14 +1,17 @@
 /**
- * FirebaseVoiceService — WebRTC voice streaming with Firebase Firestore signaling
+ * FirebaseVoiceService — WebRTC voice streaming with Firebase Firestore signaling.
  * 
- * Replaces ZegoCloud. Uses browser's built-in WebRTC API.
- * Host publishes microphone audio → Viewers receive and play it.
- * Firebase Firestore is used for signaling (offer/answer/ICE candidates).
+ * Fixed Version:
+ * - Track renegotiation: adds tracks to existing connections when mic starts late.
+ * - Stable viewer connection: viewer connects once, doesn't reconnect on broadcast toggle.
+ * - Direct <audio> element playback (most reliable cross-browser approach).
+ * - Cleans stale signaling docs before creating new offers.
+ * - Robust connection state monitoring with auto-reconnect.
  */
 import { db } from './firebase';
 import {
     doc, collection, addDoc, onSnapshot, updateDoc,
-    deleteDoc, getDocs, setDoc, serverTimestamp, query, orderBy
+    deleteDoc, getDocs, setDoc, serverTimestamp
 } from 'firebase/firestore';
 
 const ICE_SERVERS = [
@@ -25,13 +28,16 @@ class FirebaseVoiceService {
         this.peerConnections = {};   // viewerId -> RTCPeerConnection (host side)
         this.hostConnection = null;  // Single RTCPeerConnection (viewer side)
         this.sessionId = null;
-        this.role = null; // 'host' | 'viewer'
+        this.role = null;
         this.viewerId = null;
         this.isPublishing = false;
         this.isMuted = false;
         this.unsubscribers = [];
+        this.hostMetaUnsub = null;
+        this._reconnectTimer = null;
+        this._isConnecting = false;
 
-        // Shared audio element for viewer playback
+        // Create a hidden audio element for playback
         if (typeof document !== 'undefined') {
             let el = document.getElementById('firebase-voice-audio');
             if (!el) {
@@ -39,7 +45,8 @@ class FirebaseVoiceService {
                 el.id = 'firebase-voice-audio';
                 el.autoplay = true;
                 el.playsInline = true;
-                el.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
+                // Use a visible-but-tiny element (some browsers need non-zero size for autoplay)
+                el.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
                 document.body.appendChild(el);
             }
             this.audioEl = el;
@@ -48,422 +55,465 @@ class FirebaseVoiceService {
 
     // ======================== HOST METHODS ========================
 
-    /**
-     * Host starts and waits for viewers to connect
-     * @param {string} sessionId - The live session ID
-     */
     async startHost(sessionId) {
         this.sessionId = sessionId;
         this.role = 'host';
-        console.log('[FirebaseVoice] Host started for session:', sessionId);
-
-        // Listen for new viewer join requests
+        console.log('[FirebaseVoice] Host mode initialized');
+        await this._updateHostBroadcastState(false);
         this._listenForViewerOffers(sessionId);
     }
 
-    /**
-     * Host starts publishing audio from microphone
-     * @param {string} audioDeviceId - Optional specific mic device ID
-     */
     async startPublishing(audioDeviceId = null) {
-        if (this.isPublishing && this.localStream) {
-            // Already publishing, just unmute
-            this._setTrackEnabled(true);
-            return true;
-        }
-
         try {
-            const constraints = { audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true, video: false };
+            console.log('[FirebaseVoice] Capturing microphone...');
+            if (this.localStream) this.localStream.getTracks().forEach(t => t.stop());
+
+            const constraints = {
+                audio: {
+                    deviceId: audioDeviceId ? { exact: audioDeviceId } : undefined,
+                    echoCancellation: true,
+                    noiseSuppression: false,
+                    autoGainControl: true,
+                    // Request high quality for Bluetooth compatibility
+                    sampleRate: 48000,
+                    channelCount: 1,
+                },
+                video: false
+            };
+
             this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
             this.isPublishing = true;
             this.isMuted = false;
-            console.log('[FirebaseVoice] ✅ Microphone captured successfully');
 
-            // Add audio track to all existing peer connections
-            for (const viewerId in this.peerConnections) {
-                const pc = this.peerConnections[viewerId];
-                if (pc && pc.connectionState !== 'closed') {
-                    this.localStream.getAudioTracks().forEach(track => {
-                        const senders = pc.getSenders();
-                        const audioSender = senders.find(s => s.track?.kind === 'audio');
-                        if (audioSender) {
-                            audioSender.replaceTrack(track);
-                        } else {
-                            pc.addTrack(track, this.localStream);
-                        }
-                    });
-                }
-            }
+            // Log track status
+            this.localStream.getAudioTracks().forEach(t => {
+                console.log(`[FirebaseVoice] Mic track active: ${t.label}, State: ${t.readyState}, Enabled: ${t.enabled}`);
+                // Monitor track ending unexpectedly
+                t.onended = () => console.warn('[FirebaseVoice] ⚠️ Mic track ended unexpectedly:', t.label);
+            });
 
-            // Notify session that host is broadcasting
+            // FIX #1: Push audio tracks to ALL existing peer connections
+            this._pushTracksToAllPeers();
+
             await this._updateHostBroadcastState(true);
+            console.log('[FirebaseVoice] ✅ Mic publishing started');
             return true;
         } catch (e) {
-            console.error('[FirebaseVoice] Failed to capture microphone:', e);
+            console.error('[FirebaseVoice] Mic capture failed:', e);
             return false;
         }
     }
 
     /**
-     * Toggle microphone on/off
-     * @param {boolean} on - Whether to enable mic
-     * @param {string} audioDeviceId - Optional device ID
+     * FIX #1: Add/replace audio tracks on all existing peer connections.
+     * This handles the case where viewers connected BEFORE the host turned on the mic.
      */
+    _pushTracksToAllPeers() {
+        if (!this.localStream) return;
+        const audioTrack = this.localStream.getAudioTracks()[0];
+        if (!audioTrack) return;
+
+        for (const [viewerId, pc] of Object.entries(this.peerConnections)) {
+            if (pc.connectionState === 'closed') continue;
+
+            const senders = pc.getSenders();
+            const audioSender = senders.find(s => s.track?.kind === 'audio' || (s.track === null));
+
+            if (audioSender) {
+                // Replace the track on the existing sender
+                console.log(`[FirebaseVoice] Replacing audio track for viewer ${viewerId}`);
+                audioSender.replaceTrack(audioTrack).catch(err => {
+                    console.error(`[FirebaseVoice] replaceTrack failed for ${viewerId}:`, err);
+                });
+            } else {
+                // No audio sender yet - add the track
+                console.log(`[FirebaseVoice] Adding audio track to viewer ${viewerId}`);
+                pc.addTrack(audioTrack, this.localStream);
+            }
+        }
+    }
+
     async toggleMic(on, audioDeviceId = null) {
         if (on) {
-            if (!this.localStream) {
-                return await this.startPublishing(audioDeviceId);
-            }
-            this._setTrackEnabled(true);
+            if (!this.localStream) return await this.startPublishing(audioDeviceId);
+            this.localStream.getAudioTracks().forEach(t => { t.enabled = true; });
             this.isMuted = false;
+            // Also push tracks in case new peers connected while muted
+            this._pushTracksToAllPeers();
             await this._updateHostBroadcastState(true);
             return true;
         } else {
-            this._setTrackEnabled(false);
+            if (this.localStream) this.localStream.getAudioTracks().forEach(t => { t.enabled = false; });
             this.isMuted = true;
             await this._updateHostBroadcastState(false);
             return true;
         }
     }
 
-    _setTrackEnabled(enabled) {
-        if (this.localStream) {
-            this.localStream.getAudioTracks().forEach(track => {
-                track.enabled = enabled;
-            });
-        }
-    }
-
     async _updateHostBroadcastState(isBroadcasting) {
         if (!this.sessionId) return;
-        try {
-            const ref = doc(db, 'live_sessions', this.sessionId, 'voice_meta', 'host');
-            await setDoc(ref, {
-                isBroadcasting,
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-        } catch (e) {
-            console.warn('[FirebaseVoice] Failed to update broadcast state:', e);
-        }
+        const ref = doc(db, 'live_sessions', this.sessionId, 'voice_meta', 'host');
+        await setDoc(ref, { isBroadcasting, updatedAt: serverTimestamp() }, { merge: true });
     }
 
-    /**
-     * Listen for viewer offers and create peer connections
-     */
     _listenForViewerOffers(sessionId) {
         const viewersCol = collection(db, 'live_sessions', sessionId, 'voice_viewers');
-        const unsub = onSnapshot(viewersCol, (snapshot) => {
+        this.unsubscribers.push(onSnapshot(viewersCol, (snapshot) => {
             snapshot.docChanges().forEach(async (change) => {
-                if (change.type === 'added') {
-                    const viewerData = change.doc.data();
-                    const viewerId = change.doc.id;
-
-                    // Only respond if there's an offer
-                    if (viewerData.offer) {
-                        console.log('[FirebaseVoice] New viewer offer from:', viewerId);
-                        await this._handleViewerOffer(sessionId, viewerId, viewerData.offer);
-                    }
+                const viewerId = change.doc.id;
+                const data = change.doc.data();
+                if ((change.type === 'added' || change.type === 'modified') && data.offer && !this.peerConnections[viewerId]) {
+                    console.log(`[FirebaseVoice] Answering offer from ${viewerId}`);
+                    await this._handleViewerOffer(sessionId, viewerId, data.offer);
                 }
-                if (change.type === 'removed') {
-                    const viewerId = change.doc.id;
-                    this._closeViewerConnection(viewerId);
-                }
+                if (change.type === 'removed') this._closeViewerConnection(viewerId);
             });
-        });
-        this.unsubscribers.push(unsub);
+        }));
     }
 
-    /**
-     * Host handles a viewer's offer — creates answer and sends it back
-     */
     async _handleViewerOffer(sessionId, viewerId, offer) {
-        // Close any existing connection for this viewer
-        this._closeViewerConnection(viewerId);
-
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
         this.peerConnections[viewerId] = pc;
+        const iceQueue = [];
 
-        // Add local audio tracks if we have them
+        // Add audio track if we already have one
         if (this.localStream) {
             this.localStream.getAudioTracks().forEach(track => {
+                console.log(`[FirebaseVoice] Adding track to new peer ${viewerId}: ${track.label}, enabled=${track.enabled}`);
                 pc.addTrack(track, this.localStream);
             });
+        } else {
+            // No local stream yet — add a transceiver so the SDP has audio m-line
+            // When mic starts later, _pushTracksToAllPeers will replace the track
+            console.log(`[FirebaseVoice] No localStream yet for ${viewerId}, adding sendonly transceiver`);
+            pc.addTransceiver('audio', { direction: 'sendonly' });
         }
 
-        // ICE candidate handling — send to viewer via Firestore
-        pc.onicecandidate = async (event) => {
-            if (event.candidate) {
-                try {
-                    await addDoc(
-                        collection(db, 'live_sessions', sessionId, 'voice_viewers', viewerId, 'host_candidates'),
-                        { candidate: event.candidate.toJSON(), createdAt: serverTimestamp() }
-                    );
-                } catch (e) {
-                    console.warn('[FirebaseVoice] Failed to send host ICE candidate:', e);
-                }
+        pc.oniceconnectionstatechange = () => {
+            console.log(`[FirebaseVoice] Host->Viewer(${viewerId}) ICE: ${pc.iceConnectionState}`);
+            if (pc.iceConnectionState === 'failed') {
+                console.warn(`[FirebaseVoice] ICE failed for ${viewerId}, attempting restart`);
+                pc.restartIce();
+            }
+        };
+        pc.onconnectionstatechange = () => {
+            console.log(`[FirebaseVoice] Host->Viewer(${viewerId}) Conn: ${pc.connectionState}`);
+            if (pc.connectionState === 'failed') {
+                this._closeViewerConnection(viewerId);
             }
         };
 
-        pc.onconnectionstatechange = () => {
-            console.log(`[FirebaseVoice] Host->Viewer(${viewerId}) connection: ${pc.connectionState}`);
-            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                // Attempt reconnection after a delay
-                setTimeout(() => {
-                    if (this.peerConnections[viewerId] === pc) {
-                        this._closeViewerConnection(viewerId);
-                    }
-                }, 5000);
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                addDoc(collection(db, 'live_sessions', sessionId, 'voice_viewers', viewerId, 'host_candidates'), {
+                    candidate: e.candidate.toJSON(), createdAt: serverTimestamp()
+                });
             }
         };
 
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            while (iceQueue.length > 0) await pc.addIceCandidate(iceQueue.shift());
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            // Send answer back to viewer's doc
-            const viewerDoc = doc(db, 'live_sessions', sessionId, 'voice_viewers', viewerId);
-            await updateDoc(viewerDoc, {
+            await updateDoc(doc(db, 'live_sessions', sessionId, 'voice_viewers', viewerId), {
                 answer: { type: answer.type, sdp: answer.sdp },
                 answeredAt: serverTimestamp()
             });
 
-            console.log('[FirebaseVoice] ✅ Answer sent to viewer:', viewerId);
-
-            // Listen for viewer's ICE candidates
-            const candidatesCol = collection(db, 'live_sessions', sessionId, 'voice_viewers', viewerId, 'viewer_candidates');
-            const candidateUnsub = onSnapshot(candidatesCol, (snap) => {
-                snap.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const data = change.doc.data();
-                        if (data.candidate && pc.remoteDescription) {
-                            pc.addIceCandidate(new RTCIceCandidate(data.candidate))
-                                .catch(e => console.warn('[FirebaseVoice] Failed to add viewer ICE:', e));
-                        }
+            const unsub = onSnapshot(collection(db, 'live_sessions', sessionId, 'voice_viewers', viewerId, 'viewer_candidates'), (s) => {
+                s.docChanges().forEach(c => {
+                    if (c.type === 'added') {
+                        const candidate = new RTCIceCandidate(c.doc.data().candidate);
+                        if (pc.remoteDescription) pc.addIceCandidate(candidate).catch(() => { });
+                        else iceQueue.push(candidate);
                     }
                 });
             });
-            this.unsubscribers.push(candidateUnsub);
+            this.unsubscribers.push(unsub);
         } catch (e) {
-            console.error('[FirebaseVoice] Error handling viewer offer:', e);
+            console.error('[FirebaseVoice] Host negotiation error:', e);
         }
     }
 
     _closeViewerConnection(viewerId) {
-        const pc = this.peerConnections[viewerId];
-        if (pc) {
-            pc.close();
+        if (this.peerConnections[viewerId]) {
+            this.peerConnections[viewerId].close();
             delete this.peerConnections[viewerId];
-            console.log('[FirebaseVoice] Closed connection for viewer:', viewerId);
         }
     }
 
     // ======================== VIEWER METHODS ========================
 
-    /**
-     * Viewer connects to host's audio stream
-     * @param {string} sessionId
-     * @param {string} viewerId - Unique viewer identifier
-     */
     async startViewer(sessionId, viewerId) {
         this.sessionId = sessionId;
         this.role = 'viewer';
         this.viewerId = viewerId;
+        console.log('[FirebaseVoice] Viewer mode active');
 
-        console.log('[FirebaseVoice] Viewer connecting:', viewerId);
+        // FIX #2: Connect to host IMMEDIATELY (once) regardless of broadcast state.
+        // The audio will simply start flowing when the host adds tracks.
+        await this._connectToHost();
+
+        // Listen to broadcast state for UI purposes only (the AudienceViewer component
+        // already does this via LiveSessionService.listenToSession -> session.isMicOn)
+        // We don't need to react to it here anymore.
+    }
+
+    async _connectToHost() {
+        if (this.hostConnection || this._isConnecting) return;
+        this._isConnecting = true;
+        console.log('[FirebaseVoice] Connecting to host...');
+
+        // FIX #4: Clean stale signaling docs before creating new offer
+        await this._cleanSignalingDocs();
 
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
         this.hostConnection = pc;
+        const iceQueue = [];
 
-        // Handle incoming audio from host
-        pc.ontrack = (event) => {
-            console.log('[FirebaseVoice] ✅ Received audio track from host!');
-            if (this.audioEl && event.streams[0]) {
-                this.audioEl.srcObject = event.streams[0];
-                this.audioEl.play().catch(e => {
-                    console.warn('[FirebaseVoice] Autoplay blocked:', e);
-                });
+        pc.oniceconnectionstatechange = () => {
+            console.log(`[FirebaseVoice] Viewer ICE: ${pc.iceConnectionState}`);
+            if (pc.iceConnectionState === 'failed') {
+                console.warn('[FirebaseVoice] Viewer ICE failed, attempting restart');
+                pc.restartIce();
             }
         };
-
-        // Add a transceiver to signal we want to receive audio
-        pc.addTransceiver('audio', { direction: 'recvonly' });
-
-        // ICE candidates — send to Firestore
-        pc.onicecandidate = async (event) => {
-            if (event.candidate) {
-                try {
-                    await addDoc(
-                        collection(db, 'live_sessions', sessionId, 'voice_viewers', viewerId, 'viewer_candidates'),
-                        { candidate: event.candidate.toJSON(), createdAt: serverTimestamp() }
-                    );
-                } catch (e) {
-                    console.warn('[FirebaseVoice] Failed to send viewer ICE candidate:', e);
+        pc.onconnectionstatechange = () => {
+            console.log(`[FirebaseVoice] Viewer Conn: ${pc.connectionState}`);
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                // Schedule reconnection attempt
+                this._scheduleReconnect();
+            }
+            if (pc.connectionState === 'connected') {
+                console.log('[FirebaseVoice] ✅ Viewer fully connected to host');
+                if (this._reconnectTimer) {
+                    clearTimeout(this._reconnectTimer);
+                    this._reconnectTimer = null;
                 }
             }
         };
 
-        pc.onconnectionstatechange = () => {
-            console.log(`[FirebaseVoice] Viewer connection state: ${pc.connectionState}`);
-            if (pc.connectionState === 'connected') {
-                console.log('[FirebaseVoice] ✅ Viewer connected to host audio!');
+        // FIX #3: Simple and reliable audio playback via <audio> element
+        pc.ontrack = (e) => {
+            console.log('[FirebaseVoice] ✅ Audio track received:', e.track.id,
+                'kind:', e.track.kind,
+                'readyState:', e.track.readyState,
+                'muted:', e.track.muted,
+                'enabled:', e.track.enabled);
+
+            if (e.streams && e.streams[0]) {
+                console.log('[FirebaseVoice] Setting stream on audio element, tracks:', e.streams[0].getAudioTracks().length);
+
+                // Direct assignment to audio element - most reliable cross-browser method
+                this.audioEl.srcObject = e.streams[0];
+
+                // Force play (handle autoplay policy)
+                const playPromise = this.audioEl.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log('[FirebaseVoice] ✅ Audio playback started successfully');
+                    }).catch(err => {
+                        console.warn('[FirebaseVoice] ⚠️ Audio play() blocked:', err.message);
+                        // Will retry on next user interaction via unlockAudio()
+                    });
+                }
+
+                // Monitor the track for mute/unmute events
+                e.track.onmute = () => console.log('[FirebaseVoice] 🔇 Remote track muted');
+                e.track.onunmute = () => {
+                    console.log('[FirebaseVoice] 🔊 Remote track unmuted');
+                    // Ensure audio is still playing
+                    if (this.audioEl.paused) {
+                        this.audioEl.play().catch(() => { });
+                    }
+                };
+                e.track.onended = () => console.log('[FirebaseVoice] ⚠️ Remote track ended');
+            } else {
+                console.warn('[FirebaseVoice] ⚠️ ontrack fired without streams, creating stream from track');
+                const stream = new MediaStream([e.track]);
+                this.audioEl.srcObject = stream;
+                this.audioEl.play().catch(() => { });
             }
-            if (pc.connectionState === 'failed') {
-                console.log('[FirebaseVoice] Connection failed, attempting reconnect...');
-                setTimeout(() => this._reconnectViewer(), 3000);
+        };
+
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                addDoc(collection(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId, 'viewer_candidates'), {
+                    candidate: e.candidate.toJSON(), createdAt: serverTimestamp()
+                });
             }
         };
 
         try {
-            // Create offer
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            // Send offer to Firestore
-            const viewerDoc = doc(db, 'live_sessions', sessionId, 'voice_viewers', viewerId);
+            const viewerDoc = doc(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId);
             await setDoc(viewerDoc, {
                 offer: { type: offer.type, sdp: offer.sdp },
                 createdAt: serverTimestamp()
             });
 
-            console.log('[FirebaseVoice] Offer sent, waiting for host answer...');
-
-            // Listen for host's answer
-            const unsub = onSnapshot(viewerDoc, async (snap) => {
-                const data = snap.data();
+            const stopSub = onSnapshot(viewerDoc, async (s) => {
+                const data = s.data();
                 if (data?.answer && pc.signalingState === 'have-local-offer') {
                     try {
                         await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                        console.log('[FirebaseVoice] ✅ Host answer received and set');
-                    } catch (e) {
-                        console.error('[FirebaseVoice] Error setting host answer:', e);
+                        console.log('[FirebaseVoice] ✅ Remote description set');
+                        while (iceQueue.length > 0) await pc.addIceCandidate(iceQueue.shift());
+                    } catch (err) {
+                        console.error('[FirebaseVoice] Error setting remote description:', err);
                     }
                 }
             });
-            this.unsubscribers.push(unsub);
+            this.unsubscribers.push(stopSub);
 
-            // Listen for host's ICE candidates
-            const hostCandidatesCol = collection(db, 'live_sessions', sessionId, 'voice_viewers', viewerId, 'host_candidates');
-            const candidateUnsub = onSnapshot(hostCandidatesCol, (snap) => {
-                snap.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const data = change.doc.data();
-                        if (data.candidate && pc.remoteDescription) {
-                            pc.addIceCandidate(new RTCIceCandidate(data.candidate))
-                                .catch(e => console.warn('[FirebaseVoice] Failed to add host ICE:', e));
-                        }
+            const unsubIce = onSnapshot(collection(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId, 'host_candidates'), (sn) => {
+                sn.docChanges().forEach(c => {
+                    if (c.type === 'added') {
+                        const candidate = new RTCIceCandidate(c.doc.data().candidate);
+                        if (pc.remoteDescription) pc.addIceCandidate(candidate).catch(() => { });
+                        else iceQueue.push(candidate);
                     }
                 });
             });
-            this.unsubscribers.push(candidateUnsub);
-
+            this.unsubscribers.push(unsubIce);
         } catch (e) {
-            console.error('[FirebaseVoice] Error creating viewer offer:', e);
+            console.error('[FirebaseVoice] Connection failed:', e);
+        } finally {
+            this._isConnecting = false;
         }
     }
 
     /**
-     * Reconnect viewer if connection fails
+     * FIX #4: Clean up stale signaling docs before reconnection.
      */
-    async _reconnectViewer() {
-        if (this.role !== 'viewer' || !this.sessionId || !this.viewerId) return;
-        console.log('[FirebaseVoice] Reconnecting viewer...');
+    async _cleanSignalingDocs() {
+        if (!this.sessionId || !this.viewerId) return;
+        try {
+            // Delete old viewer doc
+            const viewerDocRef = doc(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId);
+            await deleteDoc(viewerDocRef).catch(() => { });
 
-        // Cleanup old connection
+            // Delete old viewer candidates  
+            const viewerCandidates = await getDocs(
+                collection(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId, 'viewer_candidates')
+            ).catch(() => null);
+            if (viewerCandidates) {
+                viewerCandidates.forEach(d => deleteDoc(d.ref).catch(() => { }));
+            }
+
+            // Delete old host candidates for this viewer
+            const hostCandidates = await getDocs(
+                collection(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId, 'host_candidates')
+            ).catch(() => null);
+            if (hostCandidates) {
+                hostCandidates.forEach(d => deleteDoc(d.ref).catch(() => { }));
+            }
+
+            // Small delay to let Firestore propagate the deletion 
+            // (so the host-side listener doesn't re-process the old doc)
+            await new Promise(resolve => setTimeout(resolve, 300));
+            console.log('[FirebaseVoice] Cleaned stale signaling docs');
+        } catch (e) {
+            console.warn('[FirebaseVoice] Error cleaning signaling docs:', e);
+        }
+    }
+
+    /**
+     * Schedule a reconnection attempt after connection failure.
+     */
+    _scheduleReconnect() {
+        if (this._reconnectTimer) return;
+        console.log('[FirebaseVoice] Scheduling reconnect in 3s...');
+        this._reconnectTimer = setTimeout(async () => {
+            this._reconnectTimer = null;
+            if (this.role !== 'viewer') return;
+
+            // Close old connection
+            if (this.hostConnection) {
+                this.hostConnection.close();
+                this.hostConnection = null;
+            }
+            this._isConnecting = false;
+
+            console.log('[FirebaseVoice] Attempting reconnect...');
+            await this._connectToHost();
+        }, 3000);
+    }
+
+    _disconnectFromHost() {
         if (this.hostConnection) {
             this.hostConnection.close();
             this.hostConnection = null;
         }
-
-        // Clean up old viewer doc
-        try {
-            const viewerDoc = doc(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId);
-            await deleteDoc(viewerDoc);
-        } catch (e) { /* ignore */ }
-
-        // Short delay then reconnect
-        await new Promise(r => setTimeout(r, 1000));
-        await this.startViewer(this.sessionId, this.viewerId);
+        if (this.audioEl) this.audioEl.srcObject = null;
+        if (this._reconnectTimer) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
+        }
+        this._isConnecting = false;
     }
 
-    // ======================== CLEANUP ========================
-
-    /**
-     * Stop everything and clean up
-     */
     async stop() {
         console.log('[FirebaseVoice] Stopping...');
-
-        // Unsubscribe all Firestore listeners
-        this.unsubscribers.forEach(unsub => {
-            try { unsub(); } catch (e) { /* ignore */ }
-        });
+        if (this.hostMetaUnsub) this.hostMetaUnsub();
+        this.unsubscribers.forEach(u => typeof u === 'function' && u());
         this.unsubscribers = [];
 
-        // Stop local media tracks
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream.getTracks().forEach(t => t.stop());
             this.localStream = null;
         }
 
-        // Close all host-side peer connections
-        for (const viewerId in this.peerConnections) {
-            try {
-                this.peerConnections[viewerId].close();
-            } catch (e) { /* ignore */ }
-        }
+        for (const vid in this.peerConnections) this.peerConnections[vid].close();
         this.peerConnections = {};
-
-        // Close viewer-side connection
-        if (this.hostConnection) {
-            this.hostConnection.close();
-            this.hostConnection = null;
-        }
-
-        // Clear audio element
-        if (this.audioEl) {
-            this.audioEl.srcObject = null;
-        }
-
-        // Clean up Firestore voice data
-        if (this.sessionId && this.role === 'viewer' && this.viewerId) {
-            try {
-                const viewerDoc = doc(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId);
-                await deleteDoc(viewerDoc);
-            } catch (e) { /* ignore */ }
-        }
+        this._disconnectFromHost();
 
         if (this.sessionId && this.role === 'host') {
-            try {
-                // Clean up all viewer docs and voice meta
-                const viewersCol = collection(db, 'live_sessions', this.sessionId, 'voice_viewers');
-                const snap = await getDocs(viewersCol);
-                const deletes = [];
-                snap.forEach(d => deletes.push(deleteDoc(d.ref)));
-                await Promise.all(deletes);
-
-                // Remove host broadcast state
-                const metaRef = doc(db, 'live_sessions', this.sessionId, 'voice_meta', 'host');
-                await deleteDoc(metaRef);
-            } catch (e) { /* ignore */ }
+            await this._updateHostBroadcastState(false);
+            const snap = await getDocs(collection(db, 'live_sessions', this.sessionId, 'voice_viewers'));
+            snap.forEach(d => deleteDoc(d.ref).catch(() => { }));
         }
 
-        this.isPublishing = false;
-        this.isMuted = false;
+        if (this.sessionId && this.role === 'viewer' && this.viewerId) {
+            deleteDoc(doc(db, 'live_sessions', this.sessionId, 'voice_viewers', this.viewerId)).catch(() => { });
+        }
+
         this.sessionId = null;
         this.role = null;
-        this.viewerId = null;
-
-        console.log('[FirebaseVoice] ✅ Cleanup complete');
+        this.isPublishing = false;
+        this.isMuted = false;
+        console.log('[FirebaseVoice] ✅ Service stopped');
     }
 
     /**
-     * Unlock audio context (for Safari/mobile autoplay policy)
+     * Unlock audio for autoplay policy. Call this from a user gesture handler.
      */
     unlockAudio() {
         if (this.audioEl) {
+            // Play a tiny silent sound to unlock audio
             this.audioEl.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-            this.audioEl.play().catch(() => { });
+            this.audioEl.play().then(() => {
+                console.log('[FirebaseVoice] ✅ Audio unlocked via user gesture');
+                // Reset srcObject so our stream can take over
+                this.audioEl.src = '';
+                // If we already have a stream assigned, re-assign it
+                if (this.hostConnection) {
+                    const receivers = this.hostConnection.getReceivers();
+                    const audioReceiver = receivers.find(r => r.track?.kind === 'audio');
+                    if (audioReceiver && audioReceiver.track) {
+                        const stream = new MediaStream([audioReceiver.track]);
+                        this.audioEl.srcObject = stream;
+                        this.audioEl.play().catch(() => { });
+                    }
+                }
+            }).catch(() => { });
         }
     }
 }

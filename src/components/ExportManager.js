@@ -5,7 +5,7 @@ import {
     Link2, Globe, Lock, User, ArrowLeft, Instagram, LayoutGrid, Clipboard, MoreHorizontal,
     Search, Settings, Users, Link, Download as DownloadIcon, Eye, Instagram as InstagramIcon,
     Video as VideoIcon, Layout as LayoutIcon, Presentation, Copy as CopyIcon, MoreHorizontal as MoreHorizontalIcon,
-    Plus, Sparkles, Crown, Info, Maximize, MonitorPlay
+    Plus, Sparkles, Crown, Info, Maximize, MonitorPlay, Mic
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -507,33 +507,68 @@ const ExportManager = ({
         return (
             <div className="flex flex-col h-full animate-fadeIn">
                 <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
-                    <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
-                    <h2 className="font-bold text-lg dark:text-white">Public view link {publicViewStatus === 'live' && <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-600 text-[10px] rounded-full uppercase">Live</span>}</h2>
+                    <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500 transition-colors"><ArrowLeft className="w-5 h-5" /></button>
+                    <h2 className="font-bold text-base dark:text-white">Public view link {publicViewStatus === 'live' && <span className="ml-2 px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] rounded-full uppercase tracking-wider font-bold border border-green-500/20">Live</span>}</h2>
                 </div>
                 <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
                     {publicViewStatus !== 'live' ? (
                         <>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Create a public view link for a view-only version of this design.</p>
-                            <div className="aspect-[3/2] w-full bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700">
-                                {previewSrc ? <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-12 h-12 opacity-20" /></div>}
+                            <div className="bg-purple-50 dark:bg-purple-900/10 p-3 rounded-xl border border-purple-100 dark:border-purple-900/20">
+                                <p className="text-xs text-purple-700 dark:text-purple-300 leading-relaxed font-medium">Create a public view link for a view-only version of this design. Anyone with the link can see it.</p>
                             </div>
-                            <button onClick={handleCreatePublicLink} disabled={publicViewStatus === 'creating'} className="w-full py-3 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2">
-                                {publicViewStatus === 'creating' ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Create public view link'}
+                            <div className="aspect-[16/10] w-full bg-gray-50 dark:bg-gray-950 rounded-xl overflow-hidden border dark:border-gray-800 shadow-inner group relative">
+                                {previewSrc ? (
+                                    <img src={previewSrc} alt="Preview" className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <ImageIcon className="w-10 h-10 text-gray-300 dark:text-gray-700" />
+                                    </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                            </div>
+                            <button 
+                                onClick={handleCreatePublicLink} 
+                                disabled={publicViewStatus === 'creating'} 
+                                className="w-full py-3.5 bg-gradient-to-r from-[#8B3DFF] to-[#7a32e6] hover:shadow-purple-500/30 hover:shadow-lg text-white font-bold rounded-xl flex items-center justify-center gap-2.5 transition-all active:scale-[0.98]"
+                            >
+                                {publicViewStatus === 'creating' ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <span className="text-sm">Creating link...</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Globe className="w-4 h-4" />
+                                        <span className="text-sm">Create public view link</span>
+                                    </>
+                                )}
                             </button>
                         </>
                     ) : (
                         <>
-                            <div className="aspect-[3/2] w-full bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700">
+                            <div className="aspect-[16/10] w-full bg-gray-50 dark:bg-gray-950 rounded-xl overflow-hidden border dark:border-gray-800 shadow-md">
                                 {previewSrc && <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" />}
                             </div>
-                            <div className="space-y-3">
-                                <label className="text-sm font-bold dark:text-white">Public view link</label>
+                            <div className="space-y-2.5 bg-white dark:bg-gray-900/50 p-3 rounded-xl border dark:border-gray-800">
+                                <label className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block">Your link is ready</label>
                                 <div className="flex gap-2">
-                                    <input type="text" readOnly value={publicLink} className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-950 border dark:border-gray-800 rounded-xl text-sm" />
-                                    <button onClick={() => { navigator.clipboard.writeText(publicLink); setIsCopying(true); setTimeout(() => setIsCopying(false), 2000); }} className="px-4 py-2 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl text-sm">
+                                    <input 
+                                        type="text" 
+                                        readOnly 
+                                        value={publicLink} 
+                                        className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-950 border-none rounded-lg text-xs font-medium focus:ring-0" 
+                                    />
+                                    <button 
+                                        onClick={() => { navigator.clipboard.writeText(publicLink); setIsCopying(true); setTimeout(() => setIsCopying(false), 2000); }} 
+                                        className={`px-4 py-2 ${isCopying ? 'bg-green-500' : 'bg-[#8B3DFF] hover:bg-[#7a32e6]'} text-white font-bold rounded-lg text-xs transition-all shadow-sm active:scale-95`}
+                                    >
                                         {isCopying ? <Check className="w-4 h-4" /> : 'Copy'}
                                     </button>
                                 </div>
+                            </div>
+                            <div className="p-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Settings</span>
+                                <button className="text-xs font-bold text-[#8B3DFF] hover:underline">Manage link</button>
                             </div>
                         </>
                     )}
@@ -759,139 +794,168 @@ const ExportManager = ({
     const renderPresentAndRecordView = () => (
         <div className="flex flex-col h-full animate-fadeIn">
             <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
-                <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500 transition-colors"><ArrowLeft className="w-5 h-5" /></button>
                 <h2 className="font-bold text-base dark:text-white">Present and record</h2>
             </div>
-            <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
-                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Record yourself while talking over a presentation. Share with students, friends, or colleagues using a public view link.</p>
+            <div className="p-4 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
+                <div className="bg-orange-50 dark:bg-orange-900/10 p-3.5 rounded-xl border border-orange-100 dark:border-orange-900/20 flex gap-3">
+                    <VideoIcon className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
+                    <p className="text-xs text-orange-700 dark:text-orange-300 leading-relaxed font-medium">Record yourself while talking over a presentation. Perfect for sharing with students or colleagues.</p>
+                </div>
 
-                {/* Preview */}
-                <div className="w-full aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700 relative">
+                {/* Preview with Glass Overlay */}
+                <div className="w-full aspect-video bg-gray-100 dark:bg-gray-950 rounded-2xl overflow-hidden border dark:border-gray-800 relative shadow-lg group">
                     {previewSrc ? (
-                        <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" />
-                    ) : renderFinalCanvas ? (
+                        <img src={previewSrc} alt="Preview" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105" />
+                    ) : (
                         <div className="w-full h-full flex items-center justify-center">
                             <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
                         </div>
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                            <ImageIcon className="w-12 h-12 opacity-20" />
-                        </div>
                     )}
-                    {/* Small recording badge */}
-                    <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
-                        <div className="w-8 h-8 rounded-full bg-gray-300 overflow-hidden border-2 border-white shadow-sm">
+                    
+                    {/* Recording Preview Overlay */}
+                    <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    
+                    <div className="absolute bottom-4 left-4 flex items-center gap-2.5 p-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/20 shadow-xl">
+                        <div className="w-10 h-10 rounded-full bg-gray-300 overflow-hidden ring-2 ring-white/50 shadow-sm transition-transform duration-300 group-hover:scale-110">
                             <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.displayName || 'User'}`} alt="" className="w-full h-full object-cover" />
                         </div>
-                        <span className="text-[9px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded shadow-sm">Recording</span>
+                        <div className="pr-3">
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Studio Preview</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <button
-                    onClick={() => {
-                        onClose();
-                        if (onStartRecordingStudio) onStartRecordingStudio();
-                    }}
-                    className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all text-sm"
-                >
-                    Go to recording studio
-                </button>
+                <div className="space-y-4">
+                    <button
+                        onClick={() => {
+                            onClose();
+                            if (onStartRecordingStudio) onStartRecordingStudio();
+                        }}
+                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-[#8B3DFF] hover:shadow-purple-500/40 hover:shadow-xl text-white font-bold rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-[0.97] group"
+                    >
+                        <MonitorPlay className="w-5 h-5 group-hover:animate-bounce" />
+                        <span className="text-sm">Go to recording studio</span>
+                    </button>
+                    
+                    <div className="flex items-center justify-center gap-6 py-2">
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
+                                <Mic className="w-4 h-4" />
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">Audio</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
+                                <LayoutGrid className="w-4 h-4" />
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">Notes</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
+                                <ImageIcon className="w-4 h-4" />
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">Frames</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
 
     const renderPresentView = () => {
         const modes = [
-            { id: 'fullscreen', label: 'Present full screen', desc: 'Present full screen at your own pace', icon: Maximize },
-            { id: 'presenter', label: 'Presenter view', desc: 'View with speaker notes', icon: MonitorPlay },
-            { id: 'present_and_record', label: 'Present and record', desc: 'Record while presenting', icon: VideoIcon },
+            { id: 'fullscreen', label: 'Full screen', desc: 'Present at your own pace', icon: Maximize },
+            { id: 'presenter', label: 'Presenter', desc: 'View with speaker notes', icon: MonitorPlay },
+            { id: 'present_and_record', label: 'Record', desc: 'Record while presenting', icon: VideoIcon },
             { id: 'autoplay', label: 'Autoplay', desc: 'Auto-advance slides', icon: Play },
         ];
 
         return (
             <div className="flex flex-col h-full animate-fadeIn">
                 <div className="flex items-center px-4 py-3 border-b dark:border-gray-800">
-                    <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500"><ArrowLeft className="w-5 h-5" /></button>
+                    <button onClick={() => setView('share_design')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg mr-2 text-gray-500 transition-colors"><ArrowLeft className="w-5 h-5" /></button>
                     <h2 className="font-bold text-base dark:text-white">Present</h2>
                 </div>
-                <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
-                    {/* Mode Options */}
-                    <div className="grid grid-cols-4 gap-2">
+                <div className="p-4 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
+                    {/* Mode Options Grid - 2x2 for better touch/mobile targets */}
+                    <div className="grid grid-cols-2 gap-3">
                         {modes.map(m => {
                             const Icon = m.icon;
+                            const isActive = presentMode === m.id;
                             return (
                                 <button
                                     key={m.id}
                                     onClick={() => setPresentMode(m.id)}
-                                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all ${presentMode === m.id ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                    className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all duration-300 ${isActive ? 'border-[#8B3DFF] bg-purple-50 dark:bg-purple-900/10 shadow-md scale-[1.02]' : 'border-transparent bg-gray-50 dark:bg-gray-950 hover:bg-gray-100 dark:hover:bg-gray-900'}`}
                                 >
-                                    <div className={`w-11 h-11 flex items-center justify-center rounded-full border transition-all ${presentMode === m.id ? 'border-purple-500 bg-purple-100 dark:bg-purple-900/30 text-purple-600' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                                    <div className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all ${isActive ? 'bg-[#8B3DFF] text-white shadow-lg' : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 shadow-sm'}`}>
                                         <Icon className="w-5 h-5" />
                                     </div>
-                                    <span className={`text-[9px] font-medium text-center leading-tight ${presentMode === m.id ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>{m.label}</span>
+                                    <div className="flex flex-col items-center">
+                                        <span className={`text-[10px] font-bold uppercase tracking-tight ${isActive ? 'text-[#8B3DFF]' : 'text-gray-500 dark:text-gray-400'}`}>{m.label}</span>
+                                    </div>
                                 </button>
                             );
                         })}
                     </div>
 
-                    {/* Dots indicator */}
-                    <div className="flex items-center justify-center gap-1.5 py-1">
-                        {modes.map(m => (
-                            <div key={m.id} className={`w-1.5 h-1.5 rounded-full transition-all ${presentMode === m.id ? 'bg-purple-500 w-3' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                        ))}
-                    </div>
-
-                    {/* Preview */}
-                    <div className="w-full aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border dark:border-gray-700">
+                    {/* Preview Area */}
+                    <div className="w-full aspect-video bg-gray-50 dark:bg-gray-950 rounded-2xl overflow-hidden border dark:border-gray-800 relative shadow-inner">
                         {previewSrc ? (
                             <img src={previewSrc} alt="Preview" className="w-full h-full object-contain" />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                                <ImageIcon className="w-12 h-12 opacity-20" />
+                                <ImageIcon className="w-10 h-10 text-gray-200 dark:text-gray-800" />
                             </div>
                         )}
+                        <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/60 to-transparent">
+                            <p className="text-[10px] text-white font-medium line-clamp-1 opacity-90">
+                                {modes.find(m => m.id === presentMode)?.desc}
+                            </p>
+                        </div>
                     </div>
 
-                    {/* Description */}
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {modes.find(m => m.id === presentMode)?.desc}
-                    </p>
-
-                    {/* Present Button */}
-                    <button
-                        onClick={async () => {
-                            onClose();
-                            if (presentMode === 'present_and_record') {
-                                if (onStartRecordingStudio) onStartRecordingStudio();
-                            } else if (presentMode === 'presenter') {
-                                // Auto-save design if no designId exists
-                                let did = typeof designId === 'string' && designId ? designId : '';
-                                if (!did) {
-                                    try {
-                                        const currentState = {
-                                            pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
-                                            activePageId,
-                                            canvasSize,
-                                            adjustments,
-                                            lastModified: Date.now()
-                                        };
-                                        did = await FirebaseSyncService.createDesign(currentState, user?.uid);
-                                        if (onDesignIdGenerated) onDesignIdGenerated(did);
-                                    } catch (err) {
-                                        console.error('Failed to save design for presenter:', err);
-                                        alert('Failed to save design. Please try again.');
-                                        return;
+                    {/* Action Button */}
+                    <div className="pt-2">
+                        <button
+                            onClick={async () => {
+                                onClose();
+                                if (presentMode === 'present_and_record') {
+                                    if (onStartRecordingStudio) onStartRecordingStudio();
+                                } else if (presentMode === 'presenter') {
+                                    let did = typeof designId === 'string' && designId ? designId : '';
+                                    if (!did) {
+                                        try {
+                                            const currentState = {
+                                                pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p),
+                                                activePageId,
+                                                canvasSize,
+                                                adjustments,
+                                                lastModified: Date.now()
+                                            };
+                                            did = await FirebaseSyncService.createDesign(currentState, user?.uid);
+                                            if (onDesignIdGenerated) onDesignIdGenerated(did);
+                                        } catch (err) {
+                                            console.error('Failed to save design for presenter:', err);
+                                            alert('Failed to save design. Please try again.');
+                                            return;
+                                        }
                                     }
+                                    window.open(`/presenter/${did}`, '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
+                                } else {
+                                    if (onStartPresentation) onStartPresentation(presentMode);
                                 }
-                                window.open(`/presenter/${did}`, '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
-                            } else {
-                                if (onStartPresentation) onStartPresentation(presentMode);
-                            }
-                        }}
-                        className="w-full py-3.5 bg-[#8B3DFF] hover:bg-[#7a32e6] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all text-sm"
-                    >
-                        Present
-                    </button>
+                            }}
+                            className="w-full py-4 bg-gradient-to-r from-[#8B3DFF] to-[#7a32e6] hover:shadow-purple-500/40 hover:shadow-xl text-white font-bold rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-[0.97]"
+                        >
+                            <Presentation className="w-5 h-5" />
+                            <span className="text-sm">Enter Presentation</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -900,7 +964,7 @@ const ExportManager = ({
     return (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center pointer-events-none">
             <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
-            <div className="absolute top-14 right-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[320px] rounded-xl shadow-2xl overflow-hidden border dark:border-gray-800 shadow-black/20 animate-slideDown flex flex-col" style={{ height: 'auto', maxHeight: 'calc(100vh - 100px)' }}>
+            <div className="absolute top-14 right-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[calc(100vw-32px)] sm:w-[360px] rounded-2xl shadow-2xl overflow-hidden border dark:border-gray-800 shadow-black/20 animate-slideDown flex flex-col" style={{ height: 'auto', maxHeight: 'calc(100vh - 100px)' }}>
                 {view === 'share_design' ? renderShareDesignView() :
                     view === 'share' ? renderShareView() :
                         view === 'public_view_link' ? renderPublicViewLinkView() :
@@ -910,12 +974,17 @@ const ExportManager = ({
             </div>
             <style>{`
                 @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .animate-slideDown { animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-                .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
-                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-                .dark.custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+                @keyframes fadeIn { from { opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                .animate-slideDown { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+                .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
+                .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+                .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+                
+                @media (max-width: 640px) {
+                    .animate-slideDown { transform-origin: top right; }
+                }
             `}</style>
 
             <LinkCopiedPopup

@@ -400,7 +400,7 @@ const PresentAndRecordStudio = ({
                 .prs-is-setup .prs-topbar, .prs-is-setup .prs-content { filter: blur(15px); pointer-events: none; opacity: 0.5; transition: all 0.5s ease; }
                 
                 /* Topbar Styling */
-                .prs-topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: rgba(15, 17, 26, 0.8); backdrop-blur: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); z-index: 100; }
+                .prs-topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: rgba(15, 17, 26, 0.8); backdrop-blur: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); z-index: 100; flex-wrap: wrap; }
                 .prs-brand { display: flex; align-items: center; gap: 15px; }
                 .prs-logo { width: 36px; height: 36px; background: linear-gradient(135deg, #7c3aed, #4f46e5); border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); }
                 .prs-logo-text { font-size: 18px; font-weight: 900; letter-spacing: -0.5px; }
@@ -419,8 +419,8 @@ const PresentAndRecordStudio = ({
                 .prs-stop-icon { width: 10px; height: 10px; background: white; border-radius: 2px; }
 
                 /* Sidebar Styling */
-                .prs-content { flex: 1; display: flex; overflow: hidden; background: radial-gradient(circle at center, #1a1c2e 0%, #0f111a 100%); }
-                .prs-left-sidebar { width: 180px; display: flex; flex-direction: column; padding: 30px 20px; border-right: 1px solid rgba(255,255,255,0.03); }
+                .prs-content { flex: 1; display: flex; overflow: hidden; background: radial-gradient(circle at center, #1a1c2e 0%, #0f111a 100%); transition: flex-direction 0.3s ease; }
+                .prs-left-sidebar { width: 180px; display: flex; flex-direction: column; padding: 30px 20px; border-right: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
                 .prs-recording-badge { background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 9px; font-weight: 900; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(239, 68, 68, 0.2); }
                 .prs-rec-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; animation: pulse 1.5s infinite; }
                 @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
@@ -435,11 +435,11 @@ const PresentAndRecordStudio = ({
                 .prs-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
 
                 /* Stage Styling */
-                .prs-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; }
+                .prs-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; min-width: 0; }
                 .prs-main-stage { position: relative; width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 25px; }
                 .prs-canvas-container { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
                 .prs-canvas { width: 100%; height: 100%; object-fit: contain; }
-                .prs-camera-overlay { position: absolute; bottom: 30px; left: 30px; width: 180px; height: 180px; border-radius: 50%; overflow: hidden; border: 4px solid #8B3DFF; box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 50; }
+                .prs-camera-overlay { position: absolute; bottom: 5%; left: 5%; width: 20%; aspect-ratio: 1/1; border-radius: 50%; overflow: hidden; border: 4px solid #8B3DFF; box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 50; }
                 .prs-camera-overlay video { width: 100%; height: 100%; object-fit: cover; }
 
                 .prs-page-nav-overlay { display: flex; align-items: center; justify-content: center; gap: 15px; }
@@ -449,7 +449,7 @@ const PresentAndRecordStudio = ({
                 .prs-page-pill { padding: 8px 24px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 99px; font-size: 13px; font-weight: 800; color: #a78bfa; }
 
                 /* Notes Styling */
-                .prs-right-sidebar { width: 280px; display: flex; flex-direction: column; padding: 30px 20px; border-left: 1px solid rgba(255,255,255,0.03); }
+                .prs-right-sidebar { width: 280px; display: flex; flex-direction: column; padding: 30px 20px; border-left: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
                 .prs-notes-pane { flex: 1; display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
                 .prs-notes-header { padding: 15px 20px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
                 .prs-notes-textarea { flex: 1; background: transparent; border: none; color: rgba(255,255,255,0.8); outline: none; resize: none; line-height: 1.8; padding: 20px; font-family: 'Outfit', sans-serif; }
@@ -460,15 +460,15 @@ const PresentAndRecordStudio = ({
                 .prs-overlay { position: absolute; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
                 .prs-setup-bg { background: rgba(15, 17, 26, 0.9); }
                 .card-glass { background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 30px 80px rgba(0,0,0,0.8); border-radius: 32px; overflow: hidden; }
-                .prs-setup-card { width: 440px; padding: 40px; }
+                .prs-setup-card { width: 90%; max-width: 440px; padding: 30px; }
                 .prs-setup-header { text-align: center; margin-bottom: 30px; }
                 .prs-setup-icon-box { width: 64px; height: 64px; background: rgba(124, 58, 237, 0.1); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
                 .prs-setup-header h3 { font-size: 24px; font-weight: 900; margin-bottom: 8px; }
 
                 .prs-input-config { display: flex; flex-direction: column; gap: 20px; margin-bottom: 30px; }
                 .prs-custom-select { position: relative; }
-                .prs-select-trigger { width: 100%; padding: 14px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; color: white; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; }
-                .prs-select-options { position: absolute; bottom: 100%; left: 0; right: 0; background: #2a2a3e; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; max-height: 150px; overflow-y: auto; z-index: 50; margin-bottom: 8px; }
+                .prs-select-trigger { width: 100%; padding: 14px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; color: white; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .prs-select-options { position: absolute; bottom: 100%; left: 0; right: 0; background: #2a2a3e; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; max-height: 200px; overflow-y: auto; z-index: 50; margin-bottom: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
                 .prs-select-options button { width: 100%; padding: 12px 20px; background: transparent; border: none; color: white; text-align: left; cursor: pointer; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
                 .prs-select-options button:hover { background: rgba(124, 58, 237, 0.1); }
                 
@@ -477,30 +477,60 @@ const PresentAndRecordStudio = ({
 
                 .prs-error-alert { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #ef4444; }
 
-                .prs-btn-primary { width: 100%; padding: 16px; background: #7c3aed; color: white; font-weight: 800; border-radius: 16px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4); margin-bottom: 15px; }
+                .prs-btn-primary { width: 100%; padding: 16px; background: #7c3aed; color: white; font-weight: 800; border-radius: 16px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4); margin-bottom: 15px; transition: all 0.2s; }
+                .prs-btn-primary:hover { background: #6d28d9; transform: translateY(-2px); }
                 .prs-btn-ghost { width: 100%; background: transparent; border: none; color: rgba(255,255,255,0.4); font-weight: 700; cursor: pointer; font-size: 12px; }
                 
                 /* Countdown */
-                .prs-countdown-circle { width: 220px; height: 220px; border-radius: 50%; background: rgba(124, 58, 237, 0.1); border: 4px solid #7c3aed; display: flex; align-items: center; justify-content: center; }
-                .prs-countdown-val { font-size: 100px; font-weight: 900; background: linear-gradient(to bottom, #fff, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+                .prs-countdown-circle { width: 180px; height: 180px; border-radius: 50%; background: rgba(124, 58, 237, 0.1); border: 4px solid #7c3aed; display: flex; align-items: center; justify-content: center; }
+                .prs-countdown-val { font-size: 80px; font-weight: 900; background: linear-gradient(to bottom, #fff, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
                 /* Processing */
-                .prs-loader-box { text-align: center; }
-                .prs-ring-container { position: relative; width: 120px; height: 120px; margin: 0 auto 30px; }
+                .prs-loader-box { text-align: center; width: 90%; }
+                .prs-ring-container { position: relative; width: 100px; height: 100px; margin: 0 auto 30px; }
                 .prs-ring { position: absolute; inset: 0; border: 4px solid rgba(124, 58, 237, 0.1); border-top-color: #7c3aed; border-radius: 50%; animation: spin 2s linear infinite; }
-                .prs-ring-inner { position: absolute; inset: 15px; border: 4px solid rgba(236, 72, 153, 0.1); border-bottom-color: #ec4899; border-radius: 50%; animation: spin 1s linear reverse infinite; }
-                .prs-load-percent { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; }
+                .prs-ring-inner { position: absolute; inset: 12px; border: 4px solid rgba(236, 72, 153, 0.1); border-bottom-color: #ec4899; border-radius: 50%; animation: spin 1s linear reverse infinite; }
+                .prs-load-percent { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 900; }
                 @keyframes spin { to { transform: rotate(360deg); } }
 
                 /* Done Card */
-                .prs-done-card { width: 440px; padding: 40px; }
+                .prs-done-card { width: 90%; max-width: 440px; padding: 30px; }
                 .prs-done-header { text-align: center; margin-bottom: 30px; }
                 .prs-success-icon { margin-bottom: 20px; }
-                .prs-preview-placeholder { height: 160px; background: rgba(0,0,0,0.3); border-radius: 20px; border: 1px dashed rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 30px; }
+                .prs-preview-placeholder { height: 140px; background: rgba(0,0,0,0.3); border-radius: 20px; border: 1px dashed rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 30px; }
                 .prs-btn-secondary { background: rgba(255,255,255,0.05); color: white; padding: 12px; border-radius: 12px; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); }
                 .prs-btn-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 12px; border-radius: 12px; font-weight: 700; cursor: pointer; border: 1px solid rgba(239, 68, 68, 0.2); }
                 
                 .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+                /* Responsive */
+                @media (max-width: 1024px) {
+                    .prs-left-sidebar { width: 140px; padding: 20px 15px; }
+                    .prs-right-sidebar { width: 220px; padding: 20px 15px; }
+                    .prs-topbar { padding: 0 20px; height: 64px; }
+                }
+
+                @media (max-width: 768px) {
+                    .prs-content { flex-direction: column; overflow-y: auto; }
+                    .prs-left-sidebar, .prs-right-sidebar { width: 100%; border: none; padding: 15px 20px; flex-shrink: 0; }
+                    .prs-left-sidebar { order: 2; height: auto; }
+                    .prs-center { order: 1; padding: 20px; flex: none; height: auto; }
+                    .prs-right-sidebar { order: 3; height: 400px; }
+                    .prs-topbar { height: auto; padding: 12px 20px; gap: 10px; }
+                    .prs-topbar-controls { margin-left: auto; }
+                    .prs-brand { flex: 1; }
+                    .prs-timer-container { font-size: 14px; padding: 4px 12px; }
+                    .prs-timer { font-size: 16px; }
+                    .prs-camera-overlay { width: 80px; height: 80px; }
+                    .prs-thumbnail-card { display: none; }
+                }
+
+                @media (max-width: 480px) {
+                    .prs-topbar { flex-direction: column; align-items: flex-start; }
+                    .prs-topbar-controls { width: 100%; justify-content: space-between; }
+                    .prs-control-btn { padding: 8px 12px; flex: 1; justify-content: center; }
+                    .prs-timer-container { align-self: center; margin: 5px 0; }
+                }
             `}</style>
         </div>,
         document.body

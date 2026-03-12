@@ -415,6 +415,52 @@ const PresentationViewer = ({
                     text-align: center;
                     letter-spacing: 0.5px;
                 }
+
+                /* Responsive Design */
+                @media (max-width: 768px) {
+                    .pv-toolbar {
+                        height: auto;
+                        padding: 12px;
+                        flex-direction: column;
+                        gap: 12px;
+                    }
+                    .pv-toolbar-left, .pv-toolbar-right {
+                        width: 100%;
+                        justify-content: center;
+                    }
+                    .pv-nav-hint {
+                        width: 50px;
+                    }
+                    .pv-nav-hint svg {
+                        width: 24px;
+                        height: 24px;
+                    }
+                    .pv-canvas-img {
+                        max-height: calc(100vh - 160px);
+                    }
+                }
+
+                @media (max-width: 480px) {
+                    .pv-toolbar-right {
+                        display: grid;
+                        grid-template-columns: repeat(4, 1fr);
+                        gap: 4px;
+                    }
+                    .pv-toolbar-btn {
+                        width: 100%;
+                    }
+                }
+
+                /* Premium Polish */
+                .pv-toolbar {
+                    background: rgba(10, 10, 15, 0.85);
+                    backdrop-filter: blur(25px) saturate(200%);
+                    -webkit-backdrop-filter: blur(25px) saturate(200%);
+                    border-top: 1px solid rgba(255,255,255,0.1);
+                }
+                .pv-viewer {
+                    background: radial-gradient(circle at center, #111122 0%, #000 100%);
+                }
             `}</style>
         </div>,
         document.body

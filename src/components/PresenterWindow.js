@@ -2149,6 +2149,46 @@ const presenterStyles = `
         75% { transform: translate(-3px, 3px); }
     }
 
+    /* === RESPONSIVE DESIGN === */
+    @media (max-width: 1024px) {
+        .pw-sidebar { width: 260px; }
+        .pw-thumbnails { height: 80px; }
+        .pw-thumb { width: 80px; height: 56px; }
+    }
+
+    @media (max-width: 768px) {
+        .pw-body { flex-direction: column; }
+        .pw-sidebar { 
+            width: 100%; height: 280px; 
+            border-left: none; border-top: 1px solid rgba(255,255,255,0.06); 
+        }
+        .pw-topbar { padding: 0 12px; height: auto; min-height: 48px; flex-wrap: wrap; gap: 8px; justify-content: center; }
+        .pw-topbar-left, .pw-topbar-tools { justify-content: center; width: 100%; }
+        .pw-slide-container { padding: 10px; }
+        .pw-nav-arrow { width: 36px; height: 36px; }
+        .pw-magic-popup { right: 10px; top: 100px; width: 160px; }
+        .pw-drawing-toolbar { right: 10px; top: 100px; }
+    }
+
+    @media (max-width: 480px) {
+        .pw-clock, .pw-timer { font-size: 16px; }
+        .pw-voice-badge { display: none; }
+        .pw-tool-btn { width: 32px; height: 32px; }
+        .pw-page-num { font-size: 11px; }
+        .pw-bottom-left { gap: 2px; }
+        .pw-thumbnails { height: 60px; padding: 4px 8px; }
+        .pw-thumb { width: 60px; height: 42px; }
+    }
+
+    /* Premium Glassmorphism Improvements */
+    .pw-topbar, .pw-bottombar, .pw-thumbnails, .pw-sidebar {
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+    }
+    
+    .pw-root {
+        background: radial-gradient(circle at top right, #1e1e3f, #0f0f1e);
+    }
 `;
 
 export default PresenterWindow;

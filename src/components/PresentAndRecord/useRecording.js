@@ -1,11 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { getBestAudioDevice } from '../../utils/audioUtils';
+import agoraVoiceService from '../../services/AgoraVoiceService';
+import LocalRecordingsService from '../../services/LocalRecordingsService';
 
 /**
  * Custom hook for handling full studio recording (Screen Capture + Audio Mixing).
  * Captures everything in the browser tab and mixes microphone audio reliably.
  */
-const useRecording = () => {
+const useRecording = (user = null) => {
     const [phase, setPhase] = useState('setup');
     const [elapsedTime, setElapsedTime] = useState(0);
     const [countdownValue, setCountdownValue] = useState(3);
@@ -157,8 +159,16 @@ const useRecording = () => {
             const constraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
             try {
-                // Check if localStream already exists (e.g. from PresenterWindow mic)
-                if (window.localStream && window.localStream.getAudioTracks().length > 0) {
+                // Use Agora for high-quality mic capture
+                const channelName = `record_${Date.now()}`;
+                const success = await agoraVoiceService.startHost(channelName, selectedMicrophone);
+                
+                if (success && agoraVoiceService.localAudioTrack) {
+                    // Create a MediaStream from the Agora track
+                    const track = agoraVoiceService.localAudioTrack.getMediaStreamTrack();
+                    micStream = new MediaStream([track]);
+                    console.log('[Recorder] Agora high-quality mic captured');
+                } else if (window.localStream && window.localStream.getAudioTracks().length > 0) {
                     micStream = window.localStream;
                     console.log('Using existing localStream for recording audio track.');
                 } else if (selectedMicrophone && selectedMicrophone !== 'none') {
@@ -239,34 +249,48 @@ const useRecording = () => {
                 if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
             };
 
-            recorder.onstop = () => {
+            recorder.onstop = async () => {
                 setPhase('processing');
+                
+                // Stop Agora service
+                await agoraVoiceService.stop();
+
                 [displayStreamRef, micStreamRef, combinedStreamRef, cameraStreamRef].forEach(ref => {
                     if (ref.current) {
-                        // CRITICAL: Do NOT stop tracks if they belong to window.localStream
-                        // because they are needed for the live broadcast!
                         if (ref.current !== window.localStream) {
                             ref.current.getTracks().forEach(t => {
                                 console.log('[Recorder] Stopping track:', t.label);
                                 t.stop();
                             });
-                        } else {
-                            console.log('[Recorder] Keeping window.localStream tracks alive for broadcast.');
                         }
                         ref.current = null;
                     }
                 });
-                let progress = 0;
-                const interval = setInterval(() => {
-                    progress += 10;
-                    setProcessingProgress(progress);
-                    if (progress >= 100) {
-                        clearInterval(interval);
-                        const finalBlob = new Blob(chunksRef.current, { type: mimeType });
-                        setRecordedBlob(finalBlob);
+
+                const finalBlob = new Blob(chunksRef.current, { type: mimeType });
+                setRecordedBlob(finalBlob);
+                setProcessingProgress(70);
+
+                // Save recordings locally
+                const saveLocally = async () => {
+                    try {
+                        const finalUser = user || JSON.parse(localStorage.getItem('user'));
+                        const currentUserId = finalUser?.uid || 'guest';
+                        
+                        // Save Locally as the only storage
+                        await LocalRecordingsService.saveRecording(finalBlob, currentUserId);
+                        console.log('[Recorder] Successfully saved to local database (IndexedDB)');
+                        
+                        setProcessingProgress(100);
+                        setTimeout(() => setPhase('done'), 500);
+                    } catch (err) {
+                        console.error('[Recorder] Failed to save recording:', err);
+                        setProcessingProgress(100);
                         setPhase('done');
                     }
-                }, 100);
+                };
+
+                saveLocally();
             };
 
             recorder.start(1000);

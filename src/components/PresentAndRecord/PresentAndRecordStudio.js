@@ -15,7 +15,8 @@ const PresentAndRecordStudio = ({
     adjustments,
     renderFinalCanvas,
     onClose,
-    darkMode
+    darkMode,
+    user
 }) => {
     const {
         phase, setPhase,
@@ -31,7 +32,7 @@ const PresentAndRecordStudio = ({
         pauseRecording, resumeRecording, stopRecording,
         downloadRecording, discardRecording,
         cleanup, formatTime
-    } = useRecording();
+    } = useRecording(user);
 
     const [notes, setNotes] = useState({});
     const [showCameraDropdown, setShowCameraDropdown] = useState(false);

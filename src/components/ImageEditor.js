@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { threeDElements } from '../data/threeDElements';
 import { framesElements } from '../data/framesElements';
@@ -23,6 +23,7 @@ import FirebaseSyncService from '../services/FirebaseSyncService';
 import AccessDenied from './AccessDenied';
 import imageCompression from 'browser-image-compression';
 import { uploadToCloudinary } from '../services/cloudinary';
+import LocalRecordingsService from '../services/LocalRecordingsService';
 
 const {
     Type,
@@ -105,7 +106,9 @@ const {
     FolderKanban,
     Crown,
     Move,
-    RefreshCw
+    RefreshCw,
+    Pause,
+    Upload
 } = LucideIcons;
 
 // ImageEditor component continues...
@@ -200,6 +203,12 @@ const ImageEditor = ({
     const [collaborators, setCollaborators] = useState([]);
     const userColor = useRef(`#${Math.floor(Math.random() * 16777215).toString(16)}`).current;
     const lastPresenceUpdate = useRef(0);
+
+    // Audio Recordings State
+    const [audioRecordings, setAudioRecordings] = useState([]);
+    const [audioLoading, setAudioLoading] = useState(false);
+    const [playingAudioId, setPlayingAudioId] = useState(null);
+    const audioRef = useRef(new Audio());
 
 
     useEffect(() => {
@@ -411,6 +420,51 @@ const ImageEditor = ({
         };
         fetchUserProjects();
     }, [activeTab, user?.uid]);
+
+    // Fetch user audio recordings when Uploads tab is opened
+    useEffect(() => {
+        const fetchAudioRecordings = async () => {
+            if (activeTab === 'uploads' && !audioLoading) {
+                setAudioLoading(true);
+                try {
+                    const currentUserId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
+                    const localRecordings = await LocalRecordingsService.getRecordings(currentUserId);
+                    setAudioRecordings(localRecordings);
+                } catch (error) {
+                    console.error('Failed to fetch audio recordings:', error);
+                } finally {
+                    setAudioLoading(false);
+                }
+            }
+        };
+        fetchAudioRecordings();
+    }, [activeTab, user?.uid]);
+
+    const handlePlayAudio = (recording) => {
+        if (playingAudioId === recording.id) {
+            audioRef.current.pause();
+            setPlayingAudioId(null);
+        } else {
+            audioRef.current.src = recording.url;
+            audioRef.current.play();
+            setPlayingAudioId(recording.id);
+            audioRef.current.onended = () => setPlayingAudioId(null);
+        }
+    };
+
+    const handleDeleteAudio = async (recording) => {
+        if (!recording?.id) return;
+        if (window.confirm('Are you sure you want to delete this recording?')) {
+            try {
+                const success = await LocalRecordingsService.deleteRecording(recording.id);
+                if (success) {
+                    setAudioRecordings(prev => prev.filter(r => r.id !== recording.id));
+                }
+            } catch (error) {
+                console.error('Failed to delete audio recording:', error);
+            }
+        }
+    };
 
     // Function to handle project deletion
     const handleDeleteProject = async (projectId) => {
@@ -2877,6 +2931,7 @@ const ImageEditor = ({
                     renderFinalCanvas={renderFinalCanvas}
                     onClose={() => setShowRecordingStudio(false)}
                     darkMode={darkMode}
+                    user={user}
                 />
             )}
 
@@ -2908,6 +2963,7 @@ const ImageEditor = ({
                         <TabButton id="brand" icon={Box} label="Brand" premium />
                         <TabButton id="forms" icon={FileText} label="Forms" />
                         <TabButton id="projects" icon={FolderKanban} label="Projects" />
+                        <TabButton id="uploads" icon={Upload} label="Uploads" />
                         {/* <button
                             onClick={enterCropMode}
                             className={`group relative flex flex-col items-center justify-center w-full py-1.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
@@ -3975,6 +4031,64 @@ const ImageEditor = ({
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        )}
+                        {activeTab === 'uploads' && (
+                            <div className="animate-fadeIn space-y-4">
+                                <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Uploads</h3>
+                                
+                                <div className="space-y-4">
+                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Audio Recordings</h4>
+                                    
+                                    {audioLoading ? (
+                                        <div className="flex flex-col items-center justify-center py-8">
+                                            <Loader2 className="w-6 h-6 text-purple-500 animate-spin mb-2" />
+                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading recordings...</p>
+                                        </div>
+                                    ) : audioRecordings.length === 0 ? (
+                                        <div className={`p-6 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'} flex flex-col items-center justify-center text-center`}>
+                                            <Music className="w-8 h-8 mb-2 opacity-20" />
+                                            <p className="text-[10px] font-bold">No recordings found<br />Record one in the studio!</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {audioRecordings.map(recording => (
+                                                <div 
+                                                    key={recording.id} 
+                                                    className={`p-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} shadow-sm flex items-center justify-between group`}
+                                                >
+                                                    <div className="flex items-center gap-3 overflow-hidden">
+                                                        <div className={`w-8 h-8 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-purple-50'} flex items-center justify-center flex-shrink-0`}>
+                                                            <Music className="w-4 h-4 text-purple-600" />
+                                                        </div>
+                                                        <div className="overflow-hidden">
+                                                            <p className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                {recording.name || `Recording ${new Date(recording.createdAt).toLocaleDateString()}`}
+                                                            </p>
+                                                            <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                {new Date(recording.createdAt).toLocaleTimeString()}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button 
+                                                            onClick={() => handlePlayAudio(recording)}
+                                                            className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 ${playingAudioId === recording.id ? 'text-purple-600' : 'text-gray-500'}`}
+                                                        >
+                                                            {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDeleteAudio(recording)}
+                                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500"
+                                                        >
+                                                            <Trash className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                         {activeTab === 'projects' && (

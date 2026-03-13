@@ -1,4 +1,4 @@
-import { db } from './firebase';
+import { db, storage } from './firebase';
 import {
     doc,
     setDoc,
@@ -13,6 +13,7 @@ import {
     getDocs,
     deleteDoc
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 class FirebaseSyncService {
     constructor() {
@@ -288,6 +289,8 @@ class FirebaseSyncService {
             console.error('Error clearing presence:', error);
         }
     }
+
+    // Audio recordings are now handled locally via LocalRecordingsService
 }
 
 const firebaseSyncService = new FirebaseSyncService();

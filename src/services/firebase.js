@@ -13,6 +13,7 @@ import {
 } from 'firebase/auth';
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -29,6 +30,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const analytics = getAnalytics(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Set persistence as default
 setPersistence(auth, browserLocalPersistence).catch((error) => {
@@ -226,4 +228,4 @@ export const getGoogleRedirectResult = async () => {
     return { user: null, error: null };
 };
 
-export { auth, db };
+export { auth, db, storage };

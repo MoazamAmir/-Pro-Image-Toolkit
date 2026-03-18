@@ -889,7 +889,9 @@ const App = () => {
         a.href = conversionResult.url;
         const ext = conversionResult.name.split('.').pop();
         let name = customFileName.trim() || conversionResult.name;
-        if (customFileName.trim() && !customFileName.includes('.')) name = `${customFileName.trim()}.${ext}`;
+        if (customFileName.trim() && !customFileName.trim().toLowerCase().endsWith(`.${ext.toLowerCase()}`)) {
+          name = `${customFileName.trim()}.${ext}`;
+        }
         a.download = name;
         a.click();
         setShouldAutoDownload(false);
@@ -913,7 +915,9 @@ const App = () => {
     a.href = fileToDownload.url;
     const ext = selectedDownloadType || fileToDownload.name.split('.').pop();
     let name = customFileName.trim() || fileToDownload.name;
-    if (customFileName.trim() && !customFileName.includes('.')) name = `${customFileName.trim()}.${ext}`;
+    if (customFileName.trim() && !customFileName.trim().toLowerCase().endsWith(`.${ext.toLowerCase()}`)) {
+      name = `${customFileName.trim()}.${ext}`;
+    }
     a.download = name;
     a.click();
 

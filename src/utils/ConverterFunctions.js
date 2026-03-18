@@ -912,24 +912,65 @@ export const convertTextToPDF = async (file) => {
 export const extractThumbnail = (file, time = 1) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
-        video.src = URL.createObjectURL(file);
-        video.currentTime = time;
-        video.onloadeddata = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            canvas.toBlob((blob) => {
-                resolve({
-                    url: URL.createObjectURL(blob),
-                    name: `thumbnail-${time.toFixed(2)}s.jpg`,
-                    blob,
-                    type: 'image/jpeg',
-                    time: time
-                });
-            }, 'image/jpeg', 0.9);
+        const videoUrl = URL.createObjectURL(file);
+        
+        video.src = videoUrl;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+
+        // Set a timeout to avoid hanging
+        const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error('Thumbnail extraction timed out'));
+        }, 10000);
+
+        const cleanup = () => {
+            clearTimeout(timeout);
+            video.onseeked = null;
+            video.onerror = null;
+            video.onloadedmetadata = null;
+            URL.revokeObjectURL(videoUrl);
         };
-        video.onerror = () => reject(new Error('Failed to load video'));
+
+        video.onloadedmetadata = () => {
+            // Adjust time if it exceeds duration
+            const seekTime = Math.min(time, video.duration - 0.1);
+            video.currentTime = Math.max(0, seekTime);
+        };
+
+        video.onseeked = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                canvas.toBlob((blob) => {
+                    cleanup();
+                    if (blob) {
+                        resolve({
+                            url: URL.createObjectURL(blob),
+                            name: `thumbnail-${time.toFixed(2).replace('.', '_')}s.jpg`,
+                            blob,
+                            type: 'image/jpeg',
+                            time: time
+                        });
+                    } else {
+                        reject(new Error('Failed to create thumbnail blob'));
+                    }
+                }, 'image/jpeg', 0.9);
+            } catch (err) {
+                cleanup();
+                reject(err);
+            }
+        };
+
+        video.onerror = () => {
+            cleanup();
+            reject(new Error('Failed to load video for thumbnail extraction'));
+        };
     });
 };
 

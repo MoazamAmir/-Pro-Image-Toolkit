@@ -22,7 +22,7 @@ class LocalRecordingsService {
         });
     }
 
-    async saveRecording(blob, userId, name = null) {
+    async saveRecording(blob, userId, name = null, duration = 0) {
         try {
             const db = await this.openDB();
             const id = `local_${Date.now()}`;
@@ -31,7 +31,7 @@ class LocalRecordingsService {
                 userId,
                 name: name || `Local Recording ${new Date().toLocaleString()}`,
                 blob,
-                // Don't store the URL, as it's temporary
+                duration: duration || 0, // Store duration in seconds
                 createdAt: Date.now(),
                 isLocal: true
             };

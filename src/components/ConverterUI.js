@@ -1,5 +1,5 @@
 // src/components/ConverterUI.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, X, Download, CheckCircle, Settings, Zap, Edit2 } from 'lucide-react';
 import CropImageTool from './CropImageTool';
 import ToolDetailsPanel from './ToolDetailsPanel';
@@ -107,6 +107,39 @@ const ConverterUI = ({
     // State for live preview
     const [showComparison, setShowComparison] = useState(false);
     const [framePreviews, setFramePreviews] = useState([]);
+    const videoRef = useRef(null);
+
+    // Sync video preview with selected time
+    useEffect(() => {
+        const video = videoRef.current;
+        if (video && previewUrl && to === 'thumbnail') {
+            // Only update src if it changed
+            if (video.getAttribute('data-src') !== previewUrl) {
+                video.src = previewUrl;
+                video.setAttribute('data-src', previewUrl);
+            }
+            
+            const handleReady = () => {
+                video.currentTime = selectedTime;
+            };
+
+            if (video.readyState >= 1) {
+                video.currentTime = selectedTime;
+            } else {
+                video.addEventListener('loadedmetadata', handleReady);
+            }
+            
+            const handleLoadedMetadata = () => {
+                setVideoDuration(video.duration);
+            };
+            
+            video.addEventListener('loadedmetadata', handleLoadedMetadata);
+            return () => {
+                video.removeEventListener('loadedmetadata', handleReady);
+                video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+            };
+        }
+    }, [previewUrl, selectedTime, to, setVideoDuration]);
 
     // Check for project ID in URL and auto-open editor
     useEffect(() => {
@@ -130,46 +163,60 @@ const ConverterUI = ({
 
     // Generate frame previews for video thumbnail
     useEffect(() => {
+        let isMounted = true;
         if (to === 'thumbnail' && previewUrl && selectedFile && videoDuration > 0) {
             const generateFrames = async () => {
                 const video = document.createElement('video');
                 video.src = previewUrl;
+                video.muted = true;
+                video.playsInline = true;
                 video.crossOrigin = 'anonymous';
 
                 await new Promise((resolve) => {
                     video.onloadedmetadata = resolve;
+                    video.onerror = resolve; // Continue on error to allow cleanup
                 });
 
-                const frameCount = Math.min(15, Math.ceil(videoDuration)); // Max 15 frames
-                const interval = videoDuration / frameCount;
+                if (!isMounted) return;
+
+                const frameCount = Math.min(10, Math.ceil(videoDuration)); // Max 10 frames for better performance
+                const interval = (videoDuration - 0.5) / frameCount;
                 const frames = [];
 
                 for (let i = 0; i < frameCount; i++) {
-                    const time = i * interval;
+                    if (!isMounted) break;
+                    const time = Math.max(0.1, i * interval);
                     video.currentTime = time;
 
                     await new Promise((resolve) => {
-                        video.onseeked = () => {
+                        const onSeeked = () => {
+                            video.removeEventListener('seeked', onSeeked);
                             const canvas = document.createElement('canvas');
-                            canvas.width = video.videoWidth / 4; // Smaller for preview
+                            canvas.width = video.videoWidth / 4;
                             canvas.height = video.videoHeight / 4;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                             frames.push({
-                                url: canvas.toDataURL('image/jpeg', 0.7),
+                                url: canvas.toDataURL('image/jpeg', 0.6),
                                 time: time
                             });
                             resolve();
                         };
+                        video.addEventListener('seeked', onSeeked);
+                        // Add timeout for seeking
+                        setTimeout(resolve, 2000);
                     });
                 }
 
-                setFramePreviews(frames);
+                if (isMounted) {
+                    setFramePreviews(frames);
+                }
             };
 
             generateFrames();
         }
-    }, [previewUrl, selectedFile, to, videoDuration, activeConverter]);
+        return () => { isMounted = false; };
+    }, [previewUrl, selectedFile, to, videoDuration]);
 
     // Theme classes based on darkMode
     const theme = {
@@ -499,17 +546,10 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                                     Current Frame Preview
                                 </p>
                                 <video
-                                    ref={(video) => {
-                                        if (video && selectedFile) {
-                                            video.src = previewUrl;
-                                            video.currentTime = selectedTime;
-                                            video.onloadedmetadata = () => {
-                                                setVideoDuration(video.duration);
-                                                if (selectedTime === 0) setSelectedTime(0);
-                                            };
-                                        }
-                                    }}
+                                    ref={videoRef}
                                     className="w-full max-h-64 rounded-lg border-2 border-purple-500 shadow-lg"
+                                    muted
+                                    playsInline
                                 />
                             </div>
 

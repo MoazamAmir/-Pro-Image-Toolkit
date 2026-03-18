@@ -24,6 +24,8 @@ import AccessDenied from './AccessDenied';
 import imageCompression from 'browser-image-compression';
 import { uploadToCloudinary } from '../services/cloudinary';
 import LocalRecordingsService from '../services/LocalRecordingsService';
+import AudioTimeline from './AudioTimeline';
+import AudioRecorderModal from './AudioRecorderModal';
 
 const {
     Type,
@@ -54,6 +56,7 @@ const {
     ChevronDown,
     MoreHorizontal,
     Music,
+    Mic,
     Video,
     PieChart,
     Layout,
@@ -108,7 +111,9 @@ const {
     Move,
     RefreshCw,
     Pause,
-    Upload
+    Upload,
+    Wind,
+    Music2
 } = LucideIcons;
 
 // ImageEditor component continues...
@@ -209,6 +214,14 @@ const ImageEditor = ({
     const [audioLoading, setAudioLoading] = useState(false);
     const [playingAudioId, setPlayingAudioId] = useState(null);
     const audioRef = useRef(new Audio());
+
+    // Audio Timeline State
+    // Audio Timeline State (Per Page)
+    const [pageAudios, setPageAudios] = useState({}); // { [pageId]: tracks[] }
+    const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+    const [showUploadAudioMenu, setShowUploadAudioMenu] = useState(false);
+    const audioFileInputRef = useRef(null);
+    const [activeAudioTrackId, setActiveAudioTrackId] = useState(null);
 
 
     useEffect(() => {
@@ -421,6 +434,15 @@ const ImageEditor = ({
         fetchUserProjects();
     }, [activeTab, user?.uid]);
 
+    // Format time mm:ss
+    const fmt = (s) => {
+        if (s === 0) return '0:00';
+        if (!s || isNaN(s)) return '0:00';
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${sec.toString().padStart(2, '0')}`;
+    };
+
     // Fetch user audio recordings when Uploads tab is opened
     useEffect(() => {
         const fetchAudioRecordings = async () => {
@@ -429,7 +451,26 @@ const ImageEditor = ({
                 try {
                     const currentUserId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
                     const localRecordings = await LocalRecordingsService.getRecordings(currentUserId);
-                    setAudioRecordings(localRecordings);
+                    
+                    // Proactively calculate duration for any that are missing it (legacy)
+                    const updatedRecordings = await Promise.all(localRecordings.map(async (rec) => {
+                        if (!rec.duration || rec.duration === 0) {
+                            try {
+                                return new Promise((resolve) => {
+                                    const audio = new Audio(rec.url);
+                                    audio.addEventListener('loadedmetadata', () => {
+                                        resolve({ ...rec, duration: audio.duration });
+                                    });
+                                    audio.addEventListener('error', () => resolve(rec));
+                                    // Timeout if metadata doesn't load
+                                    setTimeout(() => resolve(rec), 1000);
+                                });
+                            } catch (e) { return rec; }
+                        }
+                        return rec;
+                    }));
+
+                    setAudioRecordings(updatedRecordings);
                 } catch (error) {
                     console.error('Failed to fetch audio recordings:', error);
                 } finally {
@@ -464,6 +505,88 @@ const ImageEditor = ({
                 console.error('Failed to delete audio recording:', error);
             }
         }
+    };
+
+    // Add audio to timeline (when user clicks audio in sidebar)
+    const handleAddAudioToTimeline = (recording) => {
+        if (!activePageId) return;
+
+        const trackId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const newTrack = {
+            id: trackId,
+            name: recording.name || `Audio ${new Date(recording.createdAt).toLocaleDateString()}`,
+            url: recording.url,
+            duration: 0, 
+            startTime: 0,
+            trimStart: 0,
+            trimEnd: 0,
+            volume: 100,
+            muted: false,
+            recordingId: recording.id
+        };
+
+        const tempAudio = new Audio(recording.url);
+        tempAudio.addEventListener('loadedmetadata', () => {
+            const dur = tempAudio.duration || 10;
+            setPageAudios(prev => {
+                const currentTracks = prev[activePageId] || [];
+                return {
+                    ...prev,
+                    [activePageId]: currentTracks.map(t =>
+                        t.id === trackId ? { ...t, duration: dur, trimEnd: dur } : t
+                    )
+                };
+            });
+        });
+
+        setPageAudios(prev => ({
+            ...prev,
+            [activePageId]: [...(prev[activePageId] || []), newTrack]
+        }));
+    };
+
+    // Import audio file handler
+    const handleImportAudioFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('audio/')) {
+            alert('Please select an audio file (MP3, WAV, etc.)');
+            return;
+        }
+
+        try {
+            const userId = user?.uid || 'guest';
+            const name = file.name.replace(/\.[^/.]+$/, '');
+            
+            // Get duration before saving
+            const audioUrl = URL.createObjectURL(file);
+            const tempAudio = new Audio(audioUrl);
+            let duration = 0;
+            
+            await new Promise((resolve) => {
+                tempAudio.addEventListener('loadedmetadata', () => {
+                    duration = tempAudio.duration;
+                    resolve();
+                });
+                tempAudio.addEventListener('error', () => resolve());
+                setTimeout(resolve, 1000); // 1s timeout
+            });
+
+            const saved = await LocalRecordingsService.saveRecording(file, userId, name, duration);
+            if (saved) {
+                setAudioRecordings(prev => [saved, ...prev]);
+            }
+            URL.revokeObjectURL(audioUrl);
+        } catch (error) {
+            console.error('Failed to import audio:', error);
+        }
+        // Reset input
+        if (audioFileInputRef.current) audioFileInputRef.current.value = '';
+    };
+
+    // Callback when audio recorder saves
+    const handleAudioRecorderSave = (savedRecording) => {
+        setAudioRecordings(prev => [savedRecording, ...prev]);
     };
 
     // Function to handle project deletion
@@ -647,6 +770,13 @@ const ImageEditor = ({
         if (pages.length <= 1) return; // Prevent deleting the last page
         const newPages = pages.filter(p => p.id !== pageId);
         setPages(newPages);
+        // Remove associated audio
+        setPageAudios(prev => {
+            const updated = { ...prev };
+            delete updated[pageId];
+            return updated;
+        });
+
         if (activePageId === pageId) {
             const lastPage = newPages[newPages.length - 1];
             setActivePageId(lastPage.id);
@@ -685,6 +815,17 @@ const ImageEditor = ({
         setActivePageId(newPageId);
         setLayers(duplicatedLayers);
         setCanvasSize(newPage.canvasSize);
+
+        // Duplicate associated audio
+        if (pageAudios[pageId]) {
+            setPageAudios(prev => ({
+                ...prev,
+                [newPageId]: pageAudios[pageId].map(t => ({
+                    ...t,
+                    id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+                }))
+            }));
+        }
 
         // Select background or first layer
         const bgLayer = duplicatedLayers.find(l => l.id === 'background-layer');
@@ -2935,6 +3076,16 @@ const ImageEditor = ({
                 />
             )}
 
+            {/* Audio Recorder Modal */}
+            {showAudioRecorder && (
+                <AudioRecorderModal
+                    onClose={() => setShowAudioRecorder(false)}
+                    onSave={handleAudioRecorderSave}
+                    darkMode={darkMode}
+                    user={user}
+                />
+            )}
+
             {/* Presentation Viewer */}
             {showPresentationViewer && (
                 <PresentationViewer
@@ -4034,11 +4185,57 @@ const ImageEditor = ({
                             </div>
                         )}
                         {activeTab === 'uploads' && (
-                            <div className="animate-fadeIn space-y-4">
+                            <div className="animate-fadeIn space-y-5">
                                 <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Uploads</h3>
                                 
-                                <div className="space-y-4">
-                                    <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Audio Recordings</h4>
+                                {/* Professional Upload Buttons */}
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={() => audioFileInputRef.current?.click()}
+                                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all bg-purple-600 text-white shadow-lg shadow-purple-500/20 hover:bg-purple-700 hover:scale-[1.01] active:scale-[0.98]`}
+                                    >
+                                        <Upload className="w-4 h-4" />
+                                        Upload files
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAudioRecorder(true)}
+                                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all border-2 ${
+                                            darkMode
+                                                ? 'border-gray-700 text-gray-300 hover:bg-gray-800 hover:border-purple-500/50'
+                                                : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-purple-200'
+                                        } hover:scale-[1.01] active:scale-[0.98]`}
+                                    >
+                                        <Mic className="w-4 h-4" />
+                                        Record yourself
+                                    </button>
+                                    <input
+                                        ref={audioFileInputRef}
+                                        type="file"
+                                        accept="image/*,video/*,audio/*"
+                                        onChange={handleImportAudioFile}
+                                        className="hidden"
+                                        multiple
+                                    />
+                                </div>
+
+                                {/* Category Tabs */}
+                                <div className={`flex items-center gap-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'} pb-1`}>
+                                    {['Images', 'Videos', 'Audio', 'Folders'].map((tab) => (
+                                        <button
+                                            key={tab}
+                                            className={`text-xs font-bold pb-2 px-1 relative transition-colors ${
+                                                (tab === 'Audio' ? 'text-purple-600' : (darkMode ? 'text-gray-500' : 'text-gray-400'))
+                                            }`}
+                                        >
+                                            {tab}
+                                            {tab === 'Audio' && (
+                                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600 rounded-full" />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="space-y-4 pt-1">
                                     
                                     {audioLoading ? (
                                         <div className="flex flex-col items-center justify-center py-8">
@@ -4048,40 +4245,46 @@ const ImageEditor = ({
                                     ) : audioRecordings.length === 0 ? (
                                         <div className={`p-6 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'} flex flex-col items-center justify-center text-center`}>
                                             <Music className="w-8 h-8 mb-2 opacity-20" />
-                                            <p className="text-[10px] font-bold">No recordings found<br />Record one in the studio!</p>
+                                            <p className="text-[10px] font-bold">No audio found<br />Record or import audio to get started!</p>
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
                                             {audioRecordings.map(recording => (
                                                 <div 
                                                     key={recording.id} 
-                                                    className={`p-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} shadow-sm flex items-center justify-between group`}
+                                                    className={`p-2.5 rounded-xl border-none ${darkMode ? 'hover:bg-gray-800/80' : 'hover:bg-gray-50'} group cursor-pointer transition-all flex items-center justify-between`}
+                                                    onClick={() => handleAddAudioToTimeline(recording)}
                                                 >
                                                     <div className="flex items-center gap-3 overflow-hidden">
-                                                        <div className={`w-8 h-8 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-purple-50'} flex items-center justify-center flex-shrink-0`}>
-                                                            <Music className="w-4 h-4 text-purple-600" />
-                                                        </div>
+                                                        {/* Play Button Icon */}
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handlePlayAudio(recording); }}
+                                                            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+                                                                playingAudioId === recording.id 
+                                                                    ? 'bg-purple-600 text-white shadow-lg' 
+                                                                    : (darkMode ? 'bg-gray-800 text-gray-400 group-hover:bg-gray-700' : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200')
+                                                            }`}
+                                                        >
+                                                            {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                                                        </button>
+                                                        
                                                         <div className="overflow-hidden">
-                                                            <p className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            <p className={`text-xs font-bold truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'} group-hover:text-purple-600 transition-colors`}>
                                                                 {recording.name || `Recording ${new Date(recording.createdAt).toLocaleDateString()}`}
                                                             </p>
-                                                            <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                                {new Date(recording.createdAt).toLocaleTimeString()}
+                                                            <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'} font-medium`}>
+                                                                Audio • {fmt(recording.duration)}
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                                                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button 
-                                                            onClick={() => handlePlayAudio(recording)}
-                                                            className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 ${playingAudioId === recording.id ? 'text-purple-600' : 'text-gray-500'}`}
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteAudio(recording); }}
+                                                            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700 text-gray-500' : 'hover:bg-gray-200 text-gray-400'} hover:text-red-500 transition-all`}
+                                                            title="Delete"
                                                         >
-                                                            {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteAudio(recording)}
-                                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500"
-                                                        >
-                                                            <Trash className="w-4 h-4" />
+                                                            <Trash className="w-3.5 h-3.5" />
                                                         </button>
                                                     </div>
                                                 </div>
@@ -4288,12 +4491,60 @@ const ImageEditor = ({
                     onClick={() => {
                         if (isViewOnly) return;
                         setActiveLayerId(null);
+                        setActiveAudioTrackId(null);
                         setLayers(layers.map(l => ({ ...l, isSelected: false })));
                         setShowColorPicker(false);
                     }}
                 >
                     {/* Workspace (Canvas) */}
+                    {/* Workspace (Canvas) */}
                     <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-8 pb-32 bg-gray-100 dark:bg-gray-900'}`}>
+                        {/* Contextual Audio Toolbar */}
+                        {activeAudioTrackId && !isViewOnly && (
+                            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 animate-fadeInScale">
+                                <div className={`flex items-center gap-1 p-1 rounded-xl shadow-2xl border ${darkMode ? 'bg-gray-800/90 border-gray-700/50 text-white' : 'bg-white/90 border-gray-100 text-gray-700'} backdrop-blur-md`}>
+                                    <div className="flex items-center gap-1 border-r border-gray-500/10 px-1 mr-1">
+                                        <button className={`p-2 rounded-lg hover:bg-gray-500/10 flex items-center gap-2 transition-all group`} title="Slip">
+                                            <RefreshCw className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500" />
+                                            <span className="text-[10px] font-bold">Slip</span>
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-1 px-1">
+                                        <button className={`p-2 rounded-lg hover:bg-gray-500/10 flex items-center gap-2 transition-all group`} title="Fade">
+                                            <Wind className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500" />
+                                            <span className="text-[10px] font-bold">Fade</span>
+                                        </button>
+                                        <button className={`p-2 rounded-lg hover:bg-gray-500/10 flex items-center gap-2 transition-all group`} title="Beat Sync">
+                                            <Music2 className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500" />
+                                            <span className="text-[10px] font-bold">Beat Sync</span>
+                                        </button>
+                                        <button className={`p-2 rounded-lg hover:bg-gray-500/10 flex items-center gap-2 transition-all group`} title="Enhance voice">
+                                            <Sparkles className="w-3.5 h-3.5 text-orange-400 group-hover:text-orange-500" />
+                                            <span className="text-[10px] font-bold">Enhance voice</span>
+                                            <Crown className="w-3 h-3 text-orange-400 fill-orange-400" />
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-1 border-l border-gray-500/10 px-1 ml-1">
+                                        <button 
+                                            onClick={() => {
+                                                const track = (pageAudios[activePageId] || []).find(t => t.id === activeAudioTrackId);
+                                                if (track && window.confirm('Delete this track?')) {
+                                                    setPageAudios(prev => ({
+                                                        ...prev,
+                                                        [activePageId]: prev[activePageId].filter(t => t.id !== activeAudioTrackId)
+                                                    }));
+                                                    setActiveAudioTrackId(null);
+                                                }
+                                            }}
+                                            className="p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all" 
+                                            title="Delete"
+                                        >
+                                            <Trash className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {/* High-quality localized loading indicator for project transitions */}
                         {isSyncing && (
                             <div className="absolute inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-md z-[100] flex flex-col items-center justify-center transition-all duration-500 animate-fadeIn">
@@ -5130,6 +5381,19 @@ const ImageEditor = ({
 
                         </div>
                     </div>
+
+                    {/* Audio Timeline - Below Canvas (Per Page) */}
+                    {!isViewOnly && (pageAudios[activePageId]?.length > 0) && (
+                        <AudioTimeline
+                            audioTracks={pageAudios[activePageId] || []}
+                            onUpdateTracks={(newTracks) => {
+                                setPageAudios(prev => ({ ...prev, [activePageId]: newTracks }));
+                            }}
+                            darkMode={darkMode}
+                            activeTrackId={activeAudioTrackId}
+                            onSelectTrack={setActiveAudioTrackId}
+                        />
+                    )}
                 </div >
 
                 {/* Floating Bottom Page Controls (Center) - FIXED TO STAY IN PLACE */}
@@ -5157,6 +5421,11 @@ const ImageEditor = ({
                                                 {index + 1}
                                             </div>
                                         </div>
+
+                                        {/* Audio Indicator Bar Under Thumbnail */}
+                                        {pageAudios[page.id]?.length > 0 && (
+                                            <div className="w-16 h-1 mt-0.5 bg-purple-500 rounded-full animate-pulse shadow-sm shadow-purple-500/50" />
+                                        )}
                                     </button>
 
                                     {/* Page Actions on Hover */}

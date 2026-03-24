@@ -101,6 +101,26 @@ class LocalRecordingsService {
             return false;
         }
     }
+
+    async clearAllRecordings() {
+        try {
+            const db = await this.openDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.clear();
+
+                request.onsuccess = () => {
+                    console.log('>>> All local recordings cleared from IndexedDB');
+                    resolve(true);
+                };
+                request.onerror = (e) => reject(e.target.error);
+            });
+        } catch (err) {
+            console.error('Failed to clear recordings from IndexedDB:', err);
+            return false;
+        }
+    }
 }
 
 const localRecordingsService = new LocalRecordingsService();

@@ -198,6 +198,33 @@ export const signInWithEmail = async (email, password) => {
     }
 };
 
+// Delete User Account
+export const deleteUserAccount = async () => {
+    try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error("No user is currently logged in.");
+
+        console.log(">>> Deleting User Account:", currentUser.email);
+        
+        // Final deletion from Firebase Auth
+        await currentUser.delete();
+        
+        console.log(">>> Account Deleted Success!");
+        return { error: null };
+    } catch (error) {
+        console.error(">>> Account Deletion Error:", error.code);
+        
+        let friendlyError = "Failed to delete account.";
+        if (error.code === 'auth/requires-recent-login') {
+            friendlyError = "For security reasons, please log out and log back in before deleting your account.";
+        } else {
+            friendlyError = error.message;
+        }
+        
+        return { error: friendlyError };
+    }
+};
+
 // Logout
 export const logOut = async () => {
     try {

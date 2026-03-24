@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Zap, Moon, Sun, ChevronDown, Sparkles, Search, ArrowLeft, LogOut, User } from 'lucide-react';
+import { Zap, Moon, Sun, ChevronDown, Sparkles, Search, ArrowLeft, LogOut, User, Trash2 } from 'lucide-react';
 
 const Header = ({
     darkMode,
@@ -11,6 +11,7 @@ const Header = ({
     setPreviewUrl,
     user,
     onLogout,
+    onDeleteAccount,
 }) => {
     const [activeDropdown, setActiveDropdown] = useState(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -352,6 +353,16 @@ const Header = ({
                                                 {user.email}
                                             </p>
                                         </div>
+                                        <button
+                                            onClick={() => {
+                                                setActiveDropdown(null);
+                                                onDeleteAccount && onDeleteAccount();
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all ${darkMode ? 'text-gray-400 hover:bg-red-900/10 hover:text-red-400' : 'text-gray-600 hover:bg-red-50 hover:text-red-600'}`}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            Delete Account
+                                        </button>
                                         <button
                                             onClick={() => {
                                                 setActiveDropdown(null);

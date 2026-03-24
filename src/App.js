@@ -12,9 +12,11 @@ import ToolDetailsPanel from './components/ToolDetailsPanel';
 import ImageEditor from './components/ImageEditor';
 import PresenterWindow from './components/PresenterWindow';
 import AudienceViewer from './components/AudienceViewer';
-import { AuthModal } from './components/Auth';
 import LandingPage from './components/LandingPage/LandingPage';
-import { onAuthChange, logOut, getGoogleRedirectResult, auth } from './services/firebase';
+import { onAuthChange, logOut, getGoogleRedirectResult, auth, deleteUserAccount } from './services/firebase';
+import firebaseSyncService from './services/FirebaseSyncService';
+import localRecordingsService from './services/LocalRecordingsService';
+import { AuthModal, DeleteAccountModal } from './components/Auth';
 
 import {
   convertImage,
@@ -131,6 +133,8 @@ const App = () => {
   const [authInitializing, setAuthInitializing] = useState(true); // NEW: Track auth loading
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const fileInputRef = useRef(null);
   const ffmpegRef = useRef(new FFmpeg());
@@ -198,6 +202,42 @@ const App = () => {
       navigate(`/${slug}`);
     } else {
       navigate('/');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    setIsDeletingAccount(true);
+    try {
+      console.log('>>> Commencing full account deletion and data cleanup...');
+      
+      // 1. Cleanup Firestore data
+      await firebaseSyncService.deleteAllUserData(user.uid);
+      
+      // 2. Cleanup local recordings
+      await localRecordingsService.clearAllRecordings();
+      
+      // 3. Delete Firebase Auth account
+      const result = await deleteUserAccount();
+      
+      if (result.error) {
+        setError(result.error);
+        setIsDeletingAccount(false);
+        // Important: If auth deletion fails (e.g. requires-recent-login), 
+        // the user is still logged in, but Firestore data might be gone.
+        // We show the error so the user can re-auth.
+        return;
+      }
+
+      console.log('>>> Account deletion complete.');
+      setDeleteAccountModalOpen(false);
+      setIsDeletingAccount(false);
+      setUser(null);
+      navigate('/');
+    } catch (err) {
+      console.error('Critical error during deletion:', err);
+      setError('A critical error occurred while deleting your account. Please try again later.');
+      setIsDeletingAccount(false);
     }
   };
 
@@ -1019,8 +1059,18 @@ const App = () => {
           setPreviewUrl={setPreviewUrl}
           user={user}
           onLogout={async () => { await logOut(); setUser(null); }}
+          onDeleteAccount={() => setDeleteAccountModalOpen(true)}
         />
       )}
+      
+      {/* Account Deletion Confirmation */}
+      <DeleteAccountModal 
+        isOpen={deleteAccountModalOpen}
+        onClose={() => setDeleteAccountModalOpen(false)}
+        onDeleteConfirm={handleDeleteAccount}
+        loading={isDeletingAccount}
+        darkMode={darkMode}
+      />
       <main className={!isEditing ? "flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full" : "w-screen h-screen"}>
         <ConverterUI
           converters={converters}

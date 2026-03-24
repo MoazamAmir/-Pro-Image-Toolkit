@@ -280,13 +280,36 @@ class FirebaseSyncService {
     /**
      * Clean up old presence data
      */
-    async clearPresence(designId, userId) {
-        if (!designId || !userId) return;
+    /**
+     * Delete all data associated with a user
+     * @param {string} userId 
+     */
+    async deleteAllUserData(userId) {
+        if (!userId) return;
         try {
-            const presenceRef = doc(db, 'designs', designId, 'presence', userId);
-            await deleteDoc(presenceRef);
+            console.log('>>> Cleaning up Firestore data for user:', userId);
+            
+            // 1. Delete all designs
+            const designsRef = collection(db, 'designs');
+            const q = query(designsRef, where('ownerId', '==', userId));
+            const querySnapshot = await getDocs(q);
+            
+            const deletePromises = [];
+            querySnapshot.forEach((doc) => {
+                deletePromises.push(deleteDoc(doc.ref));
+            });
+            
+            await Promise.all(deletePromises);
+            console.log(`>>> Deleted ${deletePromises.length} designs`);
+
+            // 2. Clear active session if exists
+            await this.clearActiveSession(userId);
+            
+            console.log('>>> Firestore cleanup complete');
+            return true;
         } catch (error) {
-            console.error('Error clearing presence:', error);
+            console.error('Error during Firestore data cleanup:', error);
+            return false;
         }
     }
 

@@ -1,7 +1,7 @@
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Moon, Sun, Edit2 } from 'lucide-react';
+import { Moon, Sun, Edit2, AlertCircle, X } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import Header from './components/Header';
@@ -1071,6 +1071,24 @@ const App = () => {
         loading={isDeletingAccount}
         darkMode={darkMode}
       />
+      {/* Error Alert Overlay */}
+      {error && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[150] w-full max-w-md animate-slideDown p-4">
+          <div className={`flex items-center gap-3 p-4 rounded-2xl border shadow-xl ${darkMode ? 'bg-red-900/90 border-red-500/50 text-white backdrop-blur-md' : 'bg-red-50 border-red-200 text-red-900 backdrop-blur-md'}`}>
+            <AlertCircle className="shrink-0 text-red-500" />
+            <div className="flex-grow">
+              <p className="text-sm font-semibold">{error}</p>
+            </div>
+            <button 
+              onClick={() => setError(null)}
+              className={`p-1 rounded-full ${darkMode ? 'hover:bg-red-800' : 'hover:bg-red-100'}`}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className={!isEditing ? "flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full" : "w-screen h-screen"}>
         <ConverterUI
           converters={converters}

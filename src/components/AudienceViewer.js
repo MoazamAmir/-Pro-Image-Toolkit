@@ -137,9 +137,8 @@ const AudienceViewer = ({ sessionCode }) => {
 
                     // await firebaseVoiceService.startViewer(sessionId, viewerId);
                     await agoraVoiceService.startViewer(sessionId);
-
                     LiveSessionService.joinSession(sessionId);
-                    console.log('[AudienceViewer] Joined Agora voice & session presence');
+                    console.log('[AgoraVoice] Audience joined channel:', sessionId);
                 } catch (err) {
                     console.error('Error joining voice session:', err);
                 }

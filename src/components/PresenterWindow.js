@@ -295,7 +295,17 @@ const PresenterWindow = ({ designId, user }) => {
             // await firebaseVoiceService.startHost(sessionId);
             
             // Initialize Agora Voice
-            await agoraVoiceService.startHost(sessionId, selectedMicId, includeSystemAudio);
+            await agoraVoiceService.startHost(sessionId);
+            
+            // If mic was already toggled "on" before starting session, publish it now
+            if (isMicOn) {
+                console.log('[Presenter] Mic was already on, publishing now...');
+                await agoraVoiceService.toggleMic(true, selectedMicId);
+            }
+
+            if (includeSystemAudio) {
+                await agoraVoiceService.startSystemAudio();
+            }
 
             // Listen to session
             sessionUnsubRef.current = LiveSessionService.listenToSession(sessionId, (data) => {

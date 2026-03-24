@@ -263,6 +263,19 @@ class FirebaseSyncService {
     }
 
     /**
+     * Clear user presence in a design
+     */
+    async clearPresence(designId, userId) {
+        if (!designId || !userId) return;
+        try {
+            const presenceRef = doc(db, 'designs', designId, 'presence', userId);
+            await deleteDoc(presenceRef);
+        } catch (error) {
+            // Silently fail to avoid console spam during cleanup
+        }
+    }
+
+    /**
      * Listen to all users' presence in a design
      */
     listenToPresence(designId, callback) {

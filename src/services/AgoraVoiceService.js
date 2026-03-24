@@ -7,21 +7,29 @@ class AgoraVoiceService {
     constructor() {
         this.client = null;
         this.localAudioTrack = null;
+        this.screenAudioTrack = null;
         this.remoteUsers = {}; // uid -> IRemoteAudioTrack
         this.appid = process.env.REACT_APP_AGORA_APP_ID;
         this.channelName = null;
-        this.role = null;
+        this.role = null; // 'host' or 'audience'
         this.onLevelChangeCallback = null;
         this._isInitialized = false;
+        this._isJoined = false;
     }
 
     /**
      * Initialize the Agora Client
      */
-    async _init() {
-        if (this._isInitialized) return;
+    async _init(role = "audience") {
+        if (this._isInitialized && this.client) {
+            console.log(`[AgoraVoice] Client already initialized, updating role to: ${role}`);
+            await this.client.setClientRole(role);
+            return;
+        }
         
-        this.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        console.log(`[AgoraVoice] Initializing client as ${role}`);
+        this.client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+        await this.client.setClientRole(role);
         
         // Listen for remote users joining
         this.client.on("user-published", async (user, mediaType) => {
@@ -63,75 +71,65 @@ class AgoraVoiceService {
     }
 
     /**
-     * Start as HOST (Presenter)
+     * Start as HOST (Presenter) — Joins channel but doesn't publish mic yet
      */
-    async startHost(channelName, microphoneId = null, includeSystemAudio = false) {
+    async startHost(channelName) {
         try {
-            await this._init();
+            await this._init("host");
             this.role = "host";
             this.channelName = channelName;
 
+            if (this._isJoined) {
+                console.warn("[AgoraVoice] Already joined a channel");
+                return true;
+            }
+
             // Join the channel (uid = 1 for host for simplicity)
             await this.client.join(this.appid, channelName, null, 1);
-            console.log(`[AgoraVoice] Joined channel ${channelName} as Host`);
-
-            const tracks = [];
-
-            // 1. Create Microphone Track
-            try {
-                const micConfig = {
-                    encoderConfig: "high_quality_stereo",
-                    AEC: true,
-                    ANS: true,
-                    AGC: true
-                };
-                if (microphoneId) {
-                    micConfig.microphoneId = microphoneId;
-                }
-                
-                this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(micConfig);
-                tracks.push(this.localAudioTrack);
-                console.log(`[AgoraVoice] Mic track created${microphoneId ? ` with device: ${microphoneId}` : ''}`);
-            } catch (micErr) {
-                console.error("[AgoraVoice] Failed to create mic track:", micErr);
-            }
-
-            // 2. Create System Audio Track (Screen Capture Audio)
-            if (includeSystemAudio) {
-                try {
-                    // This typically requires user permission for screen share
-                    this.screenAudioTrack = await AgoraRTC.createScreenVideoTrack({
-                        withAudio: "enable"
-                    }, "auto").then(tracks => {
-                        // We only want the audio part if any
-                        const audioTrack = Array.isArray(tracks) ? tracks.find(t => t.trackMediaType === "audio") : null;
-                        return audioTrack;
-                    });
-                    
-                    if (this.screenAudioTrack) {
-                        tracks.push(this.screenAudioTrack);
-                        console.log("[AgoraVoice] System audio track added");
-                    }
-                } catch (sysErr) {
-                    console.warn("[AgoraVoice] System audio capture failed or cancelled:", sysErr);
-                }
-            }
-
-            if (tracks.length > 0) {
-                await this.client.publish(tracks);
-                console.log(`[AgoraVoice] ${tracks.length} track(s) published`);
-            }
-
+            this._isJoined = true;
+            console.log(`[AgoraVoice] Joined channel ${channelName} as Host (UID: 1)`);
             return true;
         } catch (err) {
-            console.error("[AgoraVoice] Host start failed:", err);
+            console.error("[AgoraVoice] Host join failed:", err);
             return false;
         }
     }
 
     /**
-     * Switch microphone on the fly
+     * Publish Microphone Track
      */
+    async publishMic(microphoneId = null) {
+        if (!this._isJoined) {
+            console.error("[AgoraVoice] Cannot publish mic before joining channel");
+            return false;
+        }
+
+        try {
+            if (this.localAudioTrack) {
+                await this.client.publish(this.localAudioTrack);
+                return true;
+            }
+
+            const micConfig = {
+                encoderConfig: "high_quality_stereo",
+                AEC: true,
+                ANS: true,
+                AGC: true
+            };
+            if (microphoneId) micConfig.microphoneId = microphoneId;
+
+            this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(micConfig);
+            await this.client.publish(this.localAudioTrack);
+            // HARD FIX: Ensure track is enabled immediately after publishing
+            await this.localAudioTrack.setEnabled(true);
+            console.log("[AgoraVoice] Microphone track published and enabled");
+            return true;
+        } catch (err) {
+            console.error("[AgoraVoice] Mic publish failed:", err);
+            return false;
+        }
+    }
+
     async switchMicrophone(deviceId) {
         if (!this.localAudioTrack) return;
         try {
@@ -145,20 +143,45 @@ class AgoraVoiceService {
     }
 
     /**
-     * Start as VIEWER (Audience)
+     * Start System Audio (Screen Audio)
      */
+    async startSystemAudio() {
+        if (!this._isJoined) return false;
+        try {
+            this.screenAudioTrack = await AgoraRTC.createScreenVideoTrack({
+                withAudio: "enable"
+            }, "auto").then(tracks => {
+                const audioTrack = Array.isArray(tracks) ? tracks.find(t => t.trackMediaType === "audio") : null;
+                return audioTrack;
+            });
+
+            if (this.screenAudioTrack) {
+                await this.client.publish(this.screenAudioTrack);
+                console.log("[AgoraVoice] System audio track published");
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.warn("[AgoraVoice] System audio capture failed:", err);
+            return false;
+        }
+    }
+
     async startViewer(channelName) {
         try {
-            await this._init();
-            this.role = "viewer";
+            await this._init("audience");
+            this.role = "audience";
             this.channelName = channelName;
+
+            if (this._isJoined) return true;
 
             // Join with random UID
             const uid = await this.client.join(this.appid, channelName, null, null);
-            console.log(`[AgoraVoice] Joined channel ${channelName} as Viewer (UID: ${uid})`);
+            this._isJoined = true;
+            console.log(`[AgoraVoice] Joined channel ${channelName} as Audience (UID: ${uid})`);
             return true;
         } catch (err) {
-            console.error("[AgoraVoice] Viewer join failed:", err);
+            console.error("[AgoraVoice] Audience join failed:", err);
             return false;
         }
     }
@@ -167,20 +190,21 @@ class AgoraVoiceService {
      * Mute/Unmute toggle
      */
     async toggleMic(on, deviceId = null) {
-        // If we don't have a track yet, try to start it (if host)
-        if (!this.localAudioTrack && on && this.role === "host") {
-            // This case might happen if they toggle mic after stopping
-            // Re-creating track is safer
-            this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-                microphoneId: deviceId,
-                AEC: true, ANS: true, AGC: true
-            });
-            await this.client.publish(this.localAudioTrack);
-        }
-
-        if (this.localAudioTrack) {
-            await this.localAudioTrack.setEnabled(on);
+        try {
+            if (on) {
+                if (!this.localAudioTrack) {
+                    await this.publishMic(deviceId);
+                } else {
+                    await this.localAudioTrack.setEnabled(true);
+                }
+            } else {
+                if (this.localAudioTrack) {
+                    await this.localAudioTrack.setEnabled(false);
+                }
+            }
             console.log(`[AgoraVoice] Mic ${on ? "Enabled" : "Disabled"}`);
+        } catch (err) {
+            console.error("[AgoraVoice] Mic toggle failed:", err);
         }
     }
 
@@ -188,23 +212,30 @@ class AgoraVoiceService {
      * Stop and cleanup
      */
     async stop() {
-        if (this.localAudioTrack) {
-            this.localAudioTrack.stop();
-            this.localAudioTrack.close();
-            this.localAudioTrack = null;
+        try {
+            if (this.localAudioTrack) {
+                this.localAudioTrack.stop();
+                this.localAudioTrack.close();
+                this.localAudioTrack = null;
+            }
+            if (this.screenAudioTrack) {
+                this.screenAudioTrack.stop();
+                this.screenAudioTrack.close();
+                this.screenAudioTrack = null;
+            }
+            if (this.client) {
+                if (this._isJoined) {
+                    await this.client.leave();
+                    this._isJoined = false;
+                }
+                this.client = null;
+            }
+            this._isInitialized = false;
+            this.remoteUsers = {};
+            console.log("[AgoraVoice] Service stopped");
+        } catch (err) {
+            console.error("[AgoraVoice] Stop failed:", err);
         }
-        if (this.screenAudioTrack) {
-            this.screenAudioTrack.stop();
-            this.screenAudioTrack.close();
-            this.screenAudioTrack = null;
-        }
-        if (this.client) {
-            await this.client.leave();
-            this.client = null;
-        }
-        this._isInitialized = false;
-        this.remoteUsers = {};
-        console.log("[AgoraVoice] Service stopped");
     }
 
     onLevelChange(callback) {

@@ -71,26 +71,32 @@ class AgoraVoiceService {
     }
 
     /**
-     * Start as HOST (Presenter) — Joins channel but doesn't publish mic yet
+     * Start as HOST (Presenter) — Joins channel and optionally publishes microphone
      */
-    async startHost(channelName) {
+    async startHost(channelName, microphoneId = null) {
         try {
             await this._init("host");
             this.role = "host";
             this.channelName = channelName;
 
-            if (this._isJoined) {
+            if (!this._isJoined) {
+                // Join the channel (uid = 1 for host for simplicity)
+                await this.client.join(this.appid, channelName, null, 1);
+                this._isJoined = true;
+                console.log(`[AgoraVoice] Joined channel ${channelName} as Host (UID: 1)`);
+            } else {
                 console.warn("[AgoraVoice] Already joined a channel");
-                return true;
             }
 
-            // Join the channel (uid = 1 for host for simplicity)
-            await this.client.join(this.appid, channelName, null, 1);
-            this._isJoined = true;
-            console.log(`[AgoraVoice] Joined channel ${channelName} as Host (UID: 1)`);
+            // If a microphone ID is provided, publish it immediately
+            if (microphoneId && microphoneId !== 'none') {
+                console.log(`[AgoraVoice] Auto-publishing mic for host: ${microphoneId}`);
+                await this.publishMic(microphoneId);
+            }
+
             return true;
         } catch (err) {
-            console.error("[AgoraVoice] Host join failed:", err);
+            console.error("[AgoraVoice] Host join/start failed:", err);
             return false;
         }
     }
@@ -106,7 +112,14 @@ class AgoraVoiceService {
 
         try {
             if (this.localAudioTrack) {
-                await this.client.publish(this.localAudioTrack);
+                if (microphoneId && microphoneId !== 'none') {
+                    await this.localAudioTrack.setDevice(microphoneId);
+                }
+                // Only publish if not already published
+                if (!this.client.localTracks.includes(this.localAudioTrack)) {
+                    await this.client.publish(this.localAudioTrack);
+                }
+                await this.localAudioTrack.setEnabled(true);
                 return true;
             }
 
@@ -116,11 +129,11 @@ class AgoraVoiceService {
                 ANS: true,
                 AGC: true
             };
-            if (microphoneId) micConfig.microphoneId = microphoneId;
+            if (microphoneId && microphoneId !== 'none') micConfig.microphoneId = microphoneId;
 
             this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack(micConfig);
             await this.client.publish(this.localAudioTrack);
-            // HARD FIX: Ensure track is enabled immediately after publishing
+            // Ensure track is enabled immediately after publishing
             await this.localAudioTrack.setEnabled(true);
             console.log("[AgoraVoice] Microphone track published and enabled");
             return true;

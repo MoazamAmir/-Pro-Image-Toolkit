@@ -184,9 +184,9 @@ const useRecording = (user = null) => {
 
             if (micStream) {
                 micStreamRef.current = micStream;
-                console.log('[Recorder] Microphone captured:', micStream.getAudioTracks()[0]?.label);
+                console.log('[Recorder] Microphone captured successfully:', micStream.getAudioTracks()[0]?.label);
             } else {
-                console.warn('[Recorder] No microphone stream available for recording.');
+                console.warn('[Recorder] No microphone stream available for recording. Falling back or proceeding with video only.');
             }
 
             // 3. Mix Audio
@@ -198,15 +198,19 @@ const useRecording = (user = null) => {
             let hasAudioTracks = false;
 
             if (micStream && micStream.getAudioTracks().length > 0) {
+                console.log('[Recorder] Mixing microphone track into final stream');
                 const micSource = audioCtx.createMediaStreamSource(micStream);
                 const micGain = audioCtx.createGain();
                 micGain.gain.value = 1.0;
                 micSource.connect(micGain);
                 micGain.connect(destination);
                 hasAudioTracks = true;
+            } else {
+                console.warn('[Recorder] No audio tracks found in micStream during mixing');
             }
 
             if (displayStream && displayStream.getAudioTracks().length > 0) {
+                console.log('[Recorder] Mixing system audio track into final stream');
                 const sysSource = audioCtx.createMediaStreamSource(displayStream);
                 const sysGain = audioCtx.createGain();
                 sysGain.gain.value = 0.7;
@@ -224,6 +228,7 @@ const useRecording = (user = null) => {
 
             const combinedStream = new MediaStream(tracks);
             combinedStreamRef.current = combinedStream;
+            console.log('[Recorder] Final combined stream tracks:', tracks.map(t => t.kind));
 
             videoTrack.onended = () => stopRecording();
             return true;

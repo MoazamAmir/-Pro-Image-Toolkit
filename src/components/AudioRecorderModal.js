@@ -70,6 +70,7 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
 
             // 3. Extract MediaStreamTrack from Agora
             const agoraTrack = agoraVoiceService.localAudioTrack.getMediaStreamTrack();
+            console.log('[AudioRecorder] Captured Agora track:', agoraTrack.label);
             const stream = new MediaStream([agoraTrack]);
             streamRef.current = stream;
 

@@ -132,7 +132,7 @@ const ExportManager = ({
     isOpen, onClose, pages = [], activePageId, layers = [],
     renderFinalCanvas, generateSVG, canvasSize, darkMode,
     designId, onDesignIdGenerated, canvasPreviewRef, adjustments,
-    user, onStartRecordingStudio, onStartPresentation
+    user, onStartRecordingStudio, onStartPresentation, designAudios = []
 }) => {
     const [view, setView] = useState('share_design');
     const [publicViewStatus, setPublicViewStatus] = useState('idle');
@@ -253,20 +253,136 @@ const ExportManager = ({
             if (fileType === 'MP4' || fileType === 'GIF') {
                 const ffmpeg = fileType === 'MP4' ? new FFmpeg() : null;
                 if (ffmpeg) await ffmpeg.load();
-                const generateForPage = async (page) => {
-                    const gif = fileType === 'GIF' ? new GIF({ workers: 2, quality: 10, width: (page.width || 1080) * size, height: (page.height || 720) * size, workerScript: '/gif.worker.js' }) : null;
-                    const duration = 3, fps = 15, totalFrames = duration * fps;
-                    for (let i = 0; i < totalFrames; i++) {
-                        const canvas = await renderFinalCanvas(page.layers, null, { scale: size, transparent: transparentBg, frameTime: (i / totalFrames) * duration, duration, useOriginalResolution: true, limitResolution: true, isFrame: true });
-                        if (fileType === 'MP4' && ffmpeg) { const fd = await new Promise(r => canvas.toBlob(r, 'image/png')); await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(fd)); }
-                        else if (gif) gif.addFrame(canvas, { copy: true, delay: 1000 / fps });
+
+                const hasAudio = designAudios.length > 0 && fileType === 'MP4';
+
+                if (hasAudio) {
+                    const audioFiles = [];
+                    for (let i = 0; i < designAudios.length; i++) {
+                        const track = designAudios[i];
+                        if (track.muted) continue;
+                        try {
+                            const audioData = await fetchFile(track.url);
+                            const fileName = `audio_${i}.mp3`;
+                            await ffmpeg.writeFile(fileName, audioData);
+                            audioFiles.push({ ...track, fileName });
+                        } catch (e) { console.warn("Failed to load audio track", e); }
                     }
-                    if (fileType === 'MP4' && ffmpeg) { await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'output.mp4']); const data = await ffmpeg.readFile('output.mp4'); return new Blob([data.buffer], { type: 'video/mp4' }); }
-                    else if (gif) return new Promise(r => { gif.on('finished', b => r(b)); gif.render(); });
-                    return null;
-                };
-                if (pagesToExport.length > 1) { for (let i = 0; i < pagesToExport.length; i++) { setExportProgress(Math.round((i / pagesToExport.length) * 100)); const blob = await generateForPage(pagesToExport[i]); if (blob) zip.file(`page_${i + 1}.${fileType === 'MP4' ? 'mp4' : 'gif'}`, blob); } saveAs(await zip.generateAsync({ type: 'blob' }), `${baseFileName}.zip`); }
-                else { const blob = await generateForPage(pagesToExport[0]); if (blob) saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`); }
+                    // --- New Combined Rendering with Transitions and Accurate Timing ---
+                    const fps = 30;
+                    const SECONDS_PER_PAGE = 3.0;
+                    const pxToSec = (px) => Math.floor(px / 92) * SECONDS_PER_PAGE + Math.min(SECONDS_PER_PAGE, (px % 92) / 80 * SECONDS_PER_PAGE);
+
+                    // Calculate max audio end time to ensure video covers all audio
+                    let maxAudioEndTime = pagesToExport.length * SECONDS_PER_PAGE;
+                    if (designAudios.length > 0) {
+                        const endTimes = designAudios.map(t => pxToSec((t.startTime || 0) + (t.width || 80)));
+                        maxAudioEndTime = Math.max(maxAudioEndTime, ...endTimes);
+                    }
+
+                    const totalDuration = maxAudioEndTime;
+                    const totalFrames = Math.ceil(totalDuration * fps);
+                    const durationPerPage = SECONDS_PER_PAGE;
+                    const transitionDuration = 0.5;
+
+                    for (let i = 0; i < totalFrames; i++) {
+                        const currentTime = i / fps;
+                        let pageIdx = Math.floor(currentTime / durationPerPage);
+                        
+                        // Clamp to last page if audio extends beyond pages
+                        if (pageIdx >= pagesToExport.length) {
+                            pageIdx = pagesToExport.length - 1;
+                        }
+
+                        const nextPageIdx = pageIdx + 1;
+                        const pageChangeTime = (pageIdx + 1) * durationPerPage;
+
+                        let finalCanvas;
+
+                        // Transition logic (only if not on the last extended segment)
+                        if (nextPageIdx < pagesToExport.length && currentTime > (pageChangeTime - transitionDuration / 2)) {
+                            const tStart = pageChangeTime - transitionDuration / 2;
+                            const progress = Math.max(0, Math.min(1, (currentTime - tStart) / transitionDuration));
+                            const easedProgress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                            const canvasA = await renderFinalCanvas(pagesToExport[pageIdx].layers, null, {
+                                scale: size, transparent: transparentBg, frameTime: currentTime % durationPerPage, duration: durationPerPage,
+                                useOriginalResolution: true, limitResolution: true, isFrame: true
+                            });
+                            const canvasB = await renderFinalCanvas(pagesToExport[nextPageIdx].layers, null, {
+                                scale: size, transparent: transparentBg, frameTime: currentTime % durationPerPage, duration: durationPerPage,
+                                useOriginalResolution: true, limitResolution: true, isFrame: true
+                            });
+
+                            const composite = document.createElement('canvas');
+                            composite.width = canvasA.width;
+                            composite.height = canvasA.height;
+                            const ctx = composite.getContext('2d');
+                            ctx.drawImage(canvasA, -easedProgress * canvasA.width, 0);
+                            ctx.drawImage(canvasB, (1 - easedProgress) * canvasB.width, 0);
+                            finalCanvas = composite;
+                        } else {
+                            const page = pagesToExport[pageIdx];
+                            finalCanvas = await renderFinalCanvas(page.layers, null, {
+                                scale: size, transparent: transparentBg, frameTime: currentTime % durationPerPage, duration: durationPerPage,
+                                useOriginalResolution: true, limitResolution: true, isFrame: true
+                            });
+                        }
+
+                        setExportProgress(Math.round((i / totalFrames) * 90));
+                        const fd = await new Promise(r => finalCanvas.toBlob(r, 'image/png'));
+                        await ffmpeg.writeFile(`frame_${i.toString().padStart(5, '0')}.png`, await fetchFile(fd));
+                    }
+
+                    let audioFilter = '';
+                    let audioInputs = '';
+                    if (audioFiles.length > 0) {
+                        audioFiles.forEach((f, idx) => {
+                            const startTimeSec = pxToSec(f.startTime || 0);
+                            const widthSec = pxToSec((f.startTime || 0) + (f.width || 80)) - startTimeSec;
+                            const delayMs = Math.round(startTimeSec * 1000);
+                            
+                            // Apply delay and volume
+                            audioFilter += `[${idx+1}:a]atrim=0:${widthSec},adelay=${delayMs}|${delayMs},volume=${(f.volume || 100) / 100}[a${idx}];`;
+                            audioInputs += `[a${idx}]`;
+                        });
+                        audioFilter += `${audioInputs}amix=inputs=${audioFiles.length}[outa]`;
+                    }
+
+                    const ffmpegArgs = ['-framerate', fps.toString(), '-i', 'frame_%05d.png'];
+                    audioFiles.forEach(f => ffmpegArgs.push('-i', f.fileName));
+                    ffmpegArgs.push(
+                        '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', 
+                        '-c:v', 'libx264', 
+                        '-crf', '18', // High quality (visually lossless)
+                        '-preset', 'slow', // Better compression efficiency
+                        '-pix_fmt', 'yuv420p', 
+                        '-movflags', '+faststart'
+                    );
+                    if (audioFiles.length > 0) {
+                        ffmpegArgs.push('-filter_complex', audioFilter, '-map', '0:v', '-map', '[outa]', '-c:a', 'aac', '-b:a', '192k', '-shortest');
+                    }
+                    ffmpegArgs.push('output.mp4');
+
+                    await ffmpeg.exec(ffmpegArgs);
+                    const data = await ffmpeg.readFile('output.mp4');
+                    saveAs(new Blob([data.buffer], { type: 'video/mp4' }), `${baseFileName}.mp4`);
+                } else {
+                    const generateForPage = async (page) => {
+                        const gif = fileType === 'GIF' ? new GIF({ workers: 2, quality: 10, width: (page.width || 1080) * size, height: (page.height || 720) * size, workerScript: '/gif.worker.js' }) : null;
+                        const duration = 3, fps = 15, totalFrames = duration * fps;
+                        for (let i = 0; i < totalFrames; i++) {
+                            const canvas = await renderFinalCanvas(page.layers, null, { scale: size, transparent: transparentBg, frameTime: (i / totalFrames) * duration, duration, useOriginalResolution: true, limitResolution: true, isFrame: true });
+                            if (fileType === 'MP4' && ffmpeg) { const fd = await new Promise(r => canvas.toBlob(r, 'image/png')); await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(fd)); }
+                            else if (gif) gif.addFrame(canvas, { copy: true, delay: 1000 / fps });
+                        }
+                        if (fileType === 'MP4' && ffmpeg) { await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'output.mp4']); const data = await ffmpeg.readFile('output.mp4'); return new Blob([data.buffer], { type: 'video/mp4' }); }
+                        else if (gif) return new Promise(r => { gif.on('finished', b => r(b)); gif.render(); });
+                        return null;
+                    };
+                    if (pagesToExport.length > 1) { for (let i = 0; i < pagesToExport.length; i++) { setExportProgress(Math.round((i / pagesToExport.length) * 100)); const blob = await generateForPage(pagesToExport[i]); if (blob) zip.file(`page_${i + 1}.${fileType === 'MP4' ? 'mp4' : 'gif'}`, blob); } saveAs(await zip.generateAsync({ type: 'blob' }), `${baseFileName}.zip`); }
+                    else { const blob = await generateForPage(pagesToExport[0]); if (blob) saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`); }
+                }
             } else if (fileType === 'PDF_STD' || fileType === 'PDF_PRINT') {
                 let pdf = null;
                 for (let i = 0; i < pagesToExport.length; i++) { const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true }); if (canvas) { if (!pdf) pdf = new jsPDF({ orientation: canvas.width > canvas.height ? 'l' : 'p', unit: 'px', format: [canvas.width, canvas.height] }); else pdf.addPage([canvas.width, canvas.height], canvas.width > canvas.height ? 'l' : 'p'); pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, canvas.width, canvas.height); } }

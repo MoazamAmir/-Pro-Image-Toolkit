@@ -26,6 +26,8 @@ import { uploadToCloudinary } from '../services/cloudinary';
 import LocalRecordingsService from '../services/LocalRecordingsService';
 import AudioTimeline from './AudioTimeline';
 import AudioRecorderModal from './AudioRecorderModal';
+import LocalUploadsService from '../services/LocalUploadsService';
+
 
 const {
     Type,
@@ -213,15 +215,25 @@ const ImageEditor = ({
     const [audioRecordings, setAudioRecordings] = useState([]);
     const [audioLoading, setAudioLoading] = useState(false);
     const [playingAudioId, setPlayingAudioId] = useState(null);
+    const [audioProgress, setAudioProgress] = useState(0);
     const audioRef = useRef(new Audio());
 
     // Audio Timeline State
     // Audio Timeline State (Per Page)
-    const [pageAudios, setPageAudios] = useState({}); // { [pageId]: tracks[] }
+    const [designAudios, setDesignAudios] = useState([]); // [{id, url, name, duration, startTime: 0, width: 80, ...}]
+    const [pageAudios, setPageAudios] = useState({}); // Kept for legacy if needed, but we'll use designAudios
     const [showAudioRecorder, setShowAudioRecorder] = useState(false);
     const [showUploadAudioMenu, setShowUploadAudioMenu] = useState(false);
     const audioFileInputRef = useRef(null);
     const [activeAudioTrackId, setActiveAudioTrackId] = useState(null);
+
+    // Uploaded Media & Folders State
+    const [uploadSubTab, setUploadSubTab] = useState('Images'); // 'Images', 'Videos', 'Audio', 'Folders'
+    const [uploadedImages, setUploadedImages] = useState([]);
+    const [uploadedVideos, setUploadedVideos] = useState([]);
+    const [folders, setFolders] = useState([]);
+    const [isMediaLoading, setIsMediaLoading] = useState(false);
+    const [currentFolderId, setCurrentFolderId] = useState(null); // To track which folder we are currently viewing
 
 
     useEffect(() => {
@@ -443,6 +455,30 @@ const ImageEditor = ({
         return `${m}:${sec.toString().padStart(2, '0')}`;
     };
 
+    // Audio Playback Progress Tracking
+    useEffect(() => {
+        const audio = audioRef.current;
+        const handleTimeUpdate = () => {
+            if (audio.duration && audio.duration > 0) {
+                const progress = (audio.currentTime / audio.duration) * 100;
+                setAudioProgress(progress);
+            }
+        };
+        
+        const handleEnded = () => {
+            setPlayingAudioId(null);
+            setAudioProgress(0);
+        };
+
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        audio.addEventListener('ended', handleEnded);
+        
+        return () => {
+            audio.removeEventListener('timeupdate', handleTimeUpdate);
+            audio.removeEventListener('ended', handleEnded);
+        };
+    }, []);
+
     // Fetch user audio recordings when Uploads tab is opened
     useEffect(() => {
         const fetchAudioRecordings = async () => {
@@ -481,15 +517,43 @@ const ImageEditor = ({
         fetchAudioRecordings();
     }, [activeTab, user?.uid]);
 
+    // Fetch user media (images/videos) and folders when Uploads tab is opened
+    useEffect(() => {
+        const fetchMediaAndFolders = async () => {
+            if (activeTab === 'uploads' && !isMediaLoading) {
+                setIsMediaLoading(true);
+                try {
+                    const userId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
+                    
+                    const images = await LocalUploadsService.getMedia(userId, 'image');
+                    const videos = await LocalUploadsService.getMedia(userId, 'video');
+                    const userFolders = await LocalUploadsService.getFolders(userId);
+                    
+                    setUploadedImages(images);
+                    setUploadedVideos(videos);
+                    setFolders(userFolders);
+                } catch (error) {
+                    console.error('Failed to fetch media and folders:', error);
+                } finally {
+                    setIsMediaLoading(false);
+                }
+            }
+        };
+        fetchMediaAndFolders();
+    }, [activeTab, user?.uid]);
+
     const handlePlayAudio = (recording) => {
         if (playingAudioId === recording.id) {
             audioRef.current.pause();
             setPlayingAudioId(null);
         } else {
+            // Reset progress if it's a new audio
+            if (audioRef.current.src !== recording.url) {
+                setAudioProgress(0);
+            }
             audioRef.current.src = recording.url;
             audioRef.current.play();
             setPlayingAudioId(recording.id);
-            audioRef.current.onended = () => setPlayingAudioId(null);
         }
     };
 
@@ -507,81 +571,177 @@ const ImageEditor = ({
         }
     };
 
-    // Add audio to timeline (when user clicks audio in sidebar)
+    // Add audio to timeline (Global Timeline)
     const handleAddAudioToTimeline = (recording) => {
-        if (!activePageId) return;
-
         const trackId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const newTrack = {
             id: trackId,
             name: recording.name || `Audio ${new Date(recording.createdAt).toLocaleDateString()}`,
             url: recording.url,
             duration: 0, 
-            startTime: 0,
+            startTime: 0, // In pixels for simplicity in this UI
+            width: 80, // Default to one thumbnail width
             trimStart: 0,
             trimEnd: 0,
             volume: 100,
             muted: false,
-            recordingId: recording.id
+            recordingId: recording.id,
+            isGlobal: true
         };
 
         const tempAudio = new Audio(recording.url);
         tempAudio.addEventListener('loadedmetadata', () => {
             const dur = tempAudio.duration || 10;
-            setPageAudios(prev => {
-                const currentTracks = prev[activePageId] || [];
-                return {
-                    ...prev,
-                    [activePageId]: currentTracks.map(t =>
-                        t.id === trackId ? { ...t, duration: dur, trimEnd: dur } : t
-                    )
-                };
-            });
+            const secToPx = (s) => {
+                const fullPages = Math.floor(s / 3.0);
+                const remainder = s % 3.0;
+                return (fullPages * 92) + (remainder / 3.0 * 80);
+            };
+            const width = Math.max(20, secToPx(dur));
+            
+            setDesignAudios(prev => prev.map(t =>
+                t.id === trackId ? { ...t, duration: dur, trimEnd: dur, width } : t
+            ));
         });
 
-        setPageAudios(prev => ({
-            ...prev,
-            [activePageId]: [...(prev[activePageId] || []), newTrack]
-        }));
+        setDesignAudios(prev => [...prev, newTrack]);
     };
 
-    // Import audio file handler
-    const handleImportAudioFile = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (!file.type.startsWith('audio/')) {
-            alert('Please select an audio file (MP3, WAV, etc.)');
-            return;
-        }
+    // Universal file upload handler (Images, Videos, Audio)
+    const handleFileUploadUniversal = async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
 
-        try {
-            const userId = user?.uid || 'guest';
-            const name = file.name.replace(/\.[^/.]+$/, '');
-            
-            // Get duration before saving
-            const audioUrl = URL.createObjectURL(file);
-            const tempAudio = new Audio(audioUrl);
-            let duration = 0;
-            
-            await new Promise((resolve) => {
-                tempAudio.addEventListener('loadedmetadata', () => {
-                    duration = tempAudio.duration;
-                    resolve();
-                });
-                tempAudio.addEventListener('error', () => resolve());
-                setTimeout(resolve, 1000); // 1s timeout
-            });
+        const userId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
+        
+        for (const file of files) {
+            try {
+                if (file.type.startsWith('audio/')) {
+                    const name = file.name.replace(/\.[^/.]+$/, '');
+                    
+                    // Get duration before saving
+                    const audioUrl = URL.createObjectURL(file);
+                    const tempAudio = new Audio(audioUrl);
+                    let duration = 0;
+                    
+                    await new Promise((resolve) => {
+                        tempAudio.addEventListener('loadedmetadata', () => {
+                            duration = tempAudio.duration;
+                            resolve();
+                        });
+                        tempAudio.addEventListener('error', () => resolve());
+                        setTimeout(resolve, 1000); // 1s timeout
+                    });
 
-            const saved = await LocalRecordingsService.saveRecording(file, userId, name, duration);
-            if (saved) {
-                setAudioRecordings(prev => [saved, ...prev]);
+                    const saved = await LocalRecordingsService.saveRecording(file, userId, name, duration);
+                    if (saved) {
+                        setAudioRecordings(prev => [saved, ...prev]);
+                    }
+                    URL.revokeObjectURL(audioUrl);
+                } else if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+                    const saved = await LocalUploadsService.saveMedia(file, userId, currentFolderId);
+                    if (saved) {
+                        if (saved.type === 'image') {
+                            setUploadedImages(prev => [saved, ...prev]);
+                        } else {
+                            setUploadedVideos(prev => [saved, ...prev]);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to upload file:', error);
             }
-            URL.revokeObjectURL(audioUrl);
-        } catch (error) {
-            console.error('Failed to import audio:', error);
         }
+        
         // Reset input
         if (audioFileInputRef.current) audioFileInputRef.current.value = '';
+    };
+
+    const handleCreateFolder = async () => {
+        const folderName = window.prompt('Enter folder name:');
+        if (!folderName) return;
+
+        const userId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
+        const newFolder = await LocalUploadsService.createFolder(folderName, userId);
+        if (newFolder) {
+            setFolders(prev => [newFolder, ...prev]);
+        }
+    };
+
+    const handleDeleteFolder = async (folderId) => {
+        if (window.confirm('Are you sure you want to delete this folder?')) {
+            const success = await LocalUploadsService.deleteFolder(folderId);
+            if (success) {
+                setFolders(prev => prev.filter(f => f.id !== folderId));
+                if (currentFolderId === folderId) setCurrentFolderId(null);
+            }
+        }
+    };
+
+    const handleDeleteMedia = async (media) => {
+        if (window.confirm('Delete this item?')) {
+            const success = await LocalUploadsService.deleteMedia(media.id);
+            if (success) {
+                if (media.type === 'image') {
+                    setUploadedImages(prev => prev.filter(i => i.id !== media.id));
+                } else {
+                    setUploadedVideos(prev => prev.filter(v => v.id !== media.id));
+                }
+            }
+        }
+    };
+
+    // Helper to add media to canvas
+    const handleAddMediaToCanvas = (media) => {
+        const rect = containerRef.current.getBoundingClientRect();
+        
+        const createLayer = (width, height) => {
+            // Keep it within reasonable bounds relative to canvas if too big
+            let finalWidth = width;
+            let finalHeight = height;
+            const maxW = canvasSize.width * 0.8;
+            const maxH = canvasSize.height * 0.8;
+
+            if (finalWidth > maxW || finalHeight > maxH) {
+                const ratio = Math.min(maxW / finalWidth, maxH / finalHeight);
+                finalWidth *= ratio;
+                finalHeight *= ratio;
+            }
+
+            const newLayer = {
+                id: `${media.type}-${Date.now()}`,
+                type: 'shape',
+                shapeType: media.type, // 'image' or 'video'
+                content: media.url,
+                name: media.name,
+                x: 50,
+                y: 50,
+                width: finalWidth,
+                height: finalHeight,
+                rotation: 0,
+                opacity: 1,
+                isSelected: true,
+                isLocked: false,
+                contentScale: 1,
+                contentX: 0,
+                contentY: 0,
+                createdAt: Date.now()
+            };
+
+            addLayerWithSync(newLayer);
+        };
+
+        if (media.type === 'image') {
+            const img = new Image();
+            img.src = media.url;
+            img.onload = () => createLayer(img.naturalWidth, img.naturalHeight);
+            img.onerror = () => createLayer(300, 300);
+        } else {
+            const video = document.createElement('video');
+            video.src = media.url;
+            video.onloadedmetadata = () => createLayer(video.videoWidth, video.videoHeight);
+            video.onerror = () => createLayer(400, 225);
+        }
     };
 
     // Callback when audio recorder saves
@@ -3056,6 +3216,7 @@ const ImageEditor = ({
                 designId={designId}
                 onDesignIdGenerated={setDesignId}
                 user={user}
+                designAudios={designAudios}
                 onStartRecordingStudio={() => setShowRecordingStudio(true)}
                 onStartPresentation={(mode) => { setPresentationMode(mode); setShowPresentationViewer(true); }}
             />
@@ -4212,7 +4373,7 @@ const ImageEditor = ({
                                         ref={audioFileInputRef}
                                         type="file"
                                         accept="image/*,video/*,audio/*"
-                                        onChange={handleImportAudioFile}
+                                        onChange={handleFileUploadUniversal}
                                         className="hidden"
                                         multiple
                                     />
@@ -4223,72 +4384,225 @@ const ImageEditor = ({
                                     {['Images', 'Videos', 'Audio', 'Folders'].map((tab) => (
                                         <button
                                             key={tab}
+                                            onClick={() => {
+                                                setUploadSubTab(tab);
+                                                if (tab !== 'Folders') setCurrentFolderId(null); // Reset folder when switching back to global tabs?
+                                                // Actually, maybe keep it centered? Let's say Folders tab is for organization.
+                                            }}
                                             className={`text-xs font-bold pb-2 px-1 relative transition-colors ${
-                                                (tab === 'Audio' ? 'text-purple-600' : (darkMode ? 'text-gray-500' : 'text-gray-400'))
+                                                uploadSubTab === tab 
+                                                    ? 'text-purple-600' 
+                                                    : (darkMode ? 'text-gray-500' : 'text-gray-400')
                                             }`}
                                         >
                                             {tab}
-                                            {tab === 'Audio' && (
+                                            {uploadSubTab === tab && (
                                                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600 rounded-full" />
                                             )}
                                         </button>
                                     ))}
                                 </div>
 
+                                {/* Folder Breadcrumb / Back Navigation */}
+                                {currentFolderId && (
+                                    <div className={`flex items-center gap-2 py-2 px-1 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                                        <button 
+                                            onClick={() => setCurrentFolderId(null)}
+                                            className={`p-1 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'} transition-all`}
+                                        >
+                                            <ArrowLeft className="w-3.5 h-3.5" />
+                                        </button>
+                                        <div className="flex items-center gap-1.5 overflow-hidden">
+                                            <FolderKanban className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
+                                            <span className={`text-[10px] font-bold truncate ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                {folders.find(f => f.id === currentFolderId)?.name || 'Folder'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="space-y-4 pt-1">
-                                    
-                                    {audioLoading ? (
-                                        <div className="flex flex-col items-center justify-center py-8">
-                                            <Loader2 className="w-6 h-6 text-purple-500 animate-spin mb-2" />
-                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading recordings...</p>
-                                        </div>
-                                    ) : audioRecordings.length === 0 ? (
-                                        <div className={`p-6 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'} flex flex-col items-center justify-center text-center`}>
-                                            <Music className="w-8 h-8 mb-2 opacity-20" />
-                                            <p className="text-[10px] font-bold">No audio found<br />Record or import audio to get started!</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {audioRecordings.map(recording => (
-                                                <div 
-                                                    key={recording.id} 
-                                                    className={`p-2.5 rounded-xl border-none ${darkMode ? 'hover:bg-gray-800/80' : 'hover:bg-gray-50'} group cursor-pointer transition-all flex items-center justify-between`}
-                                                    onClick={() => handleAddAudioToTimeline(recording)}
-                                                >
-                                                    <div className="flex items-center gap-3 overflow-hidden">
-                                                        {/* Play Button Icon */}
+                                    {/* Images Sub-Tab */}
+                                    {uploadSubTab === 'Images' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {uploadedImages.filter(img => !currentFolderId || img.folderId === currentFolderId).length === 0 ? (
+                                                <div className={`col-span-2 p-6 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'} flex flex-col items-center justify-center text-center`}>
+                                                    <ImageIcon className="w-8 h-8 mb-2 opacity-20" />
+                                                    <p className="text-[10px] font-bold">No images {currentFolderId ? 'in this folder' : 'found'}<br />Upload images to get started!</p>
+                                                </div>
+                                            ) : (
+                                                uploadedImages.filter(img => !currentFolderId || img.folderId === currentFolderId).map(img => (
+                                                    <div 
+                                                        key={img.id}
+                                                        className={`group relative aspect-square rounded-lg overflow-hidden cursor-pointer ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} hover:ring-2 hover:ring-purple-500 transition-all`}
+                                                        onClick={() => handleAddMediaToCanvas(img)}
+                                                    >
+                                                        <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
                                                         <button 
-                                                            onClick={(e) => { e.stopPropagation(); handlePlayAudio(recording); }}
-                                                            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                                                                playingAudioId === recording.id 
-                                                                    ? 'bg-purple-600 text-white shadow-lg' 
-                                                                    : (darkMode ? 'bg-gray-800 text-gray-400 group-hover:bg-gray-700' : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200')
-                                                            }`}
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteMedia(img); }}
+                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
                                                         >
-                                                            {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                                                            <Trash className="w-3 h-3" />
                                                         </button>
-                                                        
-                                                        <div className="overflow-hidden">
-                                                            <p className={`text-xs font-bold truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'} group-hover:text-purple-600 transition-colors`}>
-                                                                {recording.name || `Recording ${new Date(recording.createdAt).toLocaleDateString()}`}
-                                                            </p>
-                                                            <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'} font-medium`}>
-                                                                Audio • {fmt(recording.duration)}
-                                                            </p>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Videos Sub-Tab */}
+                                    {uploadSubTab === 'Videos' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {uploadedVideos.filter(vid => !currentFolderId || vid.folderId === currentFolderId).length === 0 ? (
+                                                <div className={`col-span-2 p-6 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'} flex flex-col items-center justify-center text-center`}>
+                                                    <Video className="w-8 h-8 mb-2 opacity-20" />
+                                                    <p className="text-[10px] font-bold">No videos {currentFolderId ? 'in this folder' : 'found'}<br />Upload videos to get started!</p>
+                                                </div>
+                                            ) : (
+                                                uploadedVideos.filter(vid => !currentFolderId || vid.folderId === currentFolderId).map(vid => (
+                                                    <div 
+                                                        key={vid.id}
+                                                        className={`group relative aspect-video rounded-lg overflow-hidden cursor-pointer ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} hover:ring-2 hover:ring-purple-500 transition-all`}
+                                                        onClick={() => handleAddMediaToCanvas(vid)}
+                                                    >
+                                                        <video src={vid.url} className="w-full h-full object-cover" muted onMouseEnter={e => e.target.play()} onMouseLeave={e => { e.target.pause(); e.target.currentTime = 0; }} />
+                                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                            <Play className="w-6 h-6 text-white bg-black/30 rounded-full p-1.5" />
+                                                        </div>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteMedia(vid); }}
+                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        >
+                                                            <Trash className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Audio Sub-Tab */}
+                                    {uploadSubTab === 'Audio' && (
+                                        <div className="space-y-2">
+                                            {audioLoading ? (
+                                                <div className="flex flex-col items-center justify-center py-8">
+                                                    <Loader2 className="w-6 h-6 text-purple-500 animate-spin mb-2" />
+                                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading recordings...</p>
+                                                </div>
+                                            ) : audioRecordings.length === 0 ? (
+                                                <div className={`p-6 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-500' : 'border-gray-200 text-gray-400'} flex flex-col items-center justify-center text-center`}>
+                                                    <Music className="w-8 h-8 mb-2 opacity-20" />
+                                                    <p className="text-[10px] font-bold">No audio found<br />Record or import audio to get started!</p>
+                                                </div>
+                                            ) : (
+                                                audioRecordings.map(recording => (
+                                                    <div 
+                                                        key={recording.id} 
+                                                        className={`p-2.5 rounded-xl border-none ${darkMode ? 'hover:bg-gray-800/80' : 'hover:bg-gray-50'} group cursor-pointer transition-all flex items-center justify-between`}
+                                                        onClick={() => handleAddAudioToTimeline(recording)}
+                                                    >
+                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                            <div className="relative">
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); handlePlayAudio(recording); }}
+                                                                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all z-10 relative ${
+                                                                        playingAudioId === recording.id 
+                                                                            ? 'bg-purple-600 text-white shadow-lg' 
+                                                                            : (darkMode ? 'bg-gray-800 text-gray-400 group-hover:bg-gray-700' : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200')
+                                                                    }`}
+                                                                >
+                                                                    {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                                                                </button>
+                                                                {playingAudioId === recording.id && (
+                                                                    <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none z-20" viewBox="0 0 36 36">
+                                                                        <circle cx="18" cy="18" r="17" fill="none" stroke={darkMode ? '#8b5cf6' : '#9333ea'} strokeWidth="2.5" strokeDasharray="106.8" strokeDashoffset={106.8 - (audioProgress / 100) * 106.8} strokeLinecap="round" className="transition-all duration-300 ease-linear" />
+                                                                    </svg>
+                                                                )}
+                                                            </div>
+                                                            <div className="overflow-hidden">
+                                                                <p className={`text-xs font-bold truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'} group-hover:text-purple-600 transition-colors`}>{recording.name}</p>
+                                                                <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'} font-medium`}>Audio • {fmt(recording.duration)}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteAudio(recording); }} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700 text-gray-500' : 'hover:bg-gray-200 text-gray-400'} hover:text-red-500 transition-all`} title="Delete"><Trash className="w-3.5 h-3.5" /></button>
                                                         </div>
                                                     </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
 
-                                                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleDeleteAudio(recording); }}
-                                                            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700 text-gray-500' : 'hover:bg-gray-200 text-gray-400'} hover:text-red-500 transition-all`}
-                                                            title="Delete"
-                                                        >
-                                                            <Trash className="w-3.5 h-3.5" />
-                                                        </button>
+                                    {/* Folders Sub-Tab */}
+                                    {uploadSubTab === 'Folders' && (
+                                        <div className="space-y-4">
+                                            <button 
+                                                onClick={handleCreateFolder}
+                                                className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs transition-all border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-400 hover:border-purple-500/50 hover:bg-gray-800/50' : 'border-gray-200 text-gray-500 hover:border-purple-200 hover:bg-gray-50'}`}
+                                            >
+                                                <Plus className="w-4 h-4" />
+                                                Create new folder
+                                            </button>
+                                            
+                                            <div className="space-y-2">
+                                                {folders.length === 0 ? (
+                                                    <div className="text-center py-8">
+                                                        <FolderKanban className="w-8 h-8 mx-auto mb-2 opacity-20 text-gray-400" />
+                                                        <p className={`text-[10px] font-bold ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No folders created yet</p>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                ) : currentFolderId ? (
+                                                    // While in a folder, we could show contents or stay in Folders tab.
+                                                    // The user said "ander chaza rak sakta ha", so entering a folder is good.
+                                                    <div className="space-y-4">
+                                                        <p className={`text-[10px] font-bold ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Items in this folder:</p>
+                                                        {/* Re-use logic for showing images/videos but filtered */}
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {[...uploadedImages, ...uploadedVideos].filter(i => i.folderId === currentFolderId).map(item => (
+                                                                <div 
+                                                                    key={item.id}
+                                                                    className={`group relative aspect-square rounded-lg overflow-hidden cursor-pointer ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} hover:ring-2 hover:ring-purple-500 transition-all`}
+                                                                    onClick={() => handleAddMediaToCanvas(item)}
+                                                                >
+                                                                    {item.type === 'image' ? (
+                                                                        <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <div className="w-full h-full bg-black flex items-center justify-center">
+                                                                            <Play className="w-6 h-6 text-white opacity-50" />
+                                                                        </div>
+                                                                    )}
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); handleDeleteMedia(item); }}
+                                                                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    >
+                                                                        <Trash className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    folders.map(folder => (
+                                                        <div 
+                                                            key={folder.id}
+                                                            onClick={() => {
+                                                                setCurrentFolderId(folder.id);
+                                                            }}
+                                                            className={`p-3 rounded-xl flex items-center justify-between group cursor-pointer transition-all ${darkMode ? 'hover:bg-gray-800/50 text-gray-200' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <FolderKanban className="w-5 h-5 text-purple-500" />
+                                                                <span className="text-xs font-bold">{folder.name}</span>
+                                                            </div>
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                                                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all"
+                                                            >
+                                                                <Trash className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -4498,7 +4812,7 @@ const ImageEditor = ({
                 >
                     {/* Workspace (Canvas) */}
                     {/* Workspace (Canvas) */}
-                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-8 pb-32 bg-gray-100 dark:bg-gray-900'}`}>
+                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-4 pb-20 bg-gray-100 dark:bg-gray-900'}`}>
                         {/* Contextual Audio Toolbar */}
                         {activeAudioTrackId && !isViewOnly && (
                             <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 animate-fadeInScale">
@@ -5246,6 +5560,22 @@ const ImageEditor = ({
                                                         />
                                                     );
                                                 }
+                                                if (layer.shapeType === 'video') {
+                                                    return (
+                                                        <video
+                                                            key={`${layer.id}-${layer.animationClass || ''}`}
+                                                            src={layer.content}
+                                                            autoPlay
+                                                            muted
+                                                            loop
+                                                            playsInline
+                                                            className="w-full h-full object-cover pointer-events-none"
+                                                            style={{
+                                                                transform: `scale(${layer.contentScale || 1}) translate(${(layer.contentX || 0) / (layer.width || 1) * 100}%, ${(layer.contentY || 0) / (layer.height || 1) * 100}%)`
+                                                            }}
+                                                        />
+                                                    );
+                                                }
                                                 return (
                                                     <div
                                                         key={`${layer.id}-${layer.animationClass || ''}-${activeLayerId === layer.id ? (hoverAnimation || '') : ''}`}
@@ -5382,87 +5712,197 @@ const ImageEditor = ({
                         </div>
                     </div>
 
-                    {/* Audio Timeline - Below Canvas (Per Page) */}
-                    {!isViewOnly && (pageAudios[activePageId]?.length > 0) && (
-                        <AudioTimeline
-                            audioTracks={pageAudios[activePageId] || []}
-                            onUpdateTracks={(newTracks) => {
-                                setPageAudios(prev => ({ ...prev, [activePageId]: newTracks }));
-                            }}
-                            darkMode={darkMode}
-                            activeTrackId={activeAudioTrackId}
-                            onSelectTrack={setActiveAudioTrackId}
-                        />
-                    )}
                 </div >
 
-                {/* Floating Bottom Page Controls (Center) - FIXED TO STAY IN PLACE */}
+                {/* Floating Bottom Page Controls (Center) - GLOBAL TIMELINE LAYOUT */}
                 {!isViewOnly && (
-                    <div className={`absolute bottom-4 z-50 max-w-[60vw] flex items-end justify-start transition-all duration-300 ease-in-out ${isPanelOpen ? 'right-[800px] left-auto' : 'left-24'
+                    <div className={`absolute bottom-2 z-50 max-w-[80vw] flex flex-col items-center transition-all duration-300 ease-in-out ${isPanelOpen ? 'right-[800px] left-auto' : 'left-24'
                         }`}>
-                        <div className="flex items-center gap-3 overflow-x-auto p-2 scrollbar-hide bg-transparent rounded-xl">
-                            {pages.map((page, index) => (
-                                <div key={page.id} className="relative group flex-shrink-0">
-                                    <button
-                                        onClick={() => switchPage(page.id)}
-                                        className="flex flex-col items-center gap-1 group transition-all"
-                                    >
-                                        <div className={`w-20 h-12 rounded-lg border-2 overflow-hidden relative bg-white transition-all ${activePageId === page.id ? 'border-purple-600 ring-2 ring-purple-600/20 shadow-lg scale-105' : 'border-gray-300 dark:border-gray-600 hover:border-purple-400'}`}>
-                                            {/* Content Preview */}
-                                            <div className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
-                                                {page.layers.length > 0 ? (
-                                                    <div className="w-full h-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                                                        {page.layers.find(l => l.shapeType === 'image') ? <ImageIcon className="w-4 h-4 opacity-50" /> : <div className="flex gap-0.5 transform scale-50"><div className="w-2 h-2 bg-gray-300 rounded-full"></div></div>}
-                                                    </div>
-                                                ) : 'Empty'}
-                                            </div>
-                                            {/* Page Number Badge */}
-                                            <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[9px] px-1.5 py-0.5 rounded-tr-md font-medium backdrop-blur-sm">
-                                                {index + 1}
-                                            </div>
-                                        </div>
-
-                                        {/* Audio Indicator Bar Under Thumbnail */}
-                                        {pageAudios[page.id]?.length > 0 && (
-                                            <div className="w-16 h-1 mt-0.5 bg-purple-500 rounded-full animate-pulse shadow-sm shadow-purple-500/50" />
-                                        )}
-                                    </button>
-
-                                    {/* Page Actions on Hover */}
-                                    <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all transform scale-75 hover:scale-100 z-10">
+                        
+                        {/* Scrollable Container for Thumbnails and Audio */}
+                        <div className="flex flex-col bg-white/10 dark:bg-black/10 backdrop-blur-sm p-3 rounded-2xl border border-white/20 shadow-2xl overflow-x-auto max-w-full scrollbar-hide">
+                            
+                            {/* Thumbnails Row */}
+                            <div className="flex items-center gap-3 pb-2">
+                                {pages.map((page, index) => (
+                                    <div key={page.id} className="relative group flex-shrink-0">
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); handleDuplicatePage(page.id); }}
-                                            className="bg-white dark:bg-gray-700 text-purple-600 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-purple-50 dark:hover:bg-purple-900/30"
-                                            title="Duplicate Page"
+                                            onClick={() => switchPage(page.id)}
+                                            className="flex flex-col items-center gap-1 group transition-all"
                                         >
-                                            <Copy className="w-3 h-3" />
+                                            <div className={`w-20 h-12 rounded-lg border-2 overflow-hidden relative bg-white transition-all ${activePageId === page.id ? 'border-purple-600 ring-2 ring-purple-600/20 shadow-lg scale-105' : 'border-gray-300 dark:border-gray-600 hover:border-purple-400'}`}>
+                                                {/* Content Preview */}
+                                                <div className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
+                                                    {page.layers.length > 0 ? (
+                                                        <div className="w-full h-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                                                            {page.layers.find(l => l.shapeType === 'image') ? <ImageIcon className="w-4 h-4 opacity-50" /> : <div className="flex gap-0.5 transform scale-50"><div className="w-2 h-2 bg-gray-300 rounded-full"></div></div>}
+                                                        </div>
+                                                    ) : 'Empty'}
+                                                </div>
+                                                {/* Page Number Badge */}
+                                                <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[9px] px-1.5 py-0.5 rounded-tr-md font-medium backdrop-blur-sm">
+                                                    {index + 1}
+                                                </div>
+                                            </div>
                                         </button>
 
-                                        {pages.length > 1 && (
+                                        {/* Page Actions on Hover */}
+                                        <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all transform scale-75 hover:scale-100 z-10">
                                             <button
-                                                onClick={(e) => deletePage(e, page.id)}
-                                                className="bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                                title="Delete Page"
+                                                onClick={(e) => { e.stopPropagation(); handleDuplicatePage(page.id); }}
+                                                className="bg-white dark:bg-gray-700 text-purple-600 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+                                                title="Duplicate Page"
+                                            >
+                                                <Copy className="w-3 h-3" />
+                                            </button>
+
+                                            {pages.length > 1 && (
+                                                <button
+                                                    onClick={(e) => deletePage(e, page.id)}
+                                                    className="bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                                    title="Delete Page"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Add Page Button */}
+                                <button
+                                    onClick={addPage}
+                                    className="w-20 h-12 flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-purple-500 bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 transition-all group"
+                                >
+                                    <div className="flex items-center gap-1 text-gray-400 group-hover:text-purple-500">
+                                        <Plus className="w-5 h-5" />
+                                        <ChevronDown className="w-3 h-3" />
+                                    </div>
+                                </button>
+                            </div>
+
+                            {/* Global Audio Tracks Strip */}
+                            {designAudios.length > 0 && (
+                                <div className="relative h-6 mt-1 min-w-full group/audiostrip">
+                                    {/* Page Markers Background */}
+                                    <div className="absolute inset-0 flex items-center gap-3 pointer-events-none">
+                                        {pages.map((_, i) => (
+                                            <div key={i} className="flex-shrink-0 w-20 h-full border-r border-dashed border-gray-400/20 flex items-center justify-center">
+                                                <span className="text-[7px] font-bold text-gray-400/50 select-none uppercase tracking-tighter">P{i+1}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {designAudios.map((track) => (
+                                        <div 
+                                            key={track.id}
+                                            className="absolute h-full bg-purple-600 rounded-md shadow-sm overflow-hidden flex items-center gap-[1px] px-1 group cursor-move transition-shadow hover:shadow-lg border border-white/20"
+                                            style={{ 
+                                                left: track.startTime, 
+                                                width: track.width,
+                                                zIndex: playingAudioId === track.id ? 20 : 10
+                                            }}
+                                            onMouseDown={(e) => {
+                                                // Drag to move logic
+                                                const startX = e.clientX;
+                                                const initialLeft = track.startTime || 0;
+                                                
+                                                const onMouseMove = (moveE) => {
+                                                    const delta = moveE.clientX - startX;
+                                                    let newLeft = initialLeft + delta;
+                                                    
+                                                    // Audio Snap points: Start & End of each page (80px wide + 12px gap)
+                                                    const snapThreshold = 10;
+                                                    pages.forEach((_, idx) => {
+                                                        const pStart = idx * 92;
+                                                        const pEnd = pStart + 80;
+                                                        if (Math.abs(newLeft - pStart) < snapThreshold) newLeft = pStart;
+                                                        if (Math.abs(newLeft - pEnd) < snapThreshold) newLeft = pEnd;
+                                                    });
+
+                                                    setDesignAudios(prev => prev.map(t => 
+                                                        t.id === track.id ? { ...t, startTime: Math.max(0, newLeft) } : t
+                                                    ));
+                                                };
+                                                
+                                                const onMouseUp = () => {
+                                                    window.removeEventListener('mousemove', onMouseMove);
+                                                    window.removeEventListener('mouseup', onMouseUp);
+                                                };
+                                                
+                                                window.addEventListener('mousemove', onMouseMove);
+                                                window.addEventListener('mouseup', onMouseUp);
+                                            }}
+                                        >
+                                            {/* Waveform Bars */}
+                                            {Array.from({ length: Math.floor(track.width / 5) }).map((_, i) => (
+                                                <div 
+                                                    key={i}
+                                                    className="w-[1px] bg-white rounded-full flex-shrink-0"
+                                                    style={{ 
+                                                        height: `${30 + Math.sin(i * 1.5) * 40 + Math.random() * 30}%`,
+                                                        opacity: 0.8
+                                                    }}
+                                                />
+                                            ))}
+                                            
+                                            {/* Resize Handle (Right) */}
+                                            <div 
+                                                className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/30 transition-colors z-20 flex items-center justify-center"
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    const startX = e.clientX;
+                                                    const initialWidth = track.width || 80;
+                                                    
+                                                    const onMouseMove = (moveE) => {
+                                                        const delta = moveE.clientX - startX;
+                                                        let newWidth = initialWidth + delta;
+
+                                                        // Audio Snap points: End of each page (80px wide + 12px gap)
+                                                        const snapThreshold = 10;
+                                                        const trackStart = track.startTime || 0;
+                                                        pages.forEach((_, idx) => {
+                                                            const pEnd = idx * 92 + 80;
+                                                            if (Math.abs((trackStart + newWidth) - pEnd) < snapThreshold) {
+                                                                newWidth = pEnd - trackStart;
+                                                            }
+                                                        });
+
+                                                        setDesignAudios(prev => prev.map(t => 
+                                                            t.id === track.id ? { ...t, width: Math.max(20, newWidth) } : t
+                                                        ));
+                                                    };
+                                                    
+                                                    const onMouseUp = () => {
+                                                        window.removeEventListener('mousemove', onMouseMove);
+                                                        window.removeEventListener('mouseup', onMouseUp);
+                                                    };
+                                                    
+                                                    window.addEventListener('mousemove', onMouseMove);
+                                                    window.addEventListener('mouseup', onMouseUp);
+                                                }}
+                                            >
+                                                <div className="w-1 h-3 bg-white/40 rounded-full" />
+                                            </div>
+
+                                            {/* Delete Button (Hidden by default, shown on hover) */}
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if(window.confirm('Delete this audio track?')) {
+                                                        setDesignAudios(prev => prev.filter(t => t.id !== track.id));
+                                                    }
+                                                }}
+                                                className="absolute top-0 right-2 bottom-0 px-1 text-white hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity z-30"
                                             >
                                                 <X className="w-3 h-3" />
                                             </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-
-                            {/* Add Page Button */}
-                            <button
-                                onClick={addPage}
-                                className="w-20 h-12 flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-purple-500 bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 transition-all group"
-                            >
-                                <div className="flex items-center gap-1 text-gray-400 group-hover:text-purple-500">
-                                    <Plus className="w-5 h-5" />
-                                    <ChevronDown className="w-3 h-3" />
-                                </div>
-                            </button>
+                            )}
                         </div>
-                    </div >
+                    </div>
                 )}
 
 
@@ -5576,7 +6016,7 @@ const ImageEditor = ({
 
                 {/* Bottom Right Toolbar */}
                 {!isViewOnly && (
-                    <div className="absolute bottom-4 right-4 z-50 flex items-center gap-3 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div className="absolute bottom-2 right-4 z-50 flex items-center gap-3 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-2 px-2">
                             <input
                                 type="range"
@@ -5627,7 +6067,7 @@ const ImageEditor = ({
                     const layer = layers.find(l => l.id === activeLayerId);
                     if (!layer) return null;
                     return (
-                        <div className="fixed top-14 left-1/2 -translate-x-1/2 flex items-center flex-nowrap sm:flex-wrap gap-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-800/90 py-0.5 px-1.5 rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 pointer-events-auto z-[200] animate-fadeIn max-w-[95vw] overflow-x-auto custom-scrollbar sm:overflow-visible">
+                        <div className="fixed top-11 left-1/2 -translate-x-1/2 flex items-center flex-nowrap sm:flex-wrap gap-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-800/90 py-0.5 px-1.5 rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 pointer-events-auto z-[200] animate-fadeIn max-w-[95vw] overflow-x-auto custom-scrollbar sm:overflow-visible">
                             <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300" title="Duplicate">
                                 <Copy className="w-3 h-3" />
                             </button>

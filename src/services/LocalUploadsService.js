@@ -3,14 +3,18 @@
 const DB_NAME = 'ImageEditorUploadsDB';
 const MEDIA_STORE = 'media_uploads';
 const FOLDER_STORE = 'folders';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 class LocalUploadsService {
     async openDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-            request.onerror = (event) => reject('IndexedDB error: ' + event.target.error);
+            request.onerror = (event) => {
+                const error = event.target.error;
+                console.error('[IndexedDB] Database open error:', error);
+                reject('IndexedDB error: ' + error);
+            };
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;

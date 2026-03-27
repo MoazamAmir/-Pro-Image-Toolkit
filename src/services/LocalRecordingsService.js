@@ -2,14 +2,18 @@
 // LocalRecordingsService.js - IndexedDB based storage for audio recordings
 const DB_NAME = 'StudioProRecordingsDB';
 const STORE_NAME = 'audio_recordings';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 class LocalRecordingsService {
     async openDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-            request.onerror = (event) => reject('IndexedDB error: ' + event.target.error);
+            request.onerror = (event) => {
+                const error = event.target.error;
+                console.error('[IndexedDB] Database open error:', error);
+                reject('IndexedDB error: ' + error);
+            };
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;

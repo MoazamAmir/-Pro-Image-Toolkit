@@ -4361,8 +4361,8 @@ const ImageEditor = ({
                                     <button
                                         onClick={() => setShowAudioRecorder(true)}
                                         className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all border-2 ${darkMode
-                                                ? 'border-gray-700 text-gray-300 hover:bg-gray-800 hover:border-purple-500/50'
-                                                : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-purple-200'
+                                            ? 'border-gray-700 text-gray-300 hover:bg-gray-800 hover:border-purple-500/50'
+                                            : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-purple-200'
                                             } hover:scale-[1.01] active:scale-[0.98]`}
                                     >
                                         <Mic className="w-4 h-4" />
@@ -4389,8 +4389,8 @@ const ImageEditor = ({
                                                 // Actually, maybe keep it centered? Let's say Folders tab is for organization.
                                             }}
                                             className={`text-xs font-bold pb-2 px-1 relative transition-colors ${uploadSubTab === tab
-                                                    ? 'text-purple-600'
-                                                    : (darkMode ? 'text-gray-500' : 'text-gray-400')
+                                                ? 'text-purple-600'
+                                                : (darkMode ? 'text-gray-500' : 'text-gray-400')
                                                 }`}
                                         >
                                             {tab}
@@ -4504,8 +4504,8 @@ const ImageEditor = ({
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handlePlayAudio(recording); }}
                                                                     className={`w-9 h-9 rounded-full flex items-center justify-center transition-all z-10 relative ${playingAudioId === recording.id
-                                                                            ? 'bg-purple-600 text-white shadow-lg'
-                                                                            : (darkMode ? 'bg-gray-800 text-gray-400 group-hover:bg-gray-700' : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200')
+                                                                        ? 'bg-purple-600 text-white shadow-lg'
+                                                                        : (darkMode ? 'bg-gray-800 text-gray-400 group-hover:bg-gray-700' : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200')
                                                                         }`}
                                                                 >
                                                                     {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}

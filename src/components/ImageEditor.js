@@ -464,7 +464,7 @@ const ImageEditor = ({
                 setAudioProgress(progress);
             }
         };
-        
+
         const handleEnded = () => {
             setPlayingAudioId(null);
             setAudioProgress(0);
@@ -472,7 +472,7 @@ const ImageEditor = ({
 
         audio.addEventListener('timeupdate', handleTimeUpdate);
         audio.addEventListener('ended', handleEnded);
-        
+
         return () => {
             audio.removeEventListener('timeupdate', handleTimeUpdate);
             audio.removeEventListener('ended', handleEnded);
@@ -487,7 +487,7 @@ const ImageEditor = ({
                 try {
                     const currentUserId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
                     const localRecordings = await LocalRecordingsService.getRecordings(currentUserId);
-                    
+
                     // Proactively calculate duration for any that are missing it (legacy)
                     const updatedRecordings = await Promise.all(localRecordings.map(async (rec) => {
                         if (!rec.duration || rec.duration === 0) {
@@ -524,11 +524,11 @@ const ImageEditor = ({
                 setIsMediaLoading(true);
                 try {
                     const userId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
-                    
+
                     const images = await LocalUploadsService.getMedia(userId, 'image');
                     const videos = await LocalUploadsService.getMedia(userId, 'video');
                     const userFolders = await LocalUploadsService.getFolders(userId);
-                    
+
                     setUploadedImages(images);
                     setUploadedVideos(videos);
                     setFolders(userFolders);
@@ -578,7 +578,7 @@ const ImageEditor = ({
             id: trackId,
             name: recording.name || `Audio ${new Date(recording.createdAt).toLocaleDateString()}`,
             url: recording.url,
-            duration: 0, 
+            duration: 0,
             startTime: 0, // In pixels for simplicity in this UI
             width: 80, // Default to one thumbnail width
             trimStart: 0,
@@ -598,7 +598,7 @@ const ImageEditor = ({
                 return (fullPages * 92) + (remainder / 3.0 * 80);
             };
             const width = Math.max(20, secToPx(dur));
-            
+
             setDesignAudios(prev => prev.map(t =>
                 t.id === trackId ? { ...t, duration: dur, trimEnd: dur, width } : t
             ));
@@ -613,17 +613,17 @@ const ImageEditor = ({
         if (files.length === 0) return;
 
         const userId = user?.uid || JSON.parse(localStorage.getItem('user'))?.uid || 'guest';
-        
+
         for (const file of files) {
             try {
                 if (file.type.startsWith('audio/')) {
                     const name = file.name.replace(/\.[^/.]+$/, '');
-                    
+
                     // Get duration before saving
                     const audioUrl = URL.createObjectURL(file);
                     const tempAudio = new Audio(audioUrl);
                     let duration = 0;
-                    
+
                     await new Promise((resolve) => {
                         tempAudio.addEventListener('loadedmetadata', () => {
                             duration = tempAudio.duration;
@@ -652,7 +652,7 @@ const ImageEditor = ({
                 console.error('Failed to upload file:', error);
             }
         }
-        
+
         // Reset input
         if (audioFileInputRef.current) audioFileInputRef.current.value = '';
     };
@@ -694,7 +694,7 @@ const ImageEditor = ({
     // Helper to add media to canvas
     const handleAddMediaToCanvas = (media) => {
         const rect = containerRef.current.getBoundingClientRect();
-        
+
         const createLayer = (width, height) => {
             // Keep it within reasonable bounds relative to canvas if too big
             let finalWidth = width;
@@ -4348,7 +4348,7 @@ const ImageEditor = ({
                         {activeTab === 'uploads' && (
                             <div className="animate-fadeIn space-y-5">
                                 <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Uploads</h3>
-                                
+
                                 {/* Professional Upload Buttons */}
                                 <div className="space-y-3">
                                     <button
@@ -4360,11 +4360,10 @@ const ImageEditor = ({
                                     </button>
                                     <button
                                         onClick={() => setShowAudioRecorder(true)}
-                                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all border-2 ${
-                                            darkMode
+                                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all border-2 ${darkMode
                                                 ? 'border-gray-700 text-gray-300 hover:bg-gray-800 hover:border-purple-500/50'
                                                 : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-purple-200'
-                                        } hover:scale-[1.01] active:scale-[0.98]`}
+                                            } hover:scale-[1.01] active:scale-[0.98]`}
                                     >
                                         <Mic className="w-4 h-4" />
                                         Record yourself
@@ -4389,11 +4388,10 @@ const ImageEditor = ({
                                                 if (tab !== 'Folders') setCurrentFolderId(null); // Reset folder when switching back to global tabs?
                                                 // Actually, maybe keep it centered? Let's say Folders tab is for organization.
                                             }}
-                                            className={`text-xs font-bold pb-2 px-1 relative transition-colors ${
-                                                uploadSubTab === tab 
-                                                    ? 'text-purple-600' 
+                                            className={`text-xs font-bold pb-2 px-1 relative transition-colors ${uploadSubTab === tab
+                                                    ? 'text-purple-600'
                                                     : (darkMode ? 'text-gray-500' : 'text-gray-400')
-                                            }`}
+                                                }`}
                                         >
                                             {tab}
                                             {uploadSubTab === tab && (
@@ -4406,7 +4404,7 @@ const ImageEditor = ({
                                 {/* Folder Breadcrumb / Back Navigation */}
                                 {currentFolderId && (
                                     <div className={`flex items-center gap-2 py-2 px-1 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-                                        <button 
+                                        <button
                                             onClick={() => setCurrentFolderId(null)}
                                             className={`p-1 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'} transition-all`}
                                         >
@@ -4432,13 +4430,13 @@ const ImageEditor = ({
                                                 </div>
                                             ) : (
                                                 uploadedImages.filter(img => !currentFolderId || img.folderId === currentFolderId).map(img => (
-                                                    <div 
+                                                    <div
                                                         key={img.id}
                                                         className={`group relative aspect-square rounded-lg overflow-hidden cursor-pointer ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} hover:ring-2 hover:ring-purple-500 transition-all`}
                                                         onClick={() => handleAddMediaToCanvas(img)}
                                                     >
                                                         <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                                                        <button 
+                                                        <button
                                                             onClick={(e) => { e.stopPropagation(); handleDeleteMedia(img); }}
                                                             className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
                                                         >
@@ -4460,7 +4458,7 @@ const ImageEditor = ({
                                                 </div>
                                             ) : (
                                                 uploadedVideos.filter(vid => !currentFolderId || vid.folderId === currentFolderId).map(vid => (
-                                                    <div 
+                                                    <div
                                                         key={vid.id}
                                                         className={`group relative aspect-video rounded-lg overflow-hidden cursor-pointer ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} hover:ring-2 hover:ring-purple-500 transition-all`}
                                                         onClick={() => handleAddMediaToCanvas(vid)}
@@ -4469,7 +4467,7 @@ const ImageEditor = ({
                                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                                             <Play className="w-6 h-6 text-white bg-black/30 rounded-full p-1.5" />
                                                         </div>
-                                                        <button 
+                                                        <button
                                                             onClick={(e) => { e.stopPropagation(); handleDeleteMedia(vid); }}
                                                             className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
                                                         >
@@ -4496,20 +4494,19 @@ const ImageEditor = ({
                                                 </div>
                                             ) : (
                                                 audioRecordings.map(recording => (
-                                                    <div 
-                                                        key={recording.id} 
+                                                    <div
+                                                        key={recording.id}
                                                         className={`p-2.5 rounded-xl border-none ${darkMode ? 'hover:bg-gray-800/80' : 'hover:bg-gray-50'} group cursor-pointer transition-all flex items-center justify-between`}
                                                         onClick={() => handleAddAudioToTimeline(recording)}
                                                     >
                                                         <div className="flex items-center gap-3 overflow-hidden">
                                                             <div className="relative">
-                                                                <button 
+                                                                <button
                                                                     onClick={(e) => { e.stopPropagation(); handlePlayAudio(recording); }}
-                                                                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all z-10 relative ${
-                                                                        playingAudioId === recording.id 
-                                                                            ? 'bg-purple-600 text-white shadow-lg' 
+                                                                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all z-10 relative ${playingAudioId === recording.id
+                                                                            ? 'bg-purple-600 text-white shadow-lg'
                                                                             : (darkMode ? 'bg-gray-800 text-gray-400 group-hover:bg-gray-700' : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200')
-                                                                    }`}
+                                                                        }`}
                                                                 >
                                                                     {playingAudioId === recording.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                                                                 </button>
@@ -4536,14 +4533,14 @@ const ImageEditor = ({
                                     {/* Folders Sub-Tab */}
                                     {uploadSubTab === 'Folders' && (
                                         <div className="space-y-4">
-                                            <button 
+                                            <button
                                                 onClick={handleCreateFolder}
                                                 className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs transition-all border-2 border-dashed ${darkMode ? 'border-gray-800 text-gray-400 hover:border-purple-500/50 hover:bg-gray-800/50' : 'border-gray-200 text-gray-500 hover:border-purple-200 hover:bg-gray-50'}`}
                                             >
                                                 <Plus className="w-4 h-4" />
                                                 Create new folder
                                             </button>
-                                            
+
                                             <div className="space-y-2">
                                                 {folders.length === 0 ? (
                                                     <div className="text-center py-8">
@@ -4558,7 +4555,7 @@ const ImageEditor = ({
                                                         {/* Re-use logic for showing images/videos but filtered */}
                                                         <div className="grid grid-cols-2 gap-2">
                                                             {[...uploadedImages, ...uploadedVideos].filter(i => i.folderId === currentFolderId).map(item => (
-                                                                <div 
+                                                                <div
                                                                     key={item.id}
                                                                     className={`group relative aspect-square rounded-lg overflow-hidden cursor-pointer ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} hover:ring-2 hover:ring-purple-500 transition-all`}
                                                                     onClick={() => handleAddMediaToCanvas(item)}
@@ -4570,7 +4567,7 @@ const ImageEditor = ({
                                                                             <Play className="w-6 h-6 text-white opacity-50" />
                                                                         </div>
                                                                     )}
-                                                                    <button 
+                                                                    <button
                                                                         onClick={(e) => { e.stopPropagation(); handleDeleteMedia(item); }}
                                                                         className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
                                                                     >
@@ -4582,7 +4579,7 @@ const ImageEditor = ({
                                                     </div>
                                                 ) : (
                                                     folders.map(folder => (
-                                                        <div 
+                                                        <div
                                                             key={folder.id}
                                                             onClick={() => {
                                                                 setCurrentFolderId(folder.id);
@@ -4593,7 +4590,7 @@ const ImageEditor = ({
                                                                 <FolderKanban className="w-5 h-5 text-purple-500" />
                                                                 <span className="text-xs font-bold">{folder.name}</span>
                                                             </div>
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
                                                                 className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all"
                                                             >
@@ -4839,7 +4836,7 @@ const ImageEditor = ({
                                         </button>
                                     </div>
                                     <div className="flex items-center gap-1 border-l border-gray-500/10 px-1 ml-1">
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 const track = (pageAudios[activePageId] || []).find(t => t.id === activeAudioTrackId);
                                                 if (track && window.confirm('Delete this track?')) {
@@ -4850,7 +4847,7 @@ const ImageEditor = ({
                                                     setActiveAudioTrackId(null);
                                                 }
                                             }}
-                                            className="p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all" 
+                                            className="p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all"
                                             title="Delete"
                                         >
                                             <Trash className="w-3.5 h-3.5" />
@@ -5718,10 +5715,10 @@ const ImageEditor = ({
                 {!isViewOnly && (
                     <div className={`absolute bottom-2 z-50 max-w-[80vw] flex flex-col items-center transition-all duration-300 ease-in-out ${isPanelOpen ? 'right-[800px] left-auto' : 'left-24'
                         }`}>
-                        
+
                         {/* Scrollable Container for Thumbnails and Audio */}
                         <div className="flex flex-col bg-white/10 dark:bg-black/10 backdrop-blur-sm p-3 rounded-2xl border border-white/20 shadow-2xl overflow-x-auto max-w-full scrollbar-hide">
-                            
+
                             {/* Thumbnails Row */}
                             <div className="flex items-center gap-3 pb-2">
                                 {pages.map((page, index) => (
@@ -5788,17 +5785,17 @@ const ImageEditor = ({
                                     <div className="absolute inset-0 flex items-center gap-3 pointer-events-none">
                                         {pages.map((_, i) => (
                                             <div key={i} className="flex-shrink-0 w-20 h-full border-r border-dashed border-gray-400/20 flex items-center justify-center">
-                                                <span className="text-[7px] font-bold text-gray-400/50 select-none uppercase tracking-tighter">P{i+1}</span>
+                                                <span className="text-[7px] font-bold text-gray-400/50 select-none uppercase tracking-tighter">P{i + 1}</span>
                                             </div>
                                         ))}
                                     </div>
 
                                     {designAudios.map((track) => (
-                                        <div 
+                                        <div
                                             key={track.id}
                                             className="absolute h-full bg-purple-600 rounded-md shadow-sm overflow-hidden flex items-center gap-[1px] px-1 group cursor-move transition-shadow hover:shadow-lg border border-white/20"
-                                            style={{ 
-                                                left: track.startTime, 
+                                            style={{
+                                                left: track.startTime,
                                                 width: track.width,
                                                 zIndex: playingAudioId === track.id ? 20 : 10
                                             }}
@@ -5806,11 +5803,11 @@ const ImageEditor = ({
                                                 // Drag to move logic
                                                 const startX = e.clientX;
                                                 const initialLeft = track.startTime || 0;
-                                                
+
                                                 const onMouseMove = (moveE) => {
                                                     const delta = moveE.clientX - startX;
                                                     let newLeft = initialLeft + delta;
-                                                    
+
                                                     // Audio Snap points: Start & End of each page (80px wide + 12px gap)
                                                     const snapThreshold = 10;
                                                     pages.forEach((_, idx) => {
@@ -5820,40 +5817,40 @@ const ImageEditor = ({
                                                         if (Math.abs(newLeft - pEnd) < snapThreshold) newLeft = pEnd;
                                                     });
 
-                                                    setDesignAudios(prev => prev.map(t => 
+                                                    setDesignAudios(prev => prev.map(t =>
                                                         t.id === track.id ? { ...t, startTime: Math.max(0, newLeft) } : t
                                                     ));
                                                 };
-                                                
+
                                                 const onMouseUp = () => {
                                                     window.removeEventListener('mousemove', onMouseMove);
                                                     window.removeEventListener('mouseup', onMouseUp);
                                                 };
-                                                
+
                                                 window.addEventListener('mousemove', onMouseMove);
                                                 window.addEventListener('mouseup', onMouseUp);
                                             }}
                                         >
                                             {/* Waveform Bars */}
                                             {Array.from({ length: Math.floor(track.width / 5) }).map((_, i) => (
-                                                <div 
+                                                <div
                                                     key={i}
                                                     className="w-[1px] bg-white rounded-full flex-shrink-0"
-                                                    style={{ 
+                                                    style={{
                                                         height: `${30 + Math.sin(i * 1.5) * 40 + Math.random() * 30}%`,
                                                         opacity: 0.8
                                                     }}
                                                 />
                                             ))}
-                                            
+
                                             {/* Resize Handle (Right) */}
-                                            <div 
+                                            <div
                                                 className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/30 transition-colors z-20 flex items-center justify-center"
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
                                                     const startX = e.clientX;
                                                     const initialWidth = track.width || 80;
-                                                    
+
                                                     const onMouseMove = (moveE) => {
                                                         const delta = moveE.clientX - startX;
                                                         let newWidth = initialWidth + delta;
@@ -5868,16 +5865,16 @@ const ImageEditor = ({
                                                             }
                                                         });
 
-                                                        setDesignAudios(prev => prev.map(t => 
+                                                        setDesignAudios(prev => prev.map(t =>
                                                             t.id === track.id ? { ...t, width: Math.max(20, newWidth) } : t
                                                         ));
                                                     };
-                                                    
+
                                                     const onMouseUp = () => {
                                                         window.removeEventListener('mousemove', onMouseMove);
                                                         window.removeEventListener('mouseup', onMouseUp);
                                                     };
-                                                    
+
                                                     window.addEventListener('mousemove', onMouseMove);
                                                     window.addEventListener('mouseup', onMouseUp);
                                                 }}
@@ -5886,10 +5883,10 @@ const ImageEditor = ({
                                             </div>
 
                                             {/* Delete Button (Hidden by default, shown on hover) */}
-                                            <button 
+                                            <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if(window.confirm('Delete this audio track?')) {
+                                                    if (window.confirm('Delete this audio track?')) {
                                                         setDesignAudios(prev => prev.filter(t => t.id !== track.id));
                                                     }
                                                 }}

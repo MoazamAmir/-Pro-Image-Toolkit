@@ -8,6 +8,7 @@ import { photoCategories } from '../data/photoCategories';
 import { textTemplates } from '../data/textTemplates';
 import { formTemplates } from '../data/formTemplates';
 import { mockupElements } from '../data/mockupElements';
+import { voiceCategories } from '../data/voiceCategories';
 import { animatedElements } from '../data/animatedElements';
 import { graphicsElements } from '../data/graphicsElements';
 import { videoCategories, getRecentlyUsedVideos, getRecommendedVideos, getTrendingVideos, addRecentlyUsedVideo, getVideosWithCustom, addCustomVideoToCategory } from '../data/videoCategories';
@@ -174,6 +175,7 @@ const ImageEditor = ({
     const [colorSearchQuery, setColorSearchQuery] = useState('');
     const [showAllColors, setShowAllColors] = useState(false);
     const [activeColorProperty, setActiveColorProperty] = useState('color'); // 'color' or 'borderColor' or 'backgroundColor'
+    const [voiceSearchQuery, setVoiceSearchQuery] = useState('');
 
 
 
@@ -221,6 +223,11 @@ const ImageEditor = ({
     const [playingAudioId, setPlayingAudioId] = useState(null);
     const [audioProgress, setAudioProgress] = useState(0);
     const audioRef = useRef(new Audio());
+
+    // Voice/Audio Preview State
+    const [playingVoiceId, setPlayingVoiceId] = useState(null);
+    const [voiceProgress, setVoiceProgress] = useState(0);
+    const voiceAudioRef = useRef(new Audio());
 
     // Audio Timeline State
     // Audio Timeline State (Per Page)
@@ -574,6 +581,39 @@ const ImageEditor = ({
         }
     };
 
+    const handlePlayVoice = (voice) => {
+        // Remove old event listeners
+        const oldAudio = voiceAudioRef.current;
+        oldAudio.pause();
+        oldAudio.src = '';
+
+        // Clear any existing listeners
+        const newAudio = new Audio();
+        voiceAudioRef.current = newAudio;
+
+        if (playingVoiceId === voice.id) {
+            setPlayingVoiceId(null);
+            setVoiceProgress(0);
+        } else {
+            // Load and play new voice
+            newAudio.src = voice.url;
+            newAudio.load();
+            newAudio.play();
+            setPlayingVoiceId(voice.id);
+
+            // Update progress
+            newAudio.addEventListener('timeupdate', () => {
+                const progress = (newAudio.currentTime / newAudio.duration) * 100;
+                setVoiceProgress(progress || 0);
+            });
+
+            newAudio.addEventListener('ended', () => {
+                setPlayingVoiceId(null);
+                setVoiceProgress(0);
+            });
+        }
+    };
+
     const handleDeleteAudio = async (recording) => {
         if (!recording?.id) return;
         if (window.confirm('Are you sure you want to delete this recording?')) {
@@ -609,6 +649,43 @@ const ImageEditor = ({
         const tempAudio = new Audio(recording.url);
         tempAudio.addEventListener('loadedmetadata', () => {
             const dur = tempAudio.duration || 10;
+            const secToPx = (s) => {
+                const fullPages = Math.floor(s / 3.0);
+                const remainder = s % 3.0;
+                return (fullPages * 92) + (remainder / 3.0 * 80);
+            };
+            const width = Math.max(20, secToPx(dur));
+
+            setDesignAudios(prev => prev.map(t =>
+                t.id === trackId ? { ...t, duration: dur, trimEnd: dur, width } : t
+            ));
+        });
+
+        setDesignAudios(prev => [...prev, newTrack]);
+    };
+
+    // Add voice from voices panel to timeline
+    const handleAddVoiceToTimeline = (voice) => {
+        const trackId = `voice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const newTrack = {
+            id: trackId,
+            name: voice.title,
+            url: voice.url,
+            duration: 0,
+            startTime: 0,
+            width: 80,
+            trimStart: 0,
+            trimEnd: 0,
+            volume: 100,
+            muted: false,
+            voiceId: voice.id,
+            thumbnail: voice.thumbnail,
+            isGlobal: true
+        };
+
+        const tempAudio = new Audio(voice.url);
+        tempAudio.addEventListener('loadedmetadata', () => {
+            const dur = tempAudio.duration || voice.duration || 10;
             const secToPx = (s) => {
                 const fullPages = Math.floor(s / 3.0);
                 const remainder = s % 3.0;
@@ -3667,7 +3744,7 @@ const ImageEditor = ({
                                                         { id: 'Animations', name: 'Animations', icon: <Play className="w-5 h-5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                                                         { id: 'photos', name: 'Photos', icon: <ImageIcon className="w-5 h-5" />, color: 'text-purple-500', bg: 'bg-purple-500/10' },
                                                         { id: 'videos', name: 'Videos', icon: <Video className="w-5 h-5" />, color: 'text-pink-500', bg: 'bg-pink-500/10' },
-                                                        { id: 'audio', name: 'Audio', icon: <Music className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-500/10' },
+                                                        { id: 'voices', name: 'Voices', icon: <Mic className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-500/10' },
                                                         // { id: 'charts', name: 'Charts', icon: <PieChart className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-500/10' },
                                                         // { id: 'tables', name: 'Tables', icon: <Grid className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-500/10' },
                                                         { id: 'frames', name: 'Frames', icon: <Crop className="w-5 h-5" />, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
@@ -4454,6 +4531,136 @@ const ImageEditor = ({
                                                     darkMode={darkMode}
                                                 />
                                             ))}
+                                        </div>
+                                    )}
+                                    {elementsView === 'voices' && (
+                                        <div className="animate-fadeIn h-full flex flex-col">
+                                            {/* Header */}
+                                            <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+                                                <button
+                                                    onClick={() => setElementsView('home')}
+                                                    className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Voices & Audio</h3>
+                                            </div>
+
+                                            {/* Search Bar */}
+                                            <div className="relative mb-4 mt-3 flex-shrink-0">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search voices..."
+                                                    value={voiceSearchQuery}
+                                                    onChange={(e) => setVoiceSearchQuery(e.target.value)}
+                                                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl border-none shadow-sm ${darkMode ? 'bg-gray-800 text-white placeholder:text-gray-500' : 'bg-white text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200'} text-xs focus:ring-2 focus:ring-purple-500 transition-all`}
+                                                />
+                                                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                            </div>
+
+                                            {/* Voice Categories */}
+                                            <div className="space-y-6 flex-1 overflow-y-auto custom-scrollbar -mr-2 pr-2">
+                                                {voiceCategories
+                                                    .filter(cat =>
+                                                        voiceSearchQuery === '' ||
+                                                        cat.title.toLowerCase().includes(voiceSearchQuery.toLowerCase()) ||
+                                                        cat.audios.some(audio =>
+                                                            audio.title.toLowerCase().includes(voiceSearchQuery.toLowerCase()) ||
+                                                            audio.tags.some(tag => tag.toLowerCase().includes(voiceSearchQuery.toLowerCase()))
+                                                        )
+                                                    )
+                                                    .map((category) => {
+                                                        const IconCmp = LucideIcons[category.icon] || Mic;
+                                                        return (
+                                                            <div key={category.id} className="space-y-3">
+                                                                {/* Category Header */}
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${category.color} flex items-center justify-center shadow-sm`}>
+                                                                        <IconCmp className="w-4 h-4 text-white" />
+                                                                    </div>
+                                                                    <h4 className={`text-sm font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>{category.title}</h4>
+                                                                </div>
+
+                                                                {/* Audio Tracks Grid */}
+                                                                <div className="grid grid-cols-1 gap-2">
+                                                                    {category.audios
+                                                                        .filter(audio =>
+                                                                            voiceSearchQuery === '' ||
+                                                                            audio.title.toLowerCase().includes(voiceSearchQuery.toLowerCase()) ||
+                                                                            audio.tags.some(tag => tag.toLowerCase().includes(voiceSearchQuery.toLowerCase()))
+                                                                        )
+                                                                        .map((audio) => (
+                                                                            <div
+                                                                                key={audio.id}
+                                                                                className={`flex items-center gap-3 p-2.5 rounded-xl border-2 transition-all hover:scale-[1.02] ${darkMode
+                                                                                    ? 'border-gray-800 bg-gray-800/40 hover:border-purple-500/50 hover:bg-gray-800/60'
+                                                                                    : 'border-gray-100 bg-white hover:border-purple-200 hover:bg-purple-50/50'
+                                                                                    }`}
+                                                                            >
+                                                                                {/* Play Button */}
+                                                                                <div className="relative">
+                                                                                    <button
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            handlePlayVoice(audio);
+                                                                                        }}
+                                                                                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all z-10 relative ${playingVoiceId === audio.id
+                                                                                            ? 'bg-purple-600 text-white shadow-lg'
+                                                                                            : (darkMode ? 'bg-gray-700 text-gray-300 hover:bg-purple-600 hover:text-white' : 'bg-gray-100 text-gray-600 hover:bg-purple-600 hover:text-white')
+                                                                                            }`}
+                                                                                    >
+                                                                                        {playingVoiceId === audio.id ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                                                                                    </button>
+                                                                                    {playingVoiceId === audio.id && (
+                                                                                        <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none z-20" viewBox="0 0 36 36">
+                                                                                            <circle cx="18" cy="18" r="17" fill="none" stroke={darkMode ? '#8b5cf6' : '#9333ea'} strokeWidth="2.5" strokeDasharray="106.8" strokeDashoffset={106.8 - (voiceProgress / 100) * 106.8} strokeLinecap="round" className="transition-all duration-300 ease-linear" />
+                                                                                        </svg>
+                                                                                    )}
+                                                                                </div>
+
+                                                                                {/* Thumbnail */}
+                                                                                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative">
+                                                                                    <img
+                                                                                        src={audio.thumbnail}
+                                                                                        alt={audio.title}
+                                                                                        className="w-full h-full object-cover"
+                                                                                        loading="lazy"
+                                                                                    />
+                                                                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                                                                                        <Play className="w-5 h-5 text-white" />
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {/* Info */}
+                                                                                <div className="flex-1 text-left overflow-hidden min-w-0">
+                                                                                    <p className={`text-xs font-bold truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{audio.title}</p>
+                                                                                    <p className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'} font-medium`}>
+                                                                                        {fmt(audio.duration)}
+                                                                                    </p>
+                                                                                </div>
+
+                                                                                {/* Add Button */}
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleAddVoiceToTimeline(audio);
+                                                                                    }}
+                                                                                    className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${darkMode
+                                                                                        ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white'
+                                                                                        : 'bg-purple-100 text-purple-600 hover:bg-purple-500 hover:text-white'
+                                                                                        }`}
+                                                                                >
+                                                                                    <Plus className="w-4 h-4" />
+                                                                                </button>
+                                                                            </div>
+                                                                        ))
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                }
+                                            </div>
                                         </div>
                                     )}
                                     {elementsView === 'frames' && (

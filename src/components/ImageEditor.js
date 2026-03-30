@@ -10,6 +10,7 @@ import { formTemplates } from '../data/formTemplates';
 import { mockupElements } from '../data/mockupElements';
 import { animatedElements } from '../data/animatedElements';
 import { graphicsElements } from '../data/graphicsElements';
+import { videoCategories, getRecentlyUsedVideos, getRecommendedVideos, getTrendingVideos, addRecentlyUsedVideo, getVideosWithCustom, addCustomVideoToCategory } from '../data/videoCategories';
 import lottie from 'lottie-web';
 import { saveEditorState, loadEditorState, saveRecentlyUsedAnimations, loadRecentlyUsedAnimations } from '../utils/editorStorage';
 import { imageAnimations } from '../data/imageAnimations';
@@ -155,6 +156,9 @@ const ImageEditor = ({
     const [croppingLayerId, setCroppingLayerId] = useState(null);
     const [elementsView, setElementsView] = useState('home'); // 'home', 'shapes', 'graphics', etc.
     const [formsView, setFormsView] = useState('home'); // 'home' or subcategory name
+    const [videosView, setVideosView] = useState('home'); // 'home', 'category', 'recent', 'trending'
+    const [selectedVideoCategory, setSelectedVideoCategory] = useState(null);
+    const [videoSearchQuery, setVideoSearchQuery] = useState('');
     const [contextMenu, setContextMenu] = useState(null); // { x, y, layerId }
     const [clipboard, setClipboard] = useState(null);
     const [history, setHistory] = useState([]);
@@ -234,6 +238,19 @@ const ImageEditor = ({
     const [folders, setFolders] = useState([]);
     const [isMediaLoading, setIsMediaLoading] = useState(false);
     const [currentFolderId, setCurrentFolderId] = useState(null); // To track which folder we are currently viewing
+
+    // Hover video preview state
+    const [hoverVideoUrl, setHoverVideoUrl] = useState(null);
+    const [isPlayingHoverVideo, setIsPlayingHoverVideo] = useState(false);
+    const [hoveredVideoElement, setHoveredVideoElement] = useState(null);
+    const hoverVideoRefs = useRef({});
+    const hoverVideoTimeoutRef = useRef(null);
+
+    // Custom video URL state with category selection
+    const [showCustomVideoInput, setShowCustomVideoInput] = useState(false);
+    const [customVideoUrl, setCustomVideoUrl] = useState('');
+    const [selectedCustomCategory, setSelectedCustomCategory] = useState(null);
+    const [showCategorySelection, setShowCategorySelection] = useState(false);
 
 
     useEffect(() => {
@@ -2255,6 +2272,160 @@ const ImageEditor = ({
         }
     };
 
+    const addVideoLayer = (videoItem) => {
+        if (!videoItem?.url) return;
+
+        // Get background dimensions for relative sizing
+        const bgLayer = layers.find(l => l.id === 'background-layer');
+        const bgW = bgLayer?.width || (canvasSize?.width || 1000);
+        const bgH = bgLayer?.height || (canvasSize?.height || 1000);
+
+        // Calculate proportional size (50% of background by default for videos)
+        const targetWidth = bgW * 0.5;
+        const targetHeight = bgH * 0.5;
+
+        // Load video to get its aspect ratio
+        const video = document.createElement('video');
+        video.src = videoItem.url;
+        video.onloadedmetadata = () => {
+            const aspectRatio = video.videoWidth / video.videoHeight;
+            let finalWidth = targetWidth;
+            let finalHeight = targetHeight;
+
+            if (aspectRatio > (targetWidth / targetHeight)) { // Video is wider relative to target
+                finalHeight = targetWidth / aspectRatio;
+            } else { // Video is taller relative to target
+                finalWidth = targetHeight * aspectRatio;
+            }
+
+            const newLayer = {
+                id: Date.now(),
+                type: 'shape',
+                shapeType: 'video',
+                content: videoItem.url,
+                thumbnail: videoItem.thumbnail || videoItem.url,
+                duration: videoItem.duration || '0:00',
+                color: 'transparent',
+                width: finalWidth,
+                height: finalHeight,
+                x: 50,
+                y: 50,
+                isSelected: true,
+                contentX: 0,
+                contentY: 0,
+                contentScale: 1
+            };
+            addLayerWithSync(newLayer);
+            // Add to recently used
+            addRecentlyUsedVideo(videoItem);
+        };
+        video.onerror = () => {
+            // Fallback if video fails to load
+            const newLayer = {
+                id: Date.now(),
+                type: 'shape',
+                shapeType: 'video',
+                content: videoItem.url,
+                thumbnail: videoItem.thumbnail || videoItem.url,
+                duration: videoItem.duration || '0:00',
+                color: 'transparent',
+                width: targetWidth,
+                height: targetHeight,
+                x: 50,
+                y: 50,
+                isSelected: true,
+                contentX: 0,
+                contentY: 0,
+                contentScale: 1
+            };
+            addLayerWithSync(newLayer);
+            addRecentlyUsedVideo(videoItem);
+        };
+        setIsPanelOpen(false); // Close panel on mobile after adding
+    };
+
+    const handleCustomVideoSubmit = () => {
+        if (!customVideoUrl.trim() || !selectedCustomCategory) return;
+
+        const videoItem = {
+            url: customVideoUrl.trim(),
+            thumbnail: '', // Will use video itself as thumbnail
+            duration: '0:00', // Will be calculated when loaded
+            isCustom: true
+        };
+
+        // Save to category
+        addCustomVideoToCategory(selectedCustomCategory.title, videoItem);
+
+        // Add to editor
+        addVideoLayer(videoItem);
+
+        // Reset form
+        setCustomVideoUrl('');
+        setSelectedCustomCategory(null);
+        setShowCategorySelection(false);
+        setShowCustomVideoInput(false);
+    };
+
+    const handleOpenAddVideoURL = () => {
+        setShowCategorySelection(true);
+        setShowCustomVideoInput(false);
+    };
+
+    const handleCategorySelect = (category) => {
+        setSelectedCustomCategory(category);
+        setShowCategorySelection(false);
+        setShowCustomVideoInput(true);
+    };
+
+    // Hover video preview handlers - Optimized for fast loading
+    const handleVideoHover = (videoUrl, e) => {
+        // Clear any pending timeout
+        if (hoverVideoTimeoutRef.current) {
+            clearTimeout(hoverVideoTimeoutRef.current);
+        }
+
+        // Set hovered video immediately for instant response
+        setHoverVideoUrl(videoUrl);
+        setIsPlayingHoverVideo(true);
+        setHoveredVideoElement(videoUrl);
+
+        // Preload video if not already loaded
+        if (!hoverVideoRefs.current[videoUrl]) {
+            const video = document.createElement('video');
+            video.src = videoUrl;
+            video.preload = 'auto';
+            video.muted = true;
+            video.loop = true;
+            video.playsInline = true;
+            hoverVideoRefs.current[videoUrl] = video;
+        }
+    };
+
+    const handleVideoHoverEnd = () => {
+        // Delay cleanup slightly for smoother experience when moving between videos
+        hoverVideoTimeoutRef.current = setTimeout(() => {
+            setIsPlayingHoverVideo(false);
+            setHoveredVideoElement(null);
+            setHoverVideoUrl(null);
+        }, 100);
+    };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (hoverVideoTimeoutRef.current) {
+                clearTimeout(hoverVideoTimeoutRef.current);
+            }
+            // Clean up video refs
+            Object.values(hoverVideoRefs.current).forEach(video => {
+                video.pause();
+                video.src = '';
+            });
+            hoverVideoRefs.current = {};
+        };
+    }, []);
+
     const addFrame = (frameItem) => {
         if (!frameItem) return;
 
@@ -3753,6 +3924,509 @@ const ImageEditor = ({
                                             ))}
                                         </div>
                                     )}
+                                    {elementsView === 'videos' && (
+                                        <div className="animate-fadeIn space-y-6">
+                                            {/* Header */}
+                                            <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                <button
+                                                    onClick={() => {
+                                                        setElementsView('home');
+                                                        setVideosView('home');
+                                                        setSelectedVideoCategory(null);
+                                                    }}
+                                                    className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Videos</h3>
+                                            </div>
+
+                                            {/* Search Bar */}
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search elements"
+                                                    value={videoSearchQuery}
+                                                    onChange={(e) => setVideoSearchQuery(e.target.value)}
+                                                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl border-none shadow-sm ${darkMode ? 'bg-gray-800 text-white placeholder:text-gray-500' : 'bg-white text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200'} text-xs focus:ring-2 focus:ring-purple-500 transition-all`}
+                                                />
+                                                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                            </div>
+
+                                            {/* Custom Video URL Input */}
+                                            <div className="space-y-2">
+                                                {/* Category Selection View */}
+                                                {showCategorySelection && (
+                                                    <div className="animate-fadeIn">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <button
+                                                                onClick={() => setShowCategorySelection(false)}
+                                                                className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                            >
+                                                                <ArrowLeft className="w-4 h-4" />
+                                                            </button>
+                                                            <h4 className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Select Category</h4>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {videoCategories.map((category) => (
+                                                                <button
+                                                                    key={category.title}
+                                                                    onClick={() => handleCategorySelect(category)}
+                                                                    className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-800 bg-gray-800/50' : 'hover:bg-gray-50 bg-gray-50'}`}
+                                                                >
+                                                                    <div className={`w-10 h-10 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center shadow-sm`}>
+                                                                        <Video className="w-5 h-5" />
+                                                                    </div>
+                                                                    <span className={`text-[10px] font-medium text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                        {category.title}
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Video URL Input View */}
+                                                {showCustomVideoInput && selectedCustomCategory && (
+                                                    <div className="animate-fadeIn space-y-2">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setShowCustomVideoInput(false);
+                                                                    setSelectedCustomCategory(null);
+                                                                }}
+                                                                className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                            >
+                                                                <ArrowLeft className="w-4 h-4" />
+                                                            </button>
+                                                            <h4 className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                Add Video to {selectedCustomCategory.title}
+                                                            </h4>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="url"
+                                                                placeholder="Paste video URL (MP4, WebM)"
+                                                                value={customVideoUrl}
+                                                                onChange={(e) => setCustomVideoUrl(e.target.value)}
+                                                                onKeyDown={(e) => e.key === 'Enter' && handleCustomVideoSubmit()}
+                                                                autoFocus
+                                                                className={`flex-1 px-3 py-2 rounded-xl border-none shadow-sm ${darkMode ? 'bg-gray-800 text-white placeholder:text-gray-500 ring-1 ring-gray-700' : 'bg-white text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200'} text-xs focus:ring-2 focus:ring-purple-500 transition-all`}
+                                                            />
+                                                            <button
+                                                                onClick={handleCustomVideoSubmit}
+                                                                className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold rounded-xl transition-colors"
+                                                            >
+                                                                Add
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setShowCustomVideoInput(false);
+                                                                    setSelectedCustomCategory(null);
+                                                                    setCustomVideoUrl('');
+                                                                }}
+                                                                className={`px-3 py-2 rounded-xl transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Initial Add Video URL Button */}
+                                                {!showCategorySelection && !showCustomVideoInput && (
+                                                    <button
+                                                        onClick={handleOpenAddVideoURL}
+                                                        className={`w-full py-2.5 rounded-xl border-2 border-dashed ${darkMode ? 'border-gray-700 hover:border-purple-500 hover:bg-purple-500/10 text-gray-400 hover:text-purple-400' : 'border-gray-300 hover:border-purple-500 hover:bg-purple-50 text-gray-500 hover:text-purple-600'} transition-all flex items-center justify-center gap-2 text-xs font-medium`}
+                                                    >
+                                                        <Plus className="w-4 h-4" />
+                                                        Add Video URL
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Videos Home View */}
+                                            {videosView === 'home' && (
+                                                <>
+                                                    {/* Recently Used */}
+                                                    {getRecentlyUsedVideos().length > 0 && (
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-3">
+                                                                <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Recently Used</h4>
+                                                                <button
+                                                                    onClick={() => setVideosView('recent')}
+                                                                    className="text-[10px] hover:underline opacity-60"
+                                                                >
+                                                                    See all
+                                                                </button>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {getRecentlyUsedVideos().slice(0, 6).map((video, i) => (
+                                                                    <button
+                                                                        key={i}
+                                                                        onClick={() => addVideoLayer(video)}
+                                                                        onMouseEnter={(e) => handleVideoHover(video.url, e)}
+                                                                        onMouseLeave={handleVideoHoverEnd}
+                                                                        className="aspect-video rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-pointer"
+                                                                    >
+                                                                        {hoveredVideoElement === video.url && isPlayingHoverVideo ? (
+                                                                            <video
+                                                                                src={video.url}
+                                                                                autoPlay
+                                                                                muted
+                                                                                loop
+                                                                                playsInline
+                                                                                preload="auto"
+                                                                                className="w-full h-full object-cover"
+                                                                            />
+                                                                        ) : video.thumbnail ? (
+                                                                            <img
+                                                                                src={video.thumbnail}
+                                                                                alt="Video thumbnail"
+                                                                                className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                                loading="eager"
+                                                                                decoding="async"
+                                                                                fetchPriority="high"
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="w-full h-full flex items-center justify-center">
+                                                                                <Play className="w-8 h-8 text-white/50" />
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <Play className="w-8 h-8 text-white" />
+                                                                        </div>
+                                                                        {video.duration && (
+                                                                            <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded">
+                                                                                {video.duration}
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Magic Recommendations */}
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Magic Recommendations</h4>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {getRecommendedVideos().slice(0, 6).map((video, i) => (
+                                                                <button
+                                                                    key={i}
+                                                                    onClick={() => addVideoLayer(video)}
+                                                                    onMouseEnter={(e) => handleVideoHover(video.url, e)}
+                                                                    onMouseLeave={handleVideoHoverEnd}
+                                                                    className="aspect-video rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-pointer"
+                                                                >
+                                                                    {hoveredVideoElement === video.url && isPlayingHoverVideo ? (
+                                                                        <video
+                                                                            src={video.url}
+                                                                            autoPlay
+                                                                            muted
+                                                                            loop
+                                                                            playsInline
+                                                                            preload="auto"
+                                                                            className="w-full h-full object-cover"
+                                                                        />
+                                                                    ) : video.thumbnail ? (
+                                                                        <img
+                                                                            src={video.thumbnail}
+                                                                            alt="Video thumbnail"
+                                                                            className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                            loading="eager"
+                                                                            decoding="async"
+                                                                            fetchPriority="high"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center">
+                                                                            <Play className="w-8 h-8 text-white/50" />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <Play className="w-8 h-8 text-white" />
+                                                                    </div>
+                                                                    {video.duration && (
+                                                                        <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded">
+                                                                            {video.duration}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Trending */}
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <h4 className={`text-[10px] font-black uppercase ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Trending</h4>
+                                                            <button
+                                                                onClick={() => setVideosView('trending')}
+                                                                className="text-[10px] hover:underline opacity-60"
+                                                            >
+                                                                See all
+                                                            </button>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {getTrendingVideos().slice(0, 6).map((video, i) => (
+                                                                <button
+                                                                    key={i}
+                                                                    onClick={() => addVideoLayer(video)}
+                                                                    onMouseEnter={(e) => handleVideoHover(video.url, e)}
+                                                                    onMouseLeave={handleVideoHoverEnd}
+                                                                    className="aspect-video rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-pointer"
+                                                                >
+                                                                    {hoveredVideoElement === video.url && isPlayingHoverVideo ? (
+                                                                        <video
+                                                                            src={video.url}
+                                                                            autoPlay
+                                                                            muted
+                                                                            loop
+                                                                            playsInline
+                                                                            preload="auto"
+                                                                            className="w-full h-full object-cover"
+                                                                        />
+                                                                    ) : video.thumbnail ? (
+                                                                        <img
+                                                                            src={video.thumbnail}
+                                                                            alt="Video thumbnail"
+                                                                            className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                            loading="eager"
+                                                                            decoding="async"
+                                                                            fetchPriority="high"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center">
+                                                                            <Play className="w-8 h-8 text-white/50" />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <Play className="w-8 h-8 text-white" />
+                                                                    </div>
+                                                                    {video.duration && (
+                                                                        <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded">
+                                                                            {video.duration}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Browse Categories */}
+                                                    <div>
+                                                        <h4 className={`text-[10px] font-black uppercase mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Browse Categories</h4>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            {videoCategories.map((category) => (
+                                                                <button
+                                                                    key={category.title}
+                                                                    onClick={() => {
+                                                                        setSelectedVideoCategory(category);
+                                                                        setVideosView('category');
+                                                                    }}
+                                                                    className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-800 bg-gray-800/50' : 'hover:bg-gray-50 bg-gray-50'}`}
+                                                                >
+                                                                    <div className={`w-10 h-10 rounded-lg bg-pink-500/10 text-pink-500 flex items-center justify-center shadow-sm`}>
+                                                                        <Video className="w-5 h-5" />
+                                                                    </div>
+                                                                    <span className={`text-[10px] font-medium text-center ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                        {category.title}
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* Category View */}
+                                            {videosView === 'category' && selectedVideoCategory && (
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                        <button
+                                                            onClick={() => {
+                                                                setVideosView('home');
+                                                                setSelectedVideoCategory(null);
+                                                            }}
+                                                            className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                        >
+                                                            <ArrowLeft className="w-4 h-4" />
+                                                        </button>
+                                                        <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedVideoCategory.title}</h3>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {getVideosWithCustom(selectedVideoCategory.title).map((video, i) => (
+                                                            <button
+                                                                key={i}
+                                                                onClick={() => addVideoLayer(video)}
+                                                                onMouseEnter={(e) => handleVideoHover(video.url, e)}
+                                                                onMouseLeave={handleVideoHoverEnd}
+                                                                className="aspect-video rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-pointer"
+                                                            >
+                                                                {hoveredVideoElement === video.url && isPlayingHoverVideo ? (
+                                                                    <video
+                                                                        src={video.url}
+                                                                        autoPlay
+                                                                        muted
+                                                                        loop
+                                                                        playsInline
+                                                                        preload="auto"
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                ) : video.thumbnail ? (
+                                                                    <img
+                                                                        src={video.thumbnail}
+                                                                        alt="Video thumbnail"
+                                                                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                        loading="eager"
+                                                                        decoding="async"
+                                                                        fetchPriority="high"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center">
+                                                                        <Play className="w-8 h-8 text-white/50" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <Play className="w-8 h-8 text-white" />
+                                                                </div>
+                                                                {video.duration && (
+                                                                    <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded">
+                                                                        {video.duration}
+                                                                    </span>
+                                                                )}
+                                                                {video.isCustom && (
+                                                                    <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-purple-500 text-white text-[8px] font-bold rounded">
+                                                                        Custom
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Recently Used All View */}
+                                            {videosView === 'recent' && (
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                        <button
+                                                            onClick={() => setVideosView('home')}
+                                                            className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                        >
+                                                            <ArrowLeft className="w-4 h-4" />
+                                                        </button>
+                                                        <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Recently Used</h3>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {getRecentlyUsedVideos().map((video, i) => (
+                                                            <button
+                                                                key={i}
+                                                                onClick={() => addVideoLayer(video)}
+                                                                onMouseEnter={(e) => handleVideoHover(video.url, e)}
+                                                                onMouseLeave={handleVideoHoverEnd}
+                                                                className="aspect-video rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-pointer"
+                                                            >
+                                                                {hoveredVideoElement === video.url && isPlayingHoverVideo ? (
+                                                                    <video
+                                                                        src={video.url}
+                                                                        autoPlay
+                                                                        muted
+                                                                        loop
+                                                                        playsInline
+                                                                        preload="auto"
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                ) : video.thumbnail ? (
+                                                                    <img
+                                                                        src={video.thumbnail}
+                                                                        alt="Video thumbnail"
+                                                                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                        loading="eager"
+                                                                        decoding="async"
+                                                                        fetchPriority="high"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center">
+                                                                        <Play className="w-8 h-8 text-white/50" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <Play className="w-8 h-8 text-white" />
+                                                                </div>
+                                                                {video.duration && (
+                                                                    <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded">
+                                                                        {video.duration}
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Trending All View */}
+                                            {videosView === 'trending' && (
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                                                        <button
+                                                            onClick={() => setVideosView('home')}
+                                                            className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                                        >
+                                                            <ArrowLeft className="w-4 h-4" />
+                                                        </button>
+                                                        <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Trending</h3>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {getTrendingVideos().map((video, i) => (
+                                                            <button
+                                                                key={i}
+                                                                onClick={() => addVideoLayer(video)}
+                                                                onMouseEnter={(e) => handleVideoHover(video.url, e)}
+                                                                onMouseLeave={handleVideoHoverEnd}
+                                                                className="aspect-video rounded-lg bg-gray-200 dark:bg-gray-800 overflow-hidden relative group cursor-pointer"
+                                                            >
+                                                                {hoveredVideoElement === video.url && isPlayingHoverVideo ? (
+                                                                    <video
+                                                                        src={video.url}
+                                                                        autoPlay
+                                                                        muted
+                                                                        loop
+                                                                        playsInline
+                                                                        preload="auto"
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                ) : video.thumbnail ? (
+                                                                    <img
+                                                                        src={video.thumbnail}
+                                                                        alt="Video thumbnail"
+                                                                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                                        loading="eager"
+                                                                        decoding="async"
+                                                                        fetchPriority="high"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center">
+                                                                        <Play className="w-8 h-8 text-white/50" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <Play className="w-8 h-8 text-white" />
+                                                                </div>
+                                                                {video.duration && (
+                                                                    <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded">
+                                                                        {video.duration}
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     {elementsView === '3d' && (
                                         <div className="animate-fadeIn space-y-6">
                                             {/* Header */}
@@ -3950,7 +4624,7 @@ const ImageEditor = ({
                                     )}
 
                                     {/* Default view for other categories (Placeholder) */}
-                                    {elementsView !== 'home' && elementsView !== 'shapes' && elementsView !== 'graphics' && elementsView !== 'photos' && elementsView !== '3d' && elementsView !== 'frames' && elementsView !== 'grids' && elementsView !== 'mockups' && elementsView !== 'Animations' && (
+                                    {/* {elementsView !== 'home' && elementsView !== 'shapes' && elementsView !== 'graphics' && elementsView !== 'photos' && elementsView !== '3d' && elementsView !== 'frames' && elementsView !== 'grids' && elementsView !== 'mockups' && elementsView !== 'Animations' && (
                                         <div className="animate-fadeIn space-y-4">
                                             <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
                                                 <button
@@ -3966,7 +4640,7 @@ const ImageEditor = ({
                                                 <p className="text-xs">More {elementsView} coming soon</p>
                                             </div>
                                         </div>
-                                    )}
+                                    )} */}
                                 </div>
                             </div>
                         )}

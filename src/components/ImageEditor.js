@@ -3132,33 +3132,39 @@ const ImageEditor = ({
     }
 
     return (
-        <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-[#0a0b10] text-white' : 'bg-[#f8fafc] text-gray-900'} transition-all duration-500 overflow-hidden text-sm`}>
+        <div className={`fixed inset-0 z-[100] flex flex-col h-screen ${darkMode ? 'bg-gradient-to-br from-[#0a0b10] via-[#0f1016] to-[#0a0b10] text-white' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100 text-gray-900'} transition-all duration-500 overflow-hidden text-sm antialiased`}>
             {/* TOP NAVIGATION BAR */}
             {isViewOnly ? renderPresentationHeader() : (
-                <header className={`h-11 flex-shrink-0 flex items-center justify-between px-4 border-b ${darkMode ? 'bg-gray-900/90 border-gray-800' : 'bg-white/90 border-gray-100'} backdrop-blur-md z-[60] shadow-sm`}>
-                    <div className="flex items-center gap-4">
+                <header className={`h-14 sm:h-16 flex-shrink-0 flex items-center justify-between px-3 sm:px-4 lg:px-6 border-b ${darkMode ? 'bg-gray-900/95 border-gray-800/80' : 'bg-white/95 border-gray-200/80'} backdrop-blur-xl z-[60] shadow-lg shadow-gray-200/50 dark:shadow-none`}>
+                    <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
                         {(isOwner || !designId) && (
                             <button
                                 onClick={handleClose}
-                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
+                                className={`p-2 rounded-xl transition-all duration-200 ${darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white hover:scale-105' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600 hover:scale-105'}`}
                                 title="Close Editor"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="w-4 h-4 sm:w-5 sm:h-5" />
                             </button>
                         )}
-                        <div className="h-6 w-px bg-gray-700/20 mx-1" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
-                                <Sparkles className="w-5 h-5 text-white fill-white/20" />
+                        <div className="h-5 sm:h-6 w-px bg-gradient-to-b from-transparent via-gray-300 dark:via-gray-700 to-transparent mx-1" />
+                        <div className="flex items-center gap-2 sm:gap-2.5">
+                            <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-purple-500 via-purple-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30 hover:shadow-purple-500/40 transition-all duration-300 hover:scale-105">
+                                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white fill-white/20" />
                             </div>
-                            <span className="font-black tracking-tight text-sm hidden sm:block">Editor <span className="text-purple-500">PRO</span></span>
+                            <div className="hidden sm:block">
+                                <span className={`font-black tracking-tight text-sm lg:text-base bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent`}>Editor <span className="text-purple-500">PRO</span></span>
+                                <p className={`text-[9px] font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'} -mt-0.5`}>Professional Design Studio</p>
+                            </div>
+                            <div className="sm:hidden">
+                                <span className={`font-black tracking-tight text-sm bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent`}>Editor</span>
+                            </div>
                         </div>
-                        <div className="h-6 w-px bg-gray-700/20 mx-2 hidden md:block" />
-                        <div className="flex items-center gap-1">
+                        <div className="h-5 sm:h-6 w-px bg-gradient-to-b from-transparent via-gray-300 dark:via-gray-700 to-transparent mx-1 hidden lg:block" />
+                        <div className="flex items-center gap-0.5 sm:gap-1 hidden lg:flex">
                             <button
                                 onClick={undo}
                                 disabled={historyIndex < 0}
-                                className={`p-2 rounded-lg transition-all ${historyIndex < 0 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600')}`}
+                                className={`p-2 rounded-xl transition-all duration-200 ${historyIndex < 0 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white hover:scale-105' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600 hover:scale-105')}`}
                                 title="Undo (Ctrl+Z)"
                             >
                                 <Undo className="w-4 h-4" />
@@ -3166,35 +3172,43 @@ const ImageEditor = ({
                             <button
                                 onClick={redo}
                                 disabled={historyIndex >= history.length - 1}
-                                className={`p-2 rounded-lg transition-all ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600')}`}
+                                className={`p-2 rounded-xl transition-all duration-200 ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed' : (darkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white hover:scale-105' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600 hover:scale-105')}`}
                                 title="Redo (Ctrl+Y)"
                             >
                                 <Redo className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
                         {!isViewOnly && (
                             <>
                                 <button
                                     onClick={handleDownload}
-                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}
+                                    className={`hidden sm:flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 hover:scale-105 ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700' : 'bg-white text-purple-600 hover:bg-purple-50 border border-purple-200'}`}
                                 >
                                     <Download className="w-4 h-4" />
-                                    <span className="hidden xs:inline">Download Design</span>
+                                    <span className="hidden xs:inline">Export</span>
+                                </button>
+                                <button
+                                    onClick={handleDownload}
+                                    className={`sm:hidden p-2 rounded-xl transition-all duration-200 hover:scale-105 ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700' : 'bg-white text-purple-600 hover:bg-purple-50 border border-purple-200'}`}
+                                    title="Download Design"
+                                >
+                                    <Download className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => setShowExportPopup(true)}
-                                    className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 transform"
+                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-600 via-purple-500 to-blue-600 hover:from-purple-700 hover:via-purple-600 hover:to-blue-700 text-white rounded-xl text-xs font-bold transition-all duration-200 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 active:scale-95 hover:scale-105 transform"
                                 >
                                     <Check className="w-4 h-4" />
-                                    <span>Save Changes</span>
+                                    <span className="hidden xs:inline">Save</span>
                                 </button>
                             </>
                         )}
                         {isViewOnly && (
-                            <div className="px-3 py-1 bg-amber-500/10 text-amber-500 rounded-full text-[10px] font-bold border border-amber-500/20">
-                                VIEW ONLY MODE
+                            <div className="px-3 py-1.5 bg-amber-500/15 text-amber-500 rounded-full text-[10px] font-bold border border-amber-500/30 shadow-inner">
+                                <span className="hidden xs:inline">VIEW ONLY</span>
+                                <span className="xs:hidden">VIEW</span>
                             </div>
                         )}
                     </div>
@@ -3263,40 +3277,40 @@ const ImageEditor = ({
                 />
             )}
             <div className="flex flex-1 overflow-hidden relative">
-                {/* LEFT SIDEBAR */}
+                {/* LEFT SIDEBAR - Navigation Rail */}
                 {!isViewOnly && (
-                    <div className={`w-[72px] sm:w-[64px] h-full flex-shrink-0 flex flex-col items-center py-2 border-r ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-50`}>
-                        {/* <TabButton id="design" icon={Layout} label="Design" /> */}
-                        <TabButton id="elements" icon={Grid} label="Elements" />
-                        <TabButton id="text" icon={Type} label="Text" />
-                        <TabButton id="layers" icon={Layers} label="Layers" />
-                        <TabButton id="filters" icon={Palette} label="Filters" />
-                        {/* <TabButton id="adjust" icon={Sliders} label="Adjust" /> */}
-                        <TabButton id="brand" icon={Box} label="Brand" premium />
-                        <TabButton id="forms" icon={FileText} label="Forms" />
-                        <TabButton id="projects" icon={FolderKanban} label="Projects" />
-                        <TabButton id="uploads" icon={Upload} label="Uploads" />
-                        {/* <button
-                            onClick={enterCropMode}
-                            className={`group relative flex flex-col items-center justify-center w-full py-1.5 transition-all duration-200 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-purple-600'}`}
+                    <div className={`w-16 sm:w-[72px] h-full flex-shrink-0 flex flex-col items-center py-3 sm:py-4 border-r ${darkMode ? 'bg-gray-900/95 border-gray-800/80' : 'bg-white/95 border-gray-200/80'} backdrop-blur-xl z-50 shadow-xl shadow-gray-200/30 dark:shadow-none`}>
+                        <div className="flex flex-col items-center gap-1 sm:gap-2 w-full py-2">
+                            {/* <TabButton id="design" icon={Layout} label="Design" /> */}
+                            <TabButton id="elements" icon={Grid} label="Elements" />
+                            <TabButton id="text" icon={Type} label="Text" />
+                            <TabButton id="layers" icon={Layers} label="Layers" />
+                            <TabButton id="filters" icon={Palette} label="Filters" />
+                            {/* <TabButton id="adjust" icon={Sliders} label="Adjust" /> */}
+                            <TabButton id="brand" icon={Box} label="Brand" premium />
+                            <TabButton id="forms" icon={FileText} label="Forms" />
+                            <TabButton id="projects" icon={FolderKanban} label="Projects" />
+                            <TabButton id="uploads" icon={Upload} label="Uploads" />
+                        </div>
+                        {/* Mobile Collapse Toggle */}
+                        <button
+                            onClick={() => setIsPanelOpen(!isPanelOpen)}
+                            className={`mt-auto mb-2 p-2 rounded-xl transition-all duration-200 ${isPanelOpen ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30' : (darkMode ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-gray-100 text-gray-500 hover:text-purple-600')}`}
+                            title={isPanelOpen ? "Close Panel" : "Open Panel"}
                         >
-                            <div className="p-1.5 rounded-lg group-hover:bg-gray-100/50">
-                                <Crop className="w-5 h-5 stroke-[1.5px]" />
-                            </div>
-                            <span className="text-[8px] mt-1 font-bold uppercase tracking-tight">Crop</span>
-                        </button> */}
-                        <div className="flex-1" />
+                            {isPanelOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
                     </div>
                 )}
                 {/* DYNAMIC TOOL PANEL */}
                 <div
                     className={`${isPanelOpen
-                        ? 'w-[320px] sm:w-[280px] max-w-[90vw] translate-x-0'
+                        ? 'w-80 sm:w-[320px] lg:w-[360px] max-w-[85vw] translate-x-0'
                         : 'w-0 -translate-x-full opacity-0 pointer-events-none'
-                        } h-full flex-shrink-0 transition-all duration-300 border-r ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} z-20 overflow-y-auto custom-scrollbar relative shadow-xl`}
+                        } h-full flex-shrink-0 transition-all duration-300 ease-out border-r ${darkMode ? 'bg-gray-900/95 border-gray-800/80' : 'bg-white/95 border-gray-200/80'} backdrop-blur-xl z-20 overflow-y-auto custom-scrollbar relative shadow-2xl shadow-gray-200/50 dark:shadow-none`}
                 >
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-blue-500" />
-                    <div className="p-4 sm:p-6">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-purple-600 to-blue-600" />
+                    <div className="p-3 sm:p-4 lg:p-5">
                         {activeTab === 'design' && (
                             <div className="animate-fadeIn space-y-4">
                                 <h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>Design</h3>
@@ -4795,7 +4809,7 @@ const ImageEditor = ({
 
                 {/* MAIN CANVAS AREA */}
                 <div
-                    className={`flex-1 relative flex flex-col ${isViewOnly ? 'bg-[#0f111a]' : (darkMode ? 'bg-[#0f111a]' : 'bg-[#f4f7fa]')} transition-all overflow-hidden`}
+                    className={`flex-1 relative flex flex-col ${isViewOnly ? 'bg-[#0f111a]' : (darkMode ? 'bg-gradient-to-br from-[#0f111a] via-[#12141c] to-[#0f111a]' : 'bg-gradient-to-br from-slate-100 via-gray-50 to-slate-200')} transition-all overflow-hidden`}
                     onMouseMove={isViewOnly ? undefined : handleMouseMove}
                     onMouseUp={isViewOnly ? undefined : handleMouseUp}
                     onMouseLeave={isViewOnly ? undefined : handleMouseUp}
@@ -4805,11 +4819,11 @@ const ImageEditor = ({
                         setActiveAudioTrackId(null);
                         setLayers(layers.map(l => ({ ...l, isSelected: false })));
                         setShowColorPicker(false);
+                        setContextMenu(null);
                     }}
                 >
                     {/* Workspace (Canvas) */}
-                    {/* Workspace (Canvas) */}
-                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0 bg-gray-900' : 'p-4 pb-20 bg-gray-100 dark:bg-gray-900'}`}>
+                    <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${isViewOnly ? 'p-0' : 'p-3 sm:p-4 lg:p-6 xl:p-8 pb-16 sm:pb-20'} ${darkMode ? 'bg-gray-900/30' : 'bg-gray-200/50'}`}>
                         {/* Contextual Audio Toolbar */}
                         {activeAudioTrackId && !isViewOnly && (
                             <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 animate-fadeInScale">
@@ -6011,10 +6025,17 @@ const ImageEditor = ({
                     </div>
                 )}
 
-                {/* Bottom Right Toolbar */}
+                {/* Bottom Right Toolbar - Zoom & View Controls */}
                 {!isViewOnly && (
-                    <div className="absolute bottom-2 right-4 z-50 flex items-center gap-3 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center gap-2 px-2">
+                    <div className={`absolute bottom-3 sm:bottom-4 right-3 sm:right-4 lg:right-6 z-50 flex items-center gap-2 sm:gap-3 ${darkMode ? 'bg-gray-800/95 border-gray-700/80' : 'bg-white/95 border-gray-200/80'} backdrop-blur-xl p-2 sm:p-2.5 rounded-2xl shadow-2xl border transition-all duration-300 hover:shadow-purple-500/10`}>
+                        <div className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2">
+                            <button
+                                onClick={() => setZoom(Math.max(0.1, zoom - 0.05))}
+                                className={`p-1.5 rounded-lg transition-all ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
+                                title="Zoom Out"
+                            >
+                                <Minus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            </button>
                             <input
                                 type="range"
                                 min="0.1"
@@ -6022,33 +6043,43 @@ const ImageEditor = ({
                                 step="0.05"
                                 value={zoom}
                                 onChange={(e) => setZoom(parseFloat(e.target.value))}
-                                className="w-24 accent-purple-600 h-1 bg-gray-200 rounded-lg cursor-pointer"
+                                className="w-20 sm:w-24 lg:w-28 accent-purple-600 h-1 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer"
                             />
-                            <span className="text-xs font-mono w-9 text-right">{Math.round(zoom * 100)}%</span>
+                            <button
+                                onClick={() => setZoom(Math.min(2, zoom + 0.05))}
+                                className={`p-1.5 rounded-lg transition-all ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-purple-600'}`}
+                                title="Zoom In"
+                            >
+                                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            </button>
+                            <span className={`text-xs font-mono font-bold w-10 sm:w-12 text-right ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{Math.round(zoom * 100)}%</span>
                         </div>
 
-                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
+                        <div className="w-px h-5 sm:h-6 bg-gray-200 dark:bg-gray-700"></div>
 
                         <button
                             onClick={() => setIsGridView(true)}
-                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
+                            className={`hidden sm:flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-700'}`}
                         >
-                            <Layers className="w-4 h-4" />
-                            <span>Pages</span>
-                            <span className="bg-gray-100 dark:bg-gray-900 px-1.5 py-0.5 rounded text-[10px]">
-                                {pages.findIndex(p => p.id === activePageId) + 1} / {pages.length}
+                            <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            <span className="hidden lg:inline">Pages</span>
+                            <span className={`${darkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-200 text-gray-600'} px-1.5 py-0.5 rounded text-[10px] font-bold`}>
+                                {pages.findIndex(p => p.id === activePageId) + 1}/{pages.length}
                             </span>
                         </button>
 
                         <button
                             onClick={() => setIsGridView(true)}
-                            className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${isGridView ? 'text-purple-600 bg-purple-50' : 'text-gray-700 dark:text-gray-300'}`}
+                            className={`sm:hidden p-1.5 rounded-lg transition-colors ${isGridView ? 'text-purple-600 bg-purple-50 dark:bg-purple-900/20' : (darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100')}`}
                             title="Grid View"
                         >
                             <LayoutGrid className="w-4 h-4" />
                         </button>
 
-                        <button className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-700 dark:text-gray-300 transition-colors" title="Fullscreen">
+                        <button
+                            className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-purple-600'}`}
+                            title="Fullscreen"
+                        >
                             <Maximize2 className="w-4 h-4" />
                         </button>
                     </div>
@@ -6064,22 +6095,22 @@ const ImageEditor = ({
                     const layer = layers.find(l => l.id === activeLayerId);
                     if (!layer) return null;
                     return (
-                        <div className="fixed top-11 left-1/2 -translate-x-1/2 flex items-center flex-nowrap sm:flex-wrap gap-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-800/90 py-0.5 px-1.5 rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 pointer-events-auto z-[200] animate-fadeIn max-w-[95vw] overflow-x-auto custom-scrollbar sm:overflow-visible">
-                            <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300" title="Duplicate">
-                                <Copy className="w-3 h-3" />
+                        <div className={`fixed top-12 sm:top-14 left-1/2 -translate-x-1/2 flex items-center flex-nowrap gap-1 sm:gap-1.5 ${darkMode ? 'bg-gray-800/95 border-gray-700/50' : 'bg-white/95 border-gray-200/50'} backdrop-blur-xl py-1.5 sm:py-2 px-2 sm:px-3 rounded-2xl shadow-2xl border pointer-events-auto z-[200] animate-fadeIn`}>
+                            <button onClick={(e) => { e.stopPropagation(); handleDuplicate(layer.id); }} className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600'}`} title="Duplicate">
+                                <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(layer.id); }} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all text-red-500" title="Delete">
-                                <Trash className="w-3 h-3" />
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(layer.id); }} className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-red-900/30 text-red-400 hover:text-red-300' : 'hover:bg-red-50 text-red-500 hover:text-red-600'}`} title="Delete">
+                                <Trash className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </button>
-                            <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
-                            <button onClick={(e) => { e.stopPropagation(); handleRotate(layer.id); }} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300" title="Rotate 90°">
-                                <RotateCw className="w-3 h-3" />
+                            <div className="w-px h-4 sm:h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+                            <button onClick={(e) => { e.stopPropagation(); handleRotate(layer.id); }} className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600'}`} title="Rotate 90°">
+                                <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${layer.flipX ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Horizontal">
-                                <FlipHorizontal className="w-3 h-3" />
+                            <button onClick={(e) => { e.stopPropagation(); handleFlipX(layer.id); }} className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${layer.flipX ? 'bg-purple-500/20 text-purple-500 ring-1 ring-purple-500' : (darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600')}`} title="Flip Horizontal">
+                                <FlipHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${layer.flipY ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`} title="Flip Vertical">
-                                <FlipHorizontal className="w-3 h-3 rotate-90" />
+                            <button onClick={(e) => { e.stopPropagation(); handleFlipY(layer.id); }} className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${layer.flipY ? 'bg-purple-500/20 text-purple-500 ring-1 ring-purple-500' : (darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600')}`} title="Flip Vertical">
+                                <FlipHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4 rotate-90" />
                             </button>
 
                             <button
@@ -6088,10 +6119,10 @@ const ImageEditor = ({
                                     setActiveTab('animations');
                                     setIsPanelOpen(true);
                                 }}
-                                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300 ${activeTab === 'animations' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' : ''}`}
+                                className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${activeTab === 'animations' ? 'bg-purple-500/20 text-purple-500 ring-1 ring-purple-500' : (darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600')}`}
                                 title="Animate"
                             >
-                                <Sparkles className="w-3 h-3" />
+                                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </button>
 
                             {(layer.shapeType === 'image' || layer.type === 'frame') && (
@@ -6100,38 +6131,38 @@ const ImageEditor = ({
                                         e.stopPropagation();
                                         setIsPanningContent(!isPanningContent);
                                     }}
-                                    className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all ${isPanningContent ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 ring-1 ring-purple-500' : 'text-gray-700 dark:text-gray-300'}`}
+                                    className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${isPanningContent ? 'bg-purple-500/20 text-purple-500 ring-1 ring-purple-500' : (darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600')}`}
                                     title="Move Internally"
                                 >
-                                    <Move className="w-3 h-3" />
+                                    <Move className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                 </button>
                             )}
 
                             {(layer.shapeType === 'image' || layer.type === 'frame') && isPanningContent && (
                                 <>
-                                    <div className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+                                    <div className="w-px h-4 sm:h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentScale: Math.max(0.1, (l.contentScale || 1) - 0.1) } : l);
                                             setLayers(updated);
                                         }}
-                                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300"
+                                        className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600'}`}
                                         title="Content Zoom Out"
                                     >
-                                        <Minus className="w-3 h-3" />
+                                        <Minus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     </button>
-                                    <span className="text-[10px] font-bold text-gray-500 w-8 text-center">{Math.round((layer.contentScale || 1) * 100)}%</span>
+                                    <span className={`text-[10px] sm:text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'} w-10 sm:w-12 text-center`}>{Math.round((layer.contentScale || 1) * 100)}%</span>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentScale: (l.contentScale || 1) + 0.1 } : l);
                                             setLayers(updated);
                                         }}
-                                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300"
+                                        className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600'}`}
                                         title="Content Zoom In"
                                     >
-                                        <Plus className="w-3 h-3" />
+                                        <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     </button>
                                     <button
                                         onClick={(e) => {
@@ -6139,10 +6170,10 @@ const ImageEditor = ({
                                             const updated = layers.map(l => l.id === activeLayerId ? { ...l, contentX: 0, contentY: 0, contentScale: 1 } : l);
                                             setLayers(updated);
                                         }}
-                                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all text-gray-700 dark:text-gray-300"
+                                        className={`p-1.5 sm:p-2 rounded-xl transition-all hover:scale-105 ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-600 hover:text-purple-600'}`}
                                         title="Reset Content"
                                     >
-                                        <RefreshCw className="w-3 h-3" />
+                                        <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     </button>
                                 </>
                             )}
@@ -6211,6 +6242,7 @@ const ImageEditor = ({
                                 <div
                                     className="fixed top-[108px] left-1/2 -translate-x-1/2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-[300] animate-fadeIn overflow-hidden"
                                     onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                 >
                                     {/* Header */}
                                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
@@ -6259,16 +6291,18 @@ const ImageEditor = ({
                                                     />
                                                 </label>
                                                 {Array.from(new Set(layers.filter(l => l.type === 'shape' || l.type === 'text' || l.type === 'frame').map(l => (l.type === 'frame' ? l.backgroundColor : l.color)))).filter(Boolean).map((color, i) => (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => {
-                                                            const updated = layers.map(l => l.id === activeLayerId ? { ...l, [activeColorProperty]: color } : l);
-                                                            setLayers(updated);
-                                                            saveToHistory(updated);
-                                                        }}
-                                                        className={`w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 hover:scale-110 transition-transform ${layers.find(l => l.id === activeLayerId)?.[activeColorProperty] === color ? 'ring-2 ring-purple-500 border-transparent shadow-lg' : ''}`}
-                                                        style={{ backgroundColor: color }}
-                                                    />
+                                                    <div key={i} className="flex flex-col items-center gap-1">
+                                                        <button
+                                                            onClick={() => {
+                                                                const updated = layers.map(l => l.id === activeLayerId ? { ...l, [activeColorProperty]: color } : l);
+                                                                setLayers(updated);
+                                                                saveToHistory(updated);
+                                                            }}
+                                                            className={`w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 hover:scale-110 transition-transform ${layers.find(l => l.id === activeLayerId)?.[activeColorProperty] === color ? 'ring-2 ring-purple-500 border-transparent shadow-lg' : ''}`}
+                                                            style={{ backgroundColor: color }}
+                                                        />
+                                                        <span className="text-[10px] font-mono font-bold text-gray-900 dark:text-white">{color.toUpperCase()}</span>
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
@@ -6280,18 +6314,20 @@ const ImageEditor = ({
                                                     <Camera className="w-3 h-3 text-gray-400" />
                                                     <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Photo colors</span>
                                                 </div>
-                                                <div className="grid grid-cols-7 gap-2">
+                                                <div className="grid grid-cols-5 gap-3">
                                                     {extractedColors.map((color, i) => (
-                                                        <button
-                                                            key={i}
-                                                            onClick={() => {
-                                                                const updated = layers.map(l => l.id === activeLayerId ? { ...l, [activeColorProperty]: color } : l);
-                                                                setLayers(updated);
-                                                                saveToHistory(updated);
-                                                            }}
-                                                            className={`w-full aspect-square rounded-lg border hover:scale-110 transition-transform ${layers.find(l => l.id === activeLayerId)?.[activeColorProperty] === color ? 'ring-2 ring-purple-500 border-transparent' : 'border-gray-200 dark:border-gray-600'}`}
-                                                            style={{ backgroundColor: color }}
-                                                        />
+                                                        <div key={i} className="flex flex-col items-center gap-1">
+                                                            <button
+                                                                onClick={() => {
+                                                                    const updated = layers.map(l => l.id === activeLayerId ? { ...l, [activeColorProperty]: color } : l);
+                                                                    setLayers(updated);
+                                                                    saveToHistory(updated);
+                                                                }}
+                                                                className={`w-full aspect-square rounded-lg border hover:scale-110 transition-transform ${layers.find(l => l.id === activeLayerId)?.[activeColorProperty] === color ? 'ring-2 ring-purple-500 border-transparent' : 'border-gray-200 dark:border-gray-600'}`}
+                                                                style={{ backgroundColor: color }}
+                                                            />
+                                                            <span className="text-[10px] font-mono font-bold text-gray-900 dark:text-white">{color.toUpperCase()}</span>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             </div>
@@ -6311,7 +6347,7 @@ const ImageEditor = ({
                                                     {showAllColors ? 'Show less' : 'See all'}
                                                 </button>
                                             </div>
-                                            <div className="grid grid-cols-7 gap-2">
+                                            <div className="grid grid-cols-5 gap-3">
                                                 {(() => {
                                                     const baseColors = [
                                                         'transparent', '#000000', '#545454', '#737373', '#a6a6a6', '#d9d9d9', '#ffffff',
@@ -6352,21 +6388,23 @@ const ImageEditor = ({
                                                     }
 
                                                     return allColors.map((color, i) => (
-                                                        <button
-                                                            key={i}
-                                                            onClick={() => {
-                                                                const updated = layers.map(l => l.id === activeLayerId ? { ...l, [activeColorProperty]: color } : l);
-                                                                setLayers(updated);
-                                                                saveToHistory(updated);
-                                                            }}
-                                                            className={`w-full aspect-square rounded-lg border hover:scale-110 transition-transform ${layers.find(l => l.id === activeLayerId)?.[activeColorProperty] === color ? 'ring-2 ring-purple-500 border-transparent' : 'border-gray-200 dark:border-gray-600'}`}
-                                                            style={{
-                                                                backgroundColor: color === 'transparent' ? '#fff' : color,
-                                                                backgroundImage: color === 'transparent' ? 'linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee), linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee)' : undefined,
-                                                                backgroundPosition: color === 'transparent' ? '0 0, 4px 4px' : undefined,
-                                                                backgroundSize: color === 'transparent' ? '8px 8px' : undefined
-                                                            }}
-                                                        />
+                                                        <div key={i} className="flex flex-col items-center gap-1">
+                                                            <button
+                                                                onClick={() => {
+                                                                    const updated = layers.map(l => l.id === activeLayerId ? { ...l, [activeColorProperty]: color } : l);
+                                                                    setLayers(updated);
+                                                                    saveToHistory(updated);
+                                                                }}
+                                                                className={`w-full aspect-square rounded-lg border hover:scale-110 transition-transform ${layers.find(l => l.id === activeLayerId)?.[activeColorProperty] === color ? 'ring-2 ring-purple-500 border-transparent' : 'border-gray-200 dark:border-gray-600'}`}
+                                                                style={{
+                                                                    backgroundColor: color === 'transparent' ? '#fff' : color,
+                                                                    backgroundImage: color === 'transparent' ? 'linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee), linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee)' : undefined,
+                                                                    backgroundPosition: color === 'transparent' ? '0 0, 4px 4px' : undefined,
+                                                                    backgroundSize: color === 'transparent' ? '8px 8px' : undefined
+                                                                }}
+                                                            />
+                                                            <span className="text-[10px] font-mono font-bold text-gray-900 dark:text-white">{color === 'transparent' ? 'TRANSP' : color.toUpperCase()}</span>
+                                                        </div>
                                                     ));
                                                 })()}
                                             </div>
@@ -6397,6 +6435,7 @@ const ImageEditor = ({
                                     className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 z-[150] w-48 py-1 overflow-hidden animate-fadeIn"
                                     style={{ top: '100px', left: 'calc(50% + 80px)', transform: 'translateX(-50%)' }}
                                     onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                 >
                                     <button onClick={() => handleCopy(layer.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 dark:text-gray-200">
                                         <Copy className="w-3 h-3" /> Copy

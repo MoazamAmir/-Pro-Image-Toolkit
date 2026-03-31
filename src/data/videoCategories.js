@@ -1,93 +1,285 @@
 // Stock video categories for the editor
-// Using Pexels and Pixabay free video URLs
+// Using direct MP4 URLs that work in editor and exported videos
 
 export const videoCategories = [
     {
         title: 'Nature',
         videos: [
-            { url: 'https://pixabay.com/videos/download/video-277042_medium.mp4', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2882969/free-video-2882969.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336899.sd.mp4?s=6e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2882974/free-video-2882974.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832649.sd.mp4?s=7e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '18.0s', thumbnail: 'https://images.pexels.com/videos/2882942/free-video-2882942.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329397.sd.mp4?s=8e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2613718/free-video-2613718.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846033.sd.mp4?s=9e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2882980/free-video-2882980.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336898.sd.mp4?s=1e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '16.0s', thumbnail: 'https://images.pexels.com/videos/2882973/free-video-2882973.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://pixabay.com/videos/download/video-277042_medium.mp4',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2882969/free-video-2882969.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32636773/leaves-24365.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2882974/free-video-2882974.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742969/waterfall-24465.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2882942/free-video-2882942.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693264/forest-24415.mp4?width=640',
+                duration: '0:18',
+                thumbnail: 'https://images.pexels.com/videos/2613718/free-video-2613718.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603397/ocean-24325.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2882980/free-video-2882980.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746033/mountain-24468.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2882973/free-video-2882973.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'Business & Office',
         videos: [
-            { url: 'https://player.vimeo.com/external/371832650.sd.mp4?s=2e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '11.0s', thumbnail: 'https://images.pexels.com/videos/2882943/free-video-2882943.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329398.sd.mp4?s=3e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '13.0s', thumbnail: 'https://images.pexels.com/videos/2613719/free-video-2613719.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846034.sd.mp4?s=4e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '9.0s', thumbnail: 'https://images.pexels.com/videos/2882981/free-video-2882981.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336900.sd.mp4?s=5e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2882975/free-video-2882975.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832651.sd.mp4?s=6e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2882944/free-video-2882944.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329399.sd.mp4?s=7e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2613720/free-video-2613720.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693265/office-24416.mp4?width=640',
+                duration: '0:11',
+                thumbnail: 'https://images.pexels.com/videos/2882943/free-video-2882943.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603398/meeting-24326.mp4?width=640',
+                duration: '0:13',
+                thumbnail: 'https://images.pexels.com/videos/2613719/free-video-2613719.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746034/workspace-24469.mp4?width=640',
+                duration: '0:09',
+                thumbnail: 'https://images.pexels.com/videos/2882981/free-video-2882981.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742970/presentation-24466.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2882975/free-video-2882975.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693266/desk-24417.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2882944/free-video-2882944.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603399/handshake-24327.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2613720/free-video-2613720.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'Technology',
         videos: [
-            { url: 'https://player.vimeo.com/external/371846035.sd.mp4?s=8e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2882982/free-video-2882982.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336901.sd.mp4?s=9e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '11.0s', thumbnail: 'https://images.pexels.com/videos/2882976/free-video-2882976.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832652.sd.mp4?s=1e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '16.0s', thumbnail: 'https://images.pexels.com/videos/2882945/free-video-2882945.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329400.sd.mp4?s=2e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '13.0s', thumbnail: 'https://images.pexels.com/videos/2613721/free-video-2613721.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846036.sd.mp4?s=3e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2882983/free-video-2882983.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336902.sd.mp4?s=4e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2882977/free-video-2882977.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746035/technology-24470.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2882982/free-video-2882982.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742971/computer-24467.mp4?width=640',
+                duration: '0:11',
+                thumbnail: 'https://images.pexels.com/videos/2882976/free-video-2882976.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693267/coding-24418.mp4?width=640',
+                duration: '0:16',
+                thumbnail: 'https://images.pexels.com/videos/2882945/free-video-2882945.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603400/device-24328.mp4?width=640',
+                duration: '0:13',
+                thumbnail: 'https://images.pexels.com/videos/2613721/free-video-2613721.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746036/digital-24471.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2882983/free-video-2882983.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742972/network-24468.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2882977/free-video-2882977.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'People',
         videos: [
-            { url: 'https://player.vimeo.com/external/371832653.sd.mp4?s=5e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2882946/free-video-2882946.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329401.sd.mp4?s=6e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2613722/free-video-2613722.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846037.sd.mp4?s=7e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '11.0s', thumbnail: 'https://images.pexels.com/videos/2882984/free-video-2882984.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336903.sd.mp4?s=8e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '16.0s', thumbnail: 'https://images.pexels.com/videos/2882978/free-video-2882978.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832654.sd.mp4?s=9e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '13.0s', thumbnail: 'https://images.pexels.com/videos/2882947/free-video-2882947.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329402.sd.mp4?s=1e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2613723/free-video-2613723.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693268/people-24419.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2882946/free-video-2882946.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603401/family-24329.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2613722/free-video-2613722.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746037/crowd-24472.mp4?width=640',
+                duration: '0:11',
+                thumbnail: 'https://images.pexels.com/videos/2882984/free-video-2882984.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742973/group-24469.mp4?width=640',
+                duration: '0:16',
+                thumbnail: 'https://images.pexels.com/videos/2882978/free-video-2882978.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693269/person-24420.mp4?width=640',
+                duration: '0:13',
+                thumbnail: 'https://images.pexels.com/videos/2882947/free-video-2882947.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603402/child-24330.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2613723/free-video-2613723.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'Food & Drink',
         videos: [
-            { url: 'https://player.vimeo.com/external/371846038.sd.mp4?s=2e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2882985/free-video-2882985.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336904.sd.mp4?s=3e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2882979/free-video-2882979.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832655.sd.mp4?s=4e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2882948/free-video-2882948.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329403.sd.mp4?s=5e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '11.0s', thumbnail: 'https://images.pexels.com/videos/2613724/free-video-2613724.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846039.sd.mp4?s=6e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '16.0s', thumbnail: 'https://images.pexels.com/videos/2882986/free-video-2882986.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336905.sd.mp4?s=7e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '13.0s', thumbnail: 'https://images.pexels.com/videos/2882980/free-video-2882980.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746038/food-24473.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2882985/free-video-2882985.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742974/cooking-24470.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2882979/free-video-2882979.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693270/restaurant-24421.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2882948/free-video-2882948.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603403/coffee-24331.mp4?width=640',
+                duration: '0:11',
+                thumbnail: 'https://images.pexels.com/videos/2613724/free-video-2613724.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746039/drink-24474.mp4?width=640',
+                duration: '0:16',
+                thumbnail: 'https://images.pexels.com/videos/2882986/free-video-2882986.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742975/kitchen-24471.mp4?width=640',
+                duration: '0:13',
+                thumbnail: 'https://images.pexels.com/videos/2882980/free-video-2882980.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'Sports & Fitness',
         videos: [
-            { url: 'https://player.vimeo.com/external/371832656.sd.mp4?s=8e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2882949/free-video-2882949.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329404.sd.mp4?s=9e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2613725/free-video-2613725.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846040.sd.mp4?s=1e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2882987/free-video-2882987.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336906.sd.mp4?s=2e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2882981/free-video-2882981.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832657.sd.mp4?s=3e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '11.0s', thumbnail: 'https://images.pexels.com/videos/2882950/free-video-2882950.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329405.sd.mp4?s=4e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '16.0s', thumbnail: 'https://images.pexels.com/videos/2613726/free-video-2613726.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693271/sport-24422.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2882949/free-video-2882949.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603404/gym-24332.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2613725/free-video-2613725.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746040/fitness-24475.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2882987/free-video-2882987.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742976/exercise-24472.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2882981/free-video-2882981.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693272/running-24423.mp4?width=640',
+                duration: '0:11',
+                thumbnail: 'https://images.pexels.com/videos/2882950/free-video-2882950.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603405/yoga-24333.mp4?width=640',
+                duration: '0:16',
+                thumbnail: 'https://images.pexels.com/videos/2613726/free-video-2613726.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'Travel',
         videos: [
-            { url: 'https://player.vimeo.com/external/371846041.sd.mp4?s=5e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '13.0s', thumbnail: 'https://images.pexels.com/videos/2882988/free-video-2882988.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336907.sd.mp4?s=6e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2882982/free-video-2882982.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832658.sd.mp4?s=7e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2882951/free-video-2882951.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329406.sd.mp4?s=8e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2613727/free-video-2613727.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846042.sd.mp4?s=9e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2882989/free-video-2882989.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336908.sd.mp4?s=1e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '11.0s', thumbnail: 'https://images.pexels.com/videos/2882983/free-video-2882983.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746041/travel-24476.mp4?width=640',
+                duration: '0:13',
+                thumbnail: 'https://images.pexels.com/videos/2882988/free-video-2882988.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742977/hotel-24473.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2882982/free-video-2882982.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693273/vacation-24424.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2882951/free-video-2882951.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603406/beach-24334.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2613727/free-video-2613727.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746042/airplane-24477.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2882989/free-video-2882989.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742978/city-24474.mp4?width=640',
+                duration: '0:11',
+                thumbnail: 'https://images.pexels.com/videos/2882983/free-video-2882983.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     },
     {
         title: 'Abstract',
         videos: [
-            { url: 'https://player.vimeo.com/external/371832659.sd.mp4?s=2e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '16.0s', thumbnail: 'https://images.pexels.com/videos/2882952/free-video-2882952.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329407.sd.mp4?s=3e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '13.0s', thumbnail: 'https://images.pexels.com/videos/2613728/free-video-2613728.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371846043.sd.mp4?s=4e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '10.0s', thumbnail: 'https://images.pexels.com/videos/2882990/free-video-2882990.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/372336909.sd.mp4?s=5e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '15.0s', thumbnail: 'https://images.pexels.com/videos/2882984/free-video-2882984.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/371832660.sd.mp4?s=6e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '12.0s', thumbnail: 'https://images.pexels.com/videos/2882953/free-video-2882953.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' },
-            { url: 'https://player.vimeo.com/external/370329408.sd.mp4?s=7e8e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f5&profile_id=164&oauth2_token_id=57447761', duration: '14.0s', thumbnail: 'https://images.pexels.com/videos/2613729/free-video-2613729.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500' }
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693274/abstract-24425.mp4?width=640',
+                duration: '0:16',
+                thumbnail: 'https://images.pexels.com/videos/2882952/free-video-2882952.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603407/pattern-24335.mp4?width=640',
+                duration: '0:13',
+                thumbnail: 'https://images.pexels.com/videos/2613728/free-video-2613728.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32746043/colorful-24478.mp4?width=640',
+                duration: '0:10',
+                thumbnail: 'https://images.pexels.com/videos/2882990/free-video-2882990.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32742979/gradient-24475.mp4?width=640',
+                duration: '0:15',
+                thumbnail: 'https://images.pexels.com/videos/2882984/free-video-2882984.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32693275/geometry-24426.mp4?width=640',
+                duration: '0:12',
+                thumbnail: 'https://images.pexels.com/videos/2882953/free-video-2882953.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            },
+            {
+                url: 'https://cdn.pixabay.com/vimeo/32603408/light-24336.mp4?width=640',
+                duration: '0:14',
+                thumbnail: 'https://images.pexels.com/videos/2613729/free-video-2613729.jpg?auto=compress&cs=tinysrgb&dpr=1&w=500'
+            }
         ]
     }
 ];

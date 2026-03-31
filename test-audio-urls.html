@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio URL Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #fff;
+        }
+        .test-item {
+            background: #16213e;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border: 1px solid #0f3460;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .success { background: #1d9e75; }
+        .error { background: #e24b4a; }
+        .loading { background: #ba7517; }
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        button {
+            background: #6c47ff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #5b38e8;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 Audio URL Test for Pro Image Toolkit</h1>
+    <p>Testing Pixabay audio URLs to see which ones work in the browser:</p>
+    <div id="results"></div>
+
+    <script>
+        const audioUrls = [
+            { title: 'Motivational Speech', url: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808367634.mp3' },
+            { title: 'Business Presentation', url: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a73467.mp3' },
+            { title: 'Wedding Toast', url: 'https://cdn.pixabay.com/audio/2022/02/07/audio_1565d05e1a.mp3' },
+            { title: 'Graduation Address', url: 'https://cdn.pixabay.com/audio/2022/03/28/audio_9135476a99.mp3' },
+            { title: 'Documentary Narration', url: 'https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3' },
+            { title: 'Commercial Voiceover', url: 'https://cdn.pixabay.com/audio/2021/11/25/audio_55d687042f.mp3' },
+            { title: 'Robot Voice', url: 'https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3' },
+            { title: 'Echo Effect', url: 'https://cdn.pixabay.com/audio/2021/09/06/audio_89e05d585f.mp3' },
+            { title: 'Whisper Effect', url: 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3' }
+        ];
+
+        const resultsDiv = document.getElementById('results');
+
+        audioUrls.forEach((audio, index) => {
+            const div = document.createElement('div');
+            div.className = 'test-item';
+            div.innerHTML = `
+                <strong>${index + 1}. ${audio.title}</strong>
+                <span class="status loading" id="status-${index}">Testing...</span>
+                <br>
+                <small style="color: #888; word-break: break-all;">${audio.url}</small>
+                <audio id="audio-${index}" controls style="display:none;"></audio>
+                <button onclick="testAudio(${index}, '${audio.url}')">Test Play</button>
+            `;
+            resultsDiv.appendChild(div);
+            
+            // Auto-test
+            setTimeout(() => testAudio(index, audio.url), index * 500);
+        });
+
+        function testAudio(index, url) {
+            const audio = document.getElementById(`audio-${index}`);
+            const statusEl = document.getElementById(`status-${index}`);
+            
+            audio.src = url;
+            audio.style.display = 'block';
+            
+            audio.addEventListener('loadedmetadata', () => {
+                statusEl.textContent = `✓ Working (${audio.duration.toFixed(1)}s)`;
+                statusEl.className = 'status success';
+            }, { once: true });
+            
+            audio.addEventListener('error', (e) => {
+                statusEl.textContent = '✗ Failed';
+                statusEl.className = 'status error';
+                console.error(`Audio ${index} failed:`, e);
+            }, { once: true });
+            
+            audio.load();
+        }
+    </script>
+</body>
+</html>

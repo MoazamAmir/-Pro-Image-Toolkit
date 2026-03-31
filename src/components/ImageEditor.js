@@ -677,7 +677,7 @@ const ImageEditor = ({
     };
 
     // Add voice from voices panel to timeline
-    const handleAddVoiceToTimeline = (voice) => {
+    const handleAddVoiceToTimeline = async (voice) => {
         const trackId = `voice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const newTrack = {
             id: trackId,
@@ -692,12 +692,40 @@ const ImageEditor = ({
             muted: false,
             voiceId: voice.id,
             thumbnail: voice.thumbnail,
-            isGlobal: true
+            isGlobal: true,
+            isLoading: true // Mark as loading
         };
 
+        // Add track immediately in loading state
+        setDesignAudios(prev => [...prev, newTrack]);
+
+        // Create temp audio to load metadata
         const tempAudio = new Audio(voice.url);
-        tempAudio.addEventListener('loadedmetadata', () => {
-            const dur = tempAudio.duration || voice.duration || 10;
+
+        // Wrap in promise for better error handling
+        const loadAudioMetadata = () => {
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Audio loading timeout'));
+                }, 10000); // 10 second timeout
+
+                tempAudio.addEventListener('loadedmetadata', () => {
+                    clearTimeout(timeout);
+                    resolve(tempAudio.duration || voice.duration || 10);
+                }, { once: true });
+
+                tempAudio.addEventListener('error', (e) => {
+                    clearTimeout(timeout);
+                    reject(new Error('Failed to load audio'));
+                }, { once: true });
+
+                // Start loading
+                tempAudio.load();
+            });
+        };
+
+        try {
+            const dur = await loadAudioMetadata();
             const secToPx = (s) => {
                 const fullPages = Math.floor(s / 3.0);
                 const remainder = s % 3.0;
@@ -709,20 +737,30 @@ const ImageEditor = ({
                 const confirmed = window.confirm(
                     `This audio track is ${Math.round(dur)} seconds long. Long tracks may cause export to fail or take very long.\n\nAdd anyway?`
                 );
-                if (!confirmed) return;
+                if (!confirmed) {
+                    // Remove the track if user cancels
+                    setDesignAudios(prev => prev.filter(t => t.id !== trackId));
+                    return;
+                }
             }
 
+            // Update track with loaded metadata
             setDesignAudios(prev => prev.map(t =>
-                t.id === trackId ? { ...t, duration: dur, trimEnd: dur, width } : t
+                t.id === trackId ? {
+                    ...t,
+                    duration: dur,
+                    trimEnd: dur,
+                    width,
+                    isLoading: false
+                } : t
             ));
-        });
-
-        tempAudio.addEventListener('error', (e) => {
-            console.error('[ImageEditor] Failed to load voice:', e);
-            alert('Failed to load this voice. Please try again.');
-        });
-
-        setDesignAudios(prev => [...prev, newTrack]);
+        } catch (error) {
+            console.error('[ImageEditor] Failed to load voice:', error, voice.url);
+            // Remove the failed track
+            setDesignAudios(prev => prev.filter(t => t.id !== trackId));
+            // Show user-friendly error with helpful suggestion
+            alert(`Failed to load this voice: "${voice.title}"\n\nThis may be due to:\n• Network connectivity issues\n• The audio file is temporarily unavailable\n\nPlease try again or upload your own audio file from the UPLOADS tab.`);
+        }
     };
 
     // Universal file upload handler (Images, Videos, Audio)
@@ -3206,7 +3244,7 @@ const ImageEditor = ({
                             if (options.isFrame) {
                                 targetTime = Math.min((frameTime % video.duration), video.duration - 0.1);
                             }
-                            
+
                             video.currentTime = targetTime;
 
                             // Wait for seek to complete
@@ -7107,13 +7145,21 @@ const ImageEditor = ({
                                     {designAudios.map((track) => (
                                         <div
                                             key={track.id}
-                                            className="absolute h-full bg-purple-600 rounded-md shadow-sm overflow-hidden flex items-center gap-[1px] px-1 group cursor-move transition-shadow hover:shadow-lg border border-white/20"
+                                            className={`absolute h-full rounded-md shadow-sm overflow-hidden flex items-center gap-[1px] px-1 group cursor-move transition-shadow hover:shadow-lg border border-white/20 ${track.isLoading
+                                                ? 'bg-gray-400 animate-pulse'
+                                                : 'bg-purple-600'
+                                                }`}
                                             style={{
                                                 left: track.startTime,
                                                 width: track.width,
                                                 zIndex: playingAudioId === track.id ? 20 : 10
                                             }}
                                             onMouseDown={(e) => {
+                                                // Don't allow dragging while loading
+                                                if (track.isLoading) {
+                                                    e.preventDefault();
+                                                    return;
+                                                }
                                                 // Drag to move logic
                                                 const startX = e.clientX;
                                                 const initialLeft = track.startTime || 0;
@@ -7145,69 +7191,79 @@ const ImageEditor = ({
                                                 window.addEventListener('mouseup', onMouseUp);
                                             }}
                                         >
-                                            {/* Waveform Bars */}
-                                            {Array.from({ length: Math.floor(track.width / 5) }).map((_, i) => (
-                                                <div
-                                                    key={i}
-                                                    className="w-[1px] bg-white rounded-full flex-shrink-0"
-                                                    style={{
-                                                        height: `${30 + Math.sin(i * 1.5) * 40 + Math.random() * 30}%`,
-                                                        opacity: 0.8
-                                                    }}
-                                                />
-                                            ))}
+                                            {track.isLoading ? (
+                                                // Loading indicator
+                                                <div className="flex-1 flex items-center justify-center gap-2">
+                                                    <div className="w-4 h-4 border-2 border-white/60 border-t-white rounded-full animate-spin" />
+                                                    <span className="text-[9px] font-bold text-white/90">Loading...</span>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {/* Waveform Bars */}
+                                                    {Array.from({ length: Math.floor(track.width / 5) }).map((_, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="w-[1px] bg-white rounded-full flex-shrink-0"
+                                                            style={{
+                                                                height: `${30 + Math.sin(i * 1.5) * 40 + Math.random() * 30}%`,
+                                                                opacity: 0.8
+                                                            }}
+                                                        />
+                                                    ))}
 
-                                            {/* Resize Handle (Right) */}
-                                            <div
-                                                className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/30 transition-colors z-20 flex items-center justify-center"
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    const startX = e.clientX;
-                                                    const initialWidth = track.width || 80;
+                                                    {/* Resize Handle (Right) */}
+                                                    <div
+                                                        className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/30 transition-colors z-20 flex items-center justify-center"
+                                                        onMouseDown={(e) => {
+                                                            e.stopPropagation();
+                                                            const startX = e.clientX;
+                                                            const initialWidth = track.width || 80;
 
-                                                    const onMouseMove = (moveE) => {
-                                                        const delta = moveE.clientX - startX;
-                                                        let newWidth = initialWidth + delta;
+                                                            const onMouseMove = (moveE) => {
+                                                                const delta = moveE.clientX - startX;
+                                                                let newWidth = initialWidth + delta;
 
-                                                        // Audio Snap points: End of each page (80px wide + 12px gap)
-                                                        const snapThreshold = 10;
-                                                        const trackStart = track.startTime || 0;
-                                                        pages.forEach((_, idx) => {
-                                                            const pEnd = idx * 92 + 80;
-                                                            if (Math.abs((trackStart + newWidth) - pEnd) < snapThreshold) {
-                                                                newWidth = pEnd - trackStart;
+                                                                // Audio Snap points: End of each page (80px wide + 12px gap)
+                                                                const snapThreshold = 10;
+                                                                const trackStart = track.startTime || 0;
+                                                                pages.forEach((_, idx) => {
+                                                                    const pEnd = idx * 92 + 80;
+                                                                    if (Math.abs((trackStart + newWidth) - pEnd) < snapThreshold) {
+                                                                        newWidth = pEnd - trackStart;
+                                                                    }
+                                                                });
+
+                                                                setDesignAudios(prev => prev.map(t =>
+                                                                    t.id === track.id ? { ...t, width: Math.max(20, newWidth) } : t
+                                                                ));
+                                                            };
+
+                                                            const onMouseUp = () => {
+                                                                window.removeEventListener('mousemove', onMouseMove);
+                                                                window.removeEventListener('mouseup', onMouseUp);
+                                                            };
+
+                                                            window.addEventListener('mousemove', onMouseMove);
+                                                            window.addEventListener('mouseup', onMouseUp);
+                                                        }}
+                                                    >
+                                                        <div className="w-1 h-3 bg-white/40 rounded-full" />
+                                                    </div>
+
+                                                    {/* Delete Button (Hidden by default, shown on hover) */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (window.confirm('Delete this audio track?')) {
+                                                                setDesignAudios(prev => prev.filter(t => t.id !== track.id));
                                                             }
-                                                        });
-
-                                                        setDesignAudios(prev => prev.map(t =>
-                                                            t.id === track.id ? { ...t, width: Math.max(20, newWidth) } : t
-                                                        ));
-                                                    };
-
-                                                    const onMouseUp = () => {
-                                                        window.removeEventListener('mousemove', onMouseMove);
-                                                        window.removeEventListener('mouseup', onMouseUp);
-                                                    };
-
-                                                    window.addEventListener('mousemove', onMouseMove);
-                                                    window.addEventListener('mouseup', onMouseUp);
-                                                }}
-                                            >
-                                                <div className="w-1 h-3 bg-white/40 rounded-full" />
-                                            </div>
-
-                                            {/* Delete Button (Hidden by default, shown on hover) */}
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (window.confirm('Delete this audio track?')) {
-                                                        setDesignAudios(prev => prev.filter(t => t.id !== track.id));
-                                                    }
-                                                }}
-                                                className="absolute top-0 right-2 bottom-0 px-1 text-white hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity z-30"
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
+                                                        }}
+                                                        className="absolute top-0 right-2 bottom-0 px-1 text-white hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity z-30"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

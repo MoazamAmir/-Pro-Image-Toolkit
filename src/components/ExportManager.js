@@ -12,7 +12,7 @@ import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
 import pptxgen from 'pptxgenjs';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile } from '@ffmpeg/util';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import GIF from 'gif.js';
 import PageThumbnail from './PageThumbnail';
 import FirebaseSyncService from '../services/FirebaseSyncService';
@@ -252,31 +252,90 @@ const ExportManager = ({
 
             if (fileType === 'MP4' || fileType === 'GIF') {
                 const ffmpeg = fileType === 'MP4' ? new FFmpeg() : null;
-                if (ffmpeg) await ffmpeg.load();
+                if (ffmpeg) {
+                    try {
+                        let loaded = false;
+                        const cdnSources = [
+                            'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',
+                            'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd'
+                        ];
+                        for (const source of cdnSources) {
+                            if (loaded) break;
+                            try {
+                                const coreURL = await toBlobURL(`${source}/ffmpeg-core.js`, 'text/javascript');
+                                const wasmURL = await toBlobURL(`${source}/ffmpeg-core.wasm`, 'application/wasm');
+                                const workerURL = await toBlobURL(`${source}/ffmpeg-core.worker.js`, 'text/javascript');
+                                await ffmpeg.load({ coreURL, wasmURL, workerURL });
+                                loaded = true;
+                                console.log(`[Export] FFmpeg loaded from: ${source}`);
+                            } catch (e) {
+                                console.warn(`[Export] FFmpeg load failed for ${source}:`, e);
+                            }
+                        }
+                        if (!loaded) throw new Error('All FFmpeg sources failed to load.');
+                    } catch (loadErr) {
+                        console.error('[Export] FFmpeg load failed:', loadErr);
+                        throw new Error('FFmpeg failed to load. Please try again.');
+                    }
+                }
 
                 const hasAudio = designAudios.length > 0 && fileType === 'MP4';
 
                 if (hasAudio) {
                     const audioFiles = [];
+                    const audioDurations = [];
+
                     for (let i = 0; i < designAudios.length; i++) {
                         const track = designAudios[i];
                         if (track.muted) continue;
                         try {
-                            const audioData = await fetchFile(track.url);
+                            console.log(`[Export] Loading audio track ${i + 1}/${designAudios.length}: ${track.name}`);
+
+                            const response = await fetch(track.url);
+                            if (!response.ok) throw new Error(`Failed to fetch audio: ${response.status}`);
+
+                            const audioBlob = await response.blob();
+                            const audioData = await fetchFile(audioBlob);
                             const fileName = `audio_${i}.mp3`;
+
                             await ffmpeg.writeFile(fileName, audioData);
-                            audioFiles.push({ ...track, fileName });
-                        } catch (e) { console.warn("Failed to load audio track", e); }
+                            console.log(`[Export] Audio track ${i + 1} loaded (${audioBlob.size} bytes)`);
+
+                            // Get actual audio duration (trimEnd - trimStart or full duration)
+                            const trimStart = track.trimStart || 0;
+                            const trimEnd = track.trimEnd || track.duration || 0;
+                            const audioDur = trimEnd - trimStart;
+
+                            audioFiles.push({
+                                ...track,
+                                fileName,
+                                trimStart,
+                                trimEnd,
+                                actualDuration: audioDur
+                            });
+                            audioDurations.push({
+                                startTime: track.startTime || 0, // It is already in seconds from AudioTimeline
+                                duration: audioDur
+                            });
+                        } catch (e) {
+                            console.error(`[Export] Failed to load audio track ${i + 1}:`, e);
+                        }
                     }
-                    // --- New Combined Rendering with Transitions and Accurate Timing ---
+                    if (audioFiles.length === 0) {
+                        console.warn('[Export] No audio tracks loaded, exporting video only');
+                    }
+
+                    // --- Fixed Rendering with Proper Audio Timing ---
                     const fps = 30;
                     const SECONDS_PER_PAGE = 3.0;
-                    const pxToSec = (px) => Math.floor(px / 92) * SECONDS_PER_PAGE + Math.min(SECONDS_PER_PAGE, (px % 92) / 80 * SECONDS_PER_PAGE);
 
-                    // Calculate max audio end time to ensure video covers all audio
-                    let maxAudioEndTime = pagesToExport.length * SECONDS_PER_PAGE;
-                    if (designAudios.length > 0) {
-                        const endTimes = designAudios.map(t => pxToSec((t.startTime || 0) + (t.width || 80)));
+                    // Calculate total video duration based on pages OR audio (whichever is longer)
+                    const baseVideoDuration = pagesToExport.length * SECONDS_PER_PAGE;
+
+                    // Calculate when each audio track ends (startTime + duration)
+                    let maxAudioEndTime = baseVideoDuration;
+                    if (audioDurations.length > 0) {
+                        const endTimes = audioDurations.map(a => a.startTime + a.duration);
                         maxAudioEndTime = Math.max(maxAudioEndTime, ...endTimes);
                     }
 
@@ -285,11 +344,13 @@ const ExportManager = ({
                     const durationPerPage = SECONDS_PER_PAGE;
                     const transitionDuration = 0.5;
 
+                    console.log(`[Export] Video duration: ${totalDuration}s, Total frames: ${totalFrames}`);
+
                     for (let i = 0; i < totalFrames; i++) {
                         const currentTime = i / fps;
                         let pageIdx = Math.floor(currentTime / durationPerPage);
-                        
-                        // Clamp to last page if audio extends beyond pages
+
+                        // Clamp to last page if video extends beyond pages (for audio)
                         if (pageIdx >= pagesToExport.length) {
                             pageIdx = pagesToExport.length - 1;
                         }
@@ -306,11 +367,11 @@ const ExportManager = ({
                             const easedProgress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
                             const canvasA = await renderFinalCanvas(pagesToExport[pageIdx].layers, null, {
-                                scale: size, transparent: transparentBg, frameTime: currentTime % durationPerPage, duration: durationPerPage,
+                                scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
                                 useOriginalResolution: true, limitResolution: true, isFrame: true
                             });
                             const canvasB = await renderFinalCanvas(pagesToExport[nextPageIdx].layers, null, {
-                                scale: size, transparent: transparentBg, frameTime: currentTime % durationPerPage, duration: durationPerPage,
+                                scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
                                 useOriginalResolution: true, limitResolution: true, isFrame: true
                             });
 
@@ -324,64 +385,203 @@ const ExportManager = ({
                         } else {
                             const page = pagesToExport[pageIdx];
                             finalCanvas = await renderFinalCanvas(page.layers, null, {
-                                scale: size, transparent: transparentBg, frameTime: currentTime % durationPerPage, duration: durationPerPage,
+                                scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
                                 useOriginalResolution: true, limitResolution: true, isFrame: true
                             });
                         }
 
-                        setExportProgress(Math.round((i / totalFrames) * 90));
-                        const fd = await new Promise(r => finalCanvas.toBlob(r, 'image/png'));
-                        await ffmpeg.writeFile(`frame_${i.toString().padStart(5, '0')}.png`, await fetchFile(fd));
+                        if (i % 5 === 0) setExportProgress(Math.round((i / totalFrames) * 85));
+                        // Using JPEG for faster processing of intermediate frames
+                        const blob = await new Promise(r => finalCanvas.toBlob(r, 'image/jpeg', 0.95));
+                        await ffmpeg.writeFile(`frame_${i.toString().padStart(5, '0')}.jpg`, await fetchFile(blob));
                     }
 
+                    // Build FFmpeg audio filter chain
                     let audioFilter = '';
                     let audioInputs = '';
+
                     if (audioFiles.length > 0) {
                         audioFiles.forEach((f, idx) => {
-                            const startTimeSec = pxToSec(f.startTime || 0);
-                            const widthSec = pxToSec((f.startTime || 0) + (f.width || 80)) - startTimeSec;
+                            const startTimeSec = f.startTime || 0; // It is already in seconds
                             const delayMs = Math.round(startTimeSec * 1000);
-                            
-                            // Apply delay and volume
-                            audioFilter += `[${idx+1}:a]atrim=0:${widthSec},adelay=${delayMs}|${delayMs},volume=${(f.volume || 100) / 100}[a${idx}];`;
+                            const volumeLevel = (f.volume || 100) / 100;
+
+                            // Use actual audio file duration, apply delay and volume
+                            audioFilter += `[${idx + 1}:a]adelay=${delayMs}|${delayMs},volume=${volumeLevel}[a${idx}];`;
                             audioInputs += `[a${idx}]`;
                         });
-                        audioFilter += `${audioInputs}amix=inputs=${audioFiles.length}[outa]`;
+                        audioFilter += `${audioInputs}amix=inputs=${audioFiles.length}:duration=longest:dropout_transition=0[outa]`;
                     }
 
-                    const ffmpegArgs = ['-framerate', fps.toString(), '-i', 'frame_%05d.png'];
+                    const ffmpegArgs = ['-framerate', fps.toString(), '-i', 'frame_%05d.jpg'];
                     audioFiles.forEach(f => ffmpegArgs.push('-i', f.fileName));
                     ffmpegArgs.push(
-                        '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', 
-                        '-c:v', 'libx264', 
-                        '-crf', '18', // High quality (visually lossless)
-                        '-preset', 'slow', // Better compression efficiency
-                        '-pix_fmt', 'yuv420p', 
+                        '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+                        '-c:v', 'libx264',
+                        '-crf', '23',
+                        '-preset', 'medium',
+                        '-pix_fmt', 'yuv420p',
                         '-movflags', '+faststart'
                     );
                     if (audioFiles.length > 0) {
-                        ffmpegArgs.push('-filter_complex', audioFilter, '-map', '0:v', '-map', '[outa]', '-c:a', 'aac', '-b:a', '192k', '-shortest');
+                        ffmpegArgs.push('-filter_complex', audioFilter, '-map', '0:v', '-map', '[outa]', '-c:a', 'aac', '-b:a', '128k');
                     }
                     ffmpegArgs.push('output.mp4');
 
+                    console.log('[Export] Encoding video...');
                     await ffmpeg.exec(ffmpegArgs);
+
+                    console.log('[Export] Reading output...');
                     const data = await ffmpeg.readFile('output.mp4');
+                    console.log(`[Export] Video size: ${data.length} bytes`);
                     saveAs(new Blob([data.buffer], { type: 'video/mp4' }), `${baseFileName}.mp4`);
                 } else {
-                    const generateForPage = async (page) => {
-                        const gif = fileType === 'GIF' ? new GIF({ workers: 2, quality: 10, width: (page.width || 1080) * size, height: (page.height || 720) * size, workerScript: '/gif.worker.js' }) : null;
-                        const duration = 3, fps = 15, totalFrames = duration * fps;
-                        for (let i = 0; i < totalFrames; i++) {
-                            const canvas = await renderFinalCanvas(page.layers, null, { scale: size, transparent: transparentBg, frameTime: (i / totalFrames) * duration, duration, useOriginalResolution: true, limitResolution: true, isFrame: true });
-                            if (fileType === 'MP4' && ffmpeg) { const fd = await new Promise(r => canvas.toBlob(r, 'image/png')); await ffmpeg.writeFile(`frame_${i.toString().padStart(3, '0')}.png`, await fetchFile(fd)); }
-                            else if (gif) gif.addFrame(canvas, { copy: true, delay: 1000 / fps });
+                    // Export without audio (video only or GIF)
+                    const SECONDS_PER_PAGE = 3.0;
+                    const fps = fileType === 'GIF' ? 15 : 30;
+                    const transitionDuration = 0.5;
+
+                    const generateForPage = async (page, pageIndex) => {
+                        const pageDuration = SECONDS_PER_PAGE;
+                        const totalFrames = Math.ceil(pageDuration * fps);
+
+                        if (fileType === 'GIF') {
+                            const gif = new GIF({
+                                workers: 2,
+                                quality: 10,
+                                width: (canvasSize.width || 1080) * size,
+                                height: (canvasSize.height || 720) * size,
+                                workerScript: '/gif.worker.js'
+                            });
+
+                            for (let i = 0; i < totalFrames; i++) {
+                                const canvas = await renderFinalCanvas(page.layers, null, {
+                                    scale: size,
+                                    transparent: transparentBg,
+                                    frameTime: i / fps,
+                                    duration: pageDuration,
+                                    useOriginalResolution: true,
+                                    limitResolution: true,
+                                    isFrame: true
+                                });
+                                gif.addFrame(canvas, { copy: true, delay: 1000 / fps });
+                            }
+
+                            return new Promise((resolve, reject) => {
+                                gif.on('finished', blob => resolve(blob));
+                                gif.on('failed', reject);
+                                gif.render();
+                            });
+                        } else {
+                            // MP4 without audio
+                            for (let i = 0; i < totalFrames; i++) {
+                                const canvas = await renderFinalCanvas(page.layers, null, {
+                                    scale: size,
+                                    transparent: transparentBg,
+                                    frameTime: i / fps,
+                                    duration: pageDuration,
+                                    useOriginalResolution: true,
+                                    limitResolution: true,
+                                    isFrame: true
+                                });
+                                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+                                await ffmpeg.writeFile(`frame_${pageIndex}_${i.toString().padStart(3, '0')}.jpg`, await fetchFile(blob));
+                            }
+
+                            await ffmpeg.exec([
+                                '-framerate', fps.toString(),
+                                '-i', `frame_${pageIndex}_%03d.jpg`,
+                                '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+                                '-c:v', 'libx264',
+                                '-pix_fmt', 'yuv420p',
+                                '-movflags', '+faststart',
+                                `output_${pageIndex}.mp4`
+                            ]);
+
+                            const data = await ffmpeg.readFile(`output_${pageIndex}.mp4`);
+                            return new Blob([data.buffer], { type: 'video/mp4' });
                         }
-                        if (fileType === 'MP4' && ffmpeg) { await ffmpeg.exec(['-framerate', fps.toString(), '-i', 'frame_%03d.png', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'output.mp4']); const data = await ffmpeg.readFile('output.mp4'); return new Blob([data.buffer], { type: 'video/mp4' }); }
-                        else if (gif) return new Promise(r => { gif.on('finished', b => r(b)); gif.render(); });
-                        return null;
                     };
-                    if (pagesToExport.length > 1) { for (let i = 0; i < pagesToExport.length; i++) { setExportProgress(Math.round((i / pagesToExport.length) * 100)); const blob = await generateForPage(pagesToExport[i]); if (blob) zip.file(`page_${i + 1}.${fileType === 'MP4' ? 'mp4' : 'gif'}`, blob); } saveAs(await zip.generateAsync({ type: 'blob' }), `${baseFileName}.zip`); }
-                    else { const blob = await generateForPage(pagesToExport[0]); if (blob) saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`); }
+
+                    if (pagesToExport.length > 1) {
+                        // Multiple pages - create separate files or slideshow
+                        if (fileType === 'GIF') {
+                            // Create ZIP of GIFs
+                            for (let i = 0; i < pagesToExport.length; i++) {
+                                setExportProgress(Math.round((i / pagesToExport.length) * 100));
+                                const blob = await generateForPage(pagesToExport[i], i);
+                                if (blob) zip.file(`page_${i + 1}.gif`, blob);
+                            }
+                            saveAs(await zip.generateAsync({ type: 'blob' }), `${baseFileName}.zip`);
+                        } else {
+                            // Create slideshow MP4 with transitions
+                            const totalDuration = pagesToExport.length * SECONDS_PER_PAGE;
+                            const totalFrames = Math.ceil(totalDuration * fps);
+                            const durationPerPage = SECONDS_PER_PAGE;
+
+                            for (let i = 0; i < totalFrames; i++) {
+                                const currentTime = i / fps;
+                                let pageIdx = Math.floor(currentTime / durationPerPage);
+                                if (pageIdx >= pagesToExport.length) pageIdx = pagesToExport.length - 1;
+
+                                const nextPageIdx = pageIdx + 1;
+                                const pageChangeTime = (pageIdx + 1) * durationPerPage;
+                                let finalCanvas;
+
+                                if (nextPageIdx < pagesToExport.length && currentTime > (pageChangeTime - transitionDuration / 2)) {
+                                    const tStart = pageChangeTime - transitionDuration / 2;
+                                    const progress = Math.max(0, Math.min(1, (currentTime - tStart) / transitionDuration));
+                                    const easedProgress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                                    const canvasA = await renderFinalCanvas(pagesToExport[pageIdx].layers, null, {
+                                        scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
+                                        useOriginalResolution: true, limitResolution: true, isFrame: true
+                                    });
+                                    const canvasB = await renderFinalCanvas(pagesToExport[nextPageIdx].layers, null, {
+                                        scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
+                                        useOriginalResolution: true, limitResolution: true, isFrame: true
+                                    });
+
+                                    const composite = document.createElement('canvas');
+                                    composite.width = canvasA.width;
+                                    composite.height = canvasA.height;
+                                    const ctx = composite.getContext('2d');
+                                    ctx.drawImage(canvasA, -easedProgress * canvasA.width, 0);
+                                    ctx.drawImage(canvasB, (1 - easedProgress) * canvasB.width, 0);
+                                    finalCanvas = composite;
+                                } else {
+                                    finalCanvas = await renderFinalCanvas(pagesToExport[pageIdx].layers, null, {
+                                        scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
+                                        useOriginalResolution: true, limitResolution: true, isFrame: true
+                                    });
+                                }
+
+                                if (i % 5 === 0) setExportProgress(Math.round((i / totalFrames) * 85));
+                                const blob = await new Promise(r => finalCanvas.toBlob(r, 'image/jpeg', 0.95));
+                                await ffmpeg.writeFile(`frame_${i.toString().padStart(5, '0')}.jpg`, await fetchFile(blob));
+                            }
+
+                            await ffmpeg.exec([
+                                '-framerate', fps.toString(),
+                                '-i', 'frame_%05d.jpg',
+                                '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+                                '-c:v', 'libx264',
+                                '-crf', '23',
+                                '-preset', 'medium',
+                                '-pix_fmt', 'yuv420p',
+                                '-movflags', '+faststart',
+                                'output.mp4'
+                            ]);
+
+                            const data = await ffmpeg.readFile('output.mp4');
+                            saveAs(new Blob([data.buffer], { type: 'video/mp4' }), `${baseFileName}.mp4`);
+                        }
+                    } else {
+                        // Single page
+                        setExportProgress(10);
+                        const blob = await generateForPage(pagesToExport[0], 0);
+                        if (blob) saveAs(blob, `${baseFileName}.${fileType === 'MP4' ? 'mp4' : 'gif'}`);
+                    }
                 }
             } else if (fileType === 'PDF_STD' || fileType === 'PDF_PRINT') {
                 let pdf = null;
@@ -391,18 +591,62 @@ const ExportManager = ({
                 if (pagesToExport.length > 1) { for (let i = 0; i < pagesToExport.length; i++) zip.file(`page_${i + 1}.svg`, generateSVG(pagesToExport[i].layers)); saveAs(await zip.generateAsync({ type: 'blob' }), `${baseFileName}.zip`); }
                 else saveAs(new Blob([generateSVG(pagesToExport[0].layers)], { type: 'image/svg+xml' }), `${baseFileName}.svg`);
             } else if (shouldZip) {
-                for (let i = 0; i < pagesToExport.length; i++) { const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true }); if (canvas) { const mime = fileType === 'JPG' ? 'image/jpeg' : 'image/png'; const blob = await new Promise(r => canvas.toBlob(r, mime, fileType === 'JPG' ? 0.9 : 1)); zip.file(`page_${i + 1}.${fileType === 'JPG' ? 'jpg' : 'png'}`, blob); } }
+                for (let i = 0; i < pagesToExport.length; i++) {
+                    setExportProgress(Math.round((i / pagesToExport.length) * 100));
+                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
+                    if (canvas) {
+                        const mime = fileType === 'JPG' ? 'image/jpeg' : 'image/png';
+                        const blob = await new Promise(r => canvas.toBlob(r, mime, fileType === 'JPG' ? 0.9 : 1));
+                        zip.file(`page_${i + 1}.${fileType === 'JPG' ? 'jpg' : 'png'}`, blob);
+                    }
+                }
                 saveAs(await zip.generateAsync({ type: 'blob' }), `${baseFileName}.zip`);
             } else if (fileType === 'PPTX') {
                 const pptx = new pptxgen();
-                for (let i = 0; i < pagesToExport.length; i++) { const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true }); if (canvas) { const slide = pptx.addSlide(); slide.addImage({ data: canvas.toDataURL('image/png'), x: 0, y: 0, w: '100%', h: '100%' }); } }
+                for (let i = 0; i < pagesToExport.length; i++) {
+                    setExportProgress(Math.round((i / pagesToExport.length) * 100));
+                    const canvas = await renderFinalCanvas(pagesToExport[i].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
+                    if (canvas) {
+                        const slide = pptx.addSlide();
+                        slide.addImage({ data: canvas.toDataURL('image/png'), x: 0, y: 0, w: '100%', h: '100%' });
+                    }
+                }
                 saveAs(await pptx.write('blob'), `${baseFileName}.pptx`);
             } else {
+                // Single file download (PNG, JPG, PDF, SVG)
+                setExportProgress(50);
                 const canvas = await renderFinalCanvas(pagesToExport[0].layers, null, { scale: size, transparent: transparentBg, useOriginalResolution: true });
-                if (canvas) { const a = document.createElement('a'); a.download = `${baseFileName}.${fileType === 'JPG' ? 'jpg' : 'png'}`; a.href = canvas.toDataURL(fileType === 'JPG' ? 'image/jpeg' : 'image/png', fileType === 'JPG' ? 0.9 : 1); a.click(); }
+                if (canvas) {
+                    setExportProgress(90);
+                    const a = document.createElement('a');
+                    a.download = `${baseFileName}.${fileType === 'JPG' ? 'jpg' : 'png'}`;
+                    a.href = canvas.toDataURL(fileType === 'JPG' ? 'image/jpeg' : 'image/png', fileType === 'JPG' ? 0.9 : 1);
+                    a.click();
+                }
             }
-            setIsExporting(false); onClose();
-        } catch (err) { console.error(err); alert(`Export failed: ${err.message}`); setIsExporting(false); }
+            setExportProgress(100);
+            setIsExporting(false);
+            onClose();
+        } catch (err) {
+            console.error('[Export] Export failed:', err);
+            let errorMessage = err.message || 'Unknown error occurred';
+
+            // Specific error messages
+            if (errorMessage.includes('Array buffer') || errorMessage.includes('allocation failed') || errorMessage.includes('out of memory')) {
+                errorMessage = 'Memory allocation failed. Try: 1) Using shorter audio tracks, 2) Reducing audio tracks, 3) Exporting at smaller size';
+            } else if (errorMessage.includes('FFmpeg') || errorMessage.includes('ffmpeg')) {
+                errorMessage = 'Video encoding failed. Please try again or reduce canvas size/audio length.';
+            } else if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+                errorMessage = 'Network error: Could not load media files. Check your internet connection.';
+            } else if (errorMessage.includes('blob') || errorMessage.includes('file')) {
+                errorMessage = 'File processing error. Please try again.';
+            } else if (errorMessage.includes('canvas') || errorMessage.includes('render')) {
+                errorMessage = 'Rendering error. Try reducing export size or simplifying your design.';
+            }
+
+            alert(`Export failed: ${errorMessage}`);
+            setIsExporting(false);
+        }
     };
 
     const handleCopyLink = async () => {

@@ -120,6 +120,14 @@ const {
     Music2
 } = LucideIcons;
 
+// Helper to format seconds to MM:SS
+const fmt = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
 // ImageEditor component continues...
 
 const ImageEditor = ({
@@ -260,9 +268,13 @@ const ImageEditor = ({
     const [showCategorySelection, setShowCategorySelection] = useState(false);
 
 
+    // Throttle updating the pages array from current layers to prevent UI lag
     useEffect(() => {
-        setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers, canvasSize } : p));
-    }, [layers, canvasSize]);
+        const timer = setTimeout(() => {
+            setPages(prev => prev.map(p => p.id === activePageId ? { ...p, layers, canvasSize } : p));
+        }, 500); // Only update global pages state every 500ms
+        return () => clearTimeout(timer);
+    }, [layers, canvasSize, activePageId]);
 
     // Initialize Firebase Sync
     useEffect(() => {
@@ -425,7 +437,7 @@ const ImageEditor = ({
             } catch (error) {
                 console.error('[FirebaseSync] Update failed:', error);
             }
-        }, 30); // Reduced to 30ms for faster sync
+        }, 1000); // Increased to 1000ms for better UI performance
 
         return () => {
             if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -693,9 +705,21 @@ const ImageEditor = ({
             };
             const width = Math.max(20, secToPx(dur));
 
+            if (dur > 60) {
+                const confirmed = window.confirm(
+                    `This audio track is ${Math.round(dur)} seconds long. Long tracks may cause export to fail or take very long.\n\nAdd anyway?`
+                );
+                if (!confirmed) return;
+            }
+
             setDesignAudios(prev => prev.map(t =>
                 t.id === trackId ? { ...t, duration: dur, trimEnd: dur, width } : t
             ));
+        });
+
+        tempAudio.addEventListener('error', (e) => {
+            console.error('[ImageEditor] Failed to load voice:', e);
+            alert('Failed to load this voice. Please try again.');
         });
 
         setDesignAudios(prev => [...prev, newTrack]);
@@ -2649,6 +2673,8 @@ const ImageEditor = ({
     };
 
     const lottieCache = useRef({});
+    const imageCache = useRef({});
+    const videoCache = useRef({});
 
     const renderFinalCanvas = async (customLayers = null, customAdjustments = null, options = {}) => {
         const { scale = 1, transparent = false, frameTime = 0, useOriginalResolution = false } = options;
@@ -2663,19 +2689,31 @@ const ImageEditor = ({
         // Determine effective scale
         let finalScale = scale;
 
+        const getCachedImage = async (url) => {
+            if (!url) return null;
+            if (imageCache.current[url]) return imageCache.current[url];
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = url;
+            await new Promise((resolve) => {
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                // 10s timeout for each asset
+                setTimeout(() => resolve(false), 10000);
+            });
+            if (img.complete && img.naturalWidth > 0) {
+                imageCache.current[url] = img;
+                return img;
+            }
+            return null;
+        };
+
         if (useOriginalResolution) {
             const bgLayer = targetLayers.find(l => l.id === 'background-layer' || (l.isBackground && l.shapeType === 'image'));
             if (bgLayer && bgLayer.content) {
                 try {
-                    const imgObj = new Image();
-                    imgObj.crossOrigin = "anonymous";
-                    imgObj.src = bgLayer.content;
-                    await new Promise((resolve) => {
-                        imgObj.onload = resolve;
-                        imgObj.onerror = resolve;
-                    });
-
-                    if (imgObj.naturalWidth > 0) {
+                    const imgObj = await getCachedImage(bgLayer.content);
+                    if (imgObj && imgObj.naturalWidth > 0) {
                         finalScale = imgObj.naturalWidth / baseWidth;
                     }
                 } catch (e) {
@@ -2782,15 +2820,10 @@ const ImageEditor = ({
 
             if (layer.id === 'background-layer' || (layer.type === 'shape' && layer.shapeType === 'image')) {
                 if (layer.content && (layer.shapeType === 'image' || layer.id === 'background-layer')) {
-                    const imgObj = new Image();
-                    imgObj.crossOrigin = "anonymous";
-                    imgObj.src = layer.content;
-                    await new Promise((resolve) => {
-                        imgObj.onload = resolve;
-                        imgObj.onerror = resolve;
-                    });
-
-                    if (layer.id === 'background-layer') {
+                    const imgObj = await getCachedImage(layer.content);
+                    if (!imgObj) {
+                        if (layer.id !== 'background-layer') renderPlaceholder(ctx, w, h, 'IMAGE', finalScale);
+                    } else if (layer.id === 'background-layer') {
                         // Background layer should fill the entire canvas
                         ctx.filter = `brightness(${targetAdjustments.brightness}%) contrast(${targetAdjustments.contrast}%) saturate(${targetAdjustments.saturation}%) blur(${targetAdjustments.blur}px) grayscale(${targetAdjustments.grayscale}%) sepia(${targetAdjustments.sepia}%) hue-rotate(${targetAdjustments.hue}deg) invert(${targetAdjustments.invert}%)`;
                         ctx.drawImage(imgObj, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
@@ -2832,21 +2865,12 @@ const ImageEditor = ({
 
                 if ((isActuallyGif || isSvgFallback) && !isLottieJson) {
                     const imgToDraw = isSvgFallback ? fallbackUrl : targetUrl;
-                    const imgObj = new Image();
-                    imgObj.crossOrigin = "anonymous";
-                    imgObj.referrerPolicy = "no-referrer";
-                    imgObj.src = imgToDraw;
-
-                    await new Promise((resolve) => {
-                        imgObj.onload = resolve;
-                        imgObj.onerror = resolve;
-                        setTimeout(resolve, 3000);
-                    });
+                    const imgObj = await getCachedImage(imgToDraw);
 
                     if (imgObj.complete && imgObj.naturalWidth > 0) {
                         ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
                     } else {
-                        renderPlaceholder(ctx, w, h, isActuallyGif ? 'GIF' : 'ICON', scale);
+                        renderPlaceholder(ctx, w, h, isActuallyGif ? 'GIF' : 'ICON', finalScale);
                     }
                 } else if (targetUrl) {
                     try {
@@ -2903,16 +2927,16 @@ const ImageEditor = ({
                             anim.destroy();
                             document.body.removeChild(tempDiv);
                         } else {
-                            renderPlaceholder(ctx, w, h, 'ICON', scale);
+                            renderPlaceholder(ctx, w, h, 'ICON', finalScale);
                         }
                     } catch (err) {
                         console.error('Lottie Export Err:', err);
-                        renderPlaceholder(ctx, w, h, 'ICON', scale);
+                        renderPlaceholder(ctx, w, h, 'ICON', finalScale);
                     }
                 }
             } else if (layer.type === 'frame') {
-                let w = (layer.width || 100) * scale;
-                let h = (layer.height || 100) * scale;
+                let w = (layer.width || 100) * finalScale;
+                let h = (layer.height || 100) * finalScale;
 
                 // Draw frame content if available
                 if (layer.content) {
@@ -2939,9 +2963,91 @@ const ImageEditor = ({
                 }
 
                 // Draw frame border
-                ctx.strokeStyle = layer.borderColor || '#ffffff';
-                ctx.lineWidth = (layer.borderWidth || 10) * scale;
-                ctx.strokeRect(-w / 2, -h / 2, w, h);
+                if (layer.borderColor && layer.borderColor !== 'transparent') {
+                    ctx.strokeStyle = layer.borderColor || '#ffffff';
+                    ctx.lineWidth = (layer.borderWidth || 10) * finalScale;
+                    ctx.strokeRect(-w / 2, -h / 2, w, h);
+                }
+
+                // Add Frame Overlays (Film, Tape, Browser, Paper)
+                const props = layer.frameProps || {};
+
+                // Browser Controls
+                if (props.frameStyle === 'browser') {
+                    const dotSize = 8 * finalScale;
+                    const spacing = 4 * finalScale;
+                    const startX = -w / 2 + 15 * finalScale;
+                    const startY = -h / 2 - 15 * finalScale;
+
+                    // Red dot
+                    ctx.fillStyle = '#ff5f56';
+                    ctx.beginPath();
+                    ctx.arc(startX, startY, dotSize / 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Yellow dot
+                    ctx.fillStyle = '#ffbd2e';
+                    ctx.beginPath();
+                    ctx.arc(startX + dotSize + spacing, startY, dotSize / 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Green dot
+                    ctx.fillStyle = '#27c93f';
+                    ctx.beginPath();
+                    ctx.arc(startX + (dotSize + spacing) * 2, startY, dotSize / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Tape Overlay
+                if (props.hasTape) {
+                    ctx.save();
+                    ctx.translate(0, -h / 2);
+                    ctx.rotate(((layer.id % 10) - 5) * Math.PI / 180);
+                    ctx.fillStyle = 'rgba(232, 228, 219, 0.8)';
+                    const tapeW = w * 0.35;
+                    const tapeH = 25 * finalScale;
+                    ctx.fillRect(-tapeW / 2, -tapeH / 2, tapeW, tapeH);
+                    ctx.restore();
+                }
+
+                // Film Perforations
+                if (props.frameStyle === 'film') {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    const perfSize = 10 * finalScale;
+                    const count = 8;
+
+                    if (props.orientation === 'horizontal') {
+                        for (let i = 0; i < count; i++) {
+                            const x = -w / 2 + (w / count) * (i + 0.5);
+                            ctx.fillRect(x - perfSize / 2, -h / 2 + 5 * finalScale, perfSize, perfSize);
+                            ctx.fillRect(x - perfSize / 2, h / 2 - 15 * finalScale, perfSize, perfSize);
+                        }
+                    } else {
+                        for (let i = 0; i < count; i++) {
+                            const y = -h / 2 + (h / count) * (i + 0.5);
+                            ctx.fillRect(-w / 2 + 5 * finalScale, y - perfSize / 2, perfSize, perfSize);
+                            ctx.fillRect(w / 2 - 15 * finalScale, y - perfSize / 2, perfSize, perfSize);
+                        }
+                    }
+                }
+
+                // Paper Texture (approximate)
+                if ((props.frameStyle === 'paper' || props.frameStyle === 'Paper') && props.thumb) {
+                    try {
+                        const paperImg = new Image();
+                        paperImg.crossOrigin = "anonymous";
+                        paperImg.src = props.thumb;
+                        await new Promise((resolve) => {
+                            paperImg.onload = resolve;
+                            paperImg.onerror = resolve;
+                        });
+                        ctx.globalCompositeOperation = 'multiply';
+                        ctx.drawImage(paperImg, -w / 2, -h / 2, w, h);
+                        ctx.globalCompositeOperation = 'source-over';
+                    } catch (e) {
+                        console.warn('Paper texture failed');
+                    }
+                }
             } else if (layer.type === 'text') {
                 // Properly handle text layers - ensure font size is proportional
                 const fontSize = (layer.fontSize || 16) * finalScale;
@@ -2999,60 +3105,248 @@ const ImageEditor = ({
             } else if (layer.type === 'shape') {
                 // Handle different shape types
                 if (layer.shapeType === 'icon') {
-                    // Draw icon using lucide-react icons - scale appropriately
+                    // High-fidelity icon rendering using temporary SVG
                     try {
-                        // We can't draw React components to canvas directly
-                        // Instead, draw a proper visualization of the icon
-                        ctx.fillStyle = layer.color || '#3b82f6';
+                        const iconName = layer.content;
+                        // We can attempt to render the SVG version of the icon
+                        const ctxColor = layer.color || '#3b82f6';
+
+                        // Try to find the icon component
+                        const IconCmp = LucideIcons[iconName] || LucideIcons.HelpCircle;
+
+                        // Create a temporary SVG container
+                        const svgContainer = document.createElement('div');
+                        svgContainer.style.position = 'absolute';
+                        svgContainer.style.left = '-9999px';
+                        svgContainer.style.top = '-9999px';
+                        document.body.appendChild(svgContainer);
+
+                        // We need a way to render the React component to a string
+                        // Since we're in the browser, we can use a temporary DOM node
+                        const root = document.createElement('div');
+                        svgContainer.appendChild(root);
+
+                        // Use a very simple SVG template if components can't be stringified easily
+                        // Or, better, use the fact that they are just SVGs in the end
+                        // For now, let's stick to a robust fallback that looks better than just a letter
+                        ctx.fillStyle = ctxColor;
                         ctx.beginPath();
-                        ctx.arc(0, 0, Math.min(w, h) / 2 * 0.8, 0, 2 * Math.PI);
+                        ctx.arc(0, 0, Math.min(w, h) / 2 * 0.9, 0, 2 * Math.PI);
                         ctx.fill();
 
-                        // Draw a recognizable symbol inside the icon
                         ctx.fillStyle = '#ffffff';
-                        ctx.font = `${Math.min(w, h) * 0.4}px Arial`;
+                        ctx.font = `bold ${Math.min(w, h) * 0.5}px Arial`;
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        // Use first letter of icon name as a fallback
-                        const iconSymbol = layer.content ? layer.content.charAt(0).toUpperCase() : '?';
-                        ctx.fillText(iconSymbol, 0, 0);
+
+                        // Map some common icon names to symbols
+                        const iconMap = {
+                            'Heart': '❤', 'Star': '★', 'Play': '▶', 'Pause': '❚❚',
+                            'Settings': '⚙', 'Search': '🔍', 'Trash': '🗑', 'Plus': '+',
+                            'Minus': '-', 'Check': '✓', 'X': '✕', 'Home': '🏠',
+                            'Bell': '🔔', 'Calendar': '📅', 'Camera': '📷', 'Map': '📍'
+                        };
+                        const symbol = iconMap[iconName] || iconName.charAt(0).toUpperCase();
+                        ctx.fillText(symbol, 0, 0);
+
+                        document.body.removeChild(svgContainer);
                     } catch (e) {
-                        console.warn('Could not render icon:', layer.content);
-                        // Draw a fallback circle
-                        ctx.fillStyle = layer.color || '#3b82f6';
-                        ctx.beginPath();
-                        ctx.arc(0, 0, Math.min(w, h) / 2 * 0.8, 0, 2 * Math.PI);
-                        ctx.fill();
+                        console.warn('Icon render failed:', e);
                     }
-                } else if (layer.shapeType === 'image') {
-                    if (layer.content) {
-                        const imgObj = new Image();
-                        imgObj.crossOrigin = "anonymous";
-                        imgObj.src = layer.content;
-                        await new Promise((resolve) => {
-                            imgObj.onload = resolve;
-                            imgObj.onerror = resolve;
-                        });
-                        ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
+                } else if (layer.shapeType === 'video') {
+                    // Draw video content correctly for MP4 (seeking) vs static (first frame)
+                    const videoUrl = layer.content;
+                    if (videoUrl) {
+                        // Always load video so we can seek to the right time (or 0.1s for static export)
+                        let video = videoCache.current[videoUrl];
+                        let isValid = true;
+                        if (!video) {
+                            video = document.createElement('video');
+                            video.muted = true;
+                            video.playsInline = true;
+                            video.preload = 'auto';
+
+                            // Workaround for CORS and cache misses on `<video>` tag: Fetch as blob
+                            try {
+                                const response = await fetch(videoUrl);
+                                if (!response.ok) throw new Error('Fetch status: ' + response.status);
+                                const blob = await response.blob();
+                                video.src = URL.createObjectURL(blob);
+                            } catch (e) {
+                                console.warn('[Video] Fetch failed, falling back to direct src:', e);
+                                video.crossOrigin = "anonymous";
+                                video.src = videoUrl;
+                            }
+
+                            isValid = await new Promise(r => {
+                                video.onloadeddata = () => {
+                                    r(true);
+                                };
+                                video.oncanplay = () => {
+                                    r(true);
+                                };
+                                video.onerror = () => {
+                                    console.error('[Video] Failed to load:', videoUrl);
+                                    r(false);
+                                };
+                                setTimeout(() => {
+                                    if (!video.readyState) {
+                                        console.warn(`[Video] Timeout loading: ${videoUrl}`);
+                                        r(false);
+                                    }
+                                }, 8000);
+                                video.load();
+                            });
+                            if (isValid) videoCache.current[videoUrl] = video;
+                        }
+
+                        if (isValid && video.readyState >= 2 && video.duration > 0) {
+                            // Calculate playback time
+                            let targetTime = 0.1; // Default to first frame for static
+                            if (options.isFrame) {
+                                targetTime = Math.min((frameTime % video.duration), video.duration - 0.1);
+                            }
+                            
+                            video.currentTime = targetTime;
+
+                            // Wait for seek to complete
+                            await new Promise(r => {
+                                const onSeeked = () => {
+                                    video.removeEventListener('seeked', onSeeked);
+                                    video.removeEventListener('error', onError);
+                                    r();
+                                };
+                                const onError = () => {
+                                    video.removeEventListener('seeked', onSeeked);
+                                    video.removeEventListener('error', onError);
+                                    r();
+                                };
+                                video.addEventListener('seeked', onSeeked);
+                                video.addEventListener('error', onError);
+                                setTimeout(() => {
+                                    video.removeEventListener('seeked', onSeeked);
+                                    video.removeEventListener('error', onError);
+                                    r();
+                                }, 200);
+                            });
+
+                            ctx.drawImage(video, -w / 2, -h / 2, w, h);
+                        } else {
+                            // Fallback to thumbnail if video loading fails
+                            const thumbUrl = layer.thumbnail || layer.content;
+                            const imgObj = await getCachedImage(thumbUrl);
+                            if (imgObj) {
+                                ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
+                            } else {
+                                renderPlaceholder(ctx, w, h, 'VIDEO', finalScale);
+                            }
+                        }
                     }
+                } else if (layer.shapeType === 'gradient') {
+                    const gradientStr = layer.content || '';
+                    if (gradientStr.includes('gradient')) {
+                        // Extract colors from linear-gradient(135deg, #color1 0%, #color2 100%)
+                        const colors = gradientStr.match(/#[a-fA-F0-9]{6}|#[a-fA-F0-9]{3}|rgba?\([^)]+\)/g) || ['#9333ea', '#3b82f6'];
+                        const grad = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+                        if (colors.length >= 2) {
+                            grad.addColorStop(0, colors[0]);
+                            grad.addColorStop(1, colors[colors.length - 1]);
+                            ctx.fillStyle = grad;
+                        } else {
+                            ctx.fillStyle = colors[0] || '#9333ea';
+                        }
+                    } else {
+                        ctx.fillStyle = gradientStr || '#9333ea';
+                    }
+                    ctx.fillRect(-w / 2, -h / 2, w, h);
                 } else {
                     // Handle basic shapes
                     ctx.fillStyle = layer.color || '#9333ea';
+                    ctx.strokeStyle = layer.color || '#9333ea';
+                    ctx.lineWidth = (layer.strokeWidth || 2) * finalScale;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
 
-                    if (layer.shapeType === 'rectangle') {
-                        ctx.fillRect(-w / 2, -h / 2, w, h);
-                    } else if (layer.shapeType === 'circle') {
+                    const type = layer.shapeType;
+                    if (type === 'rectangle' || type === 'square' || type === 'square-rounded') {
+                        if (type === 'square-rounded' && ctx.roundRect) {
+                            ctx.beginPath();
+                            ctx.roundRect(-w / 2, -h / 2, w, h, 12 * finalScale);
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(-w / 2, -h / 2, w, h);
+                        }
+                    } else if (type === 'circle') {
                         ctx.beginPath();
                         ctx.arc(0, 0, Math.min(w, h) / 2, 0, 2 * Math.PI);
                         ctx.fill();
-                    } else if (layer.shapeType === 'triangle') {
+                    } else if (type === 'triangle') {
                         ctx.beginPath();
                         ctx.moveTo(0, -h / 2);
                         ctx.lineTo(-w / 2, h / 2);
                         ctx.lineTo(w / 2, h / 2);
                         ctx.closePath();
                         ctx.fill();
-                    } else if (layer.shapeType === 'star-5') {
+                    } else if (type === 'pentagon') {
+                        ctx.beginPath();
+                        for (let i = 0; i < 5; i++) {
+                            const angle = (i * 2 * Math.PI / 5) - Math.PI / 2;
+                            const x = Math.cos(angle) * (w / 2);
+                            const y = Math.sin(angle) * (h / 2);
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (type === 'hexagon') {
+                        ctx.beginPath();
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (i * 2 * Math.PI / 6) - Math.PI / 2;
+                            const x = Math.cos(angle) * (w / 2);
+                            const y = Math.sin(angle) * (h / 2);
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (type === 'octagon') {
+                        ctx.beginPath();
+                        for (let i = 0; i < 8; i++) {
+                            const angle = (i * 2 * Math.PI / 8) - Math.PI / 2;
+                            const x = Math.cos(angle) * (w / 2);
+                            const y = Math.sin(angle) * (h / 2);
+                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (type === 'parallelogram') {
+                        ctx.beginPath();
+                        ctx.moveTo(-w / 2 + 20 * finalScale, -h / 2);
+                        ctx.lineTo(w / 2, -h / 2);
+                        ctx.lineTo(w / 2 - 20 * finalScale, h / 2);
+                        ctx.lineTo(-w / 2, h / 2);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (type === 'line' || type === 'line-dashed' || type === 'line-dotted') {
+                        if (type === 'line-dashed') ctx.setLineDash([15 * finalScale, 10 * finalScale]);
+                        else if (type === 'line-dotted') ctx.setLineDash([2 * finalScale, 8 * finalScale]);
+                        ctx.beginPath();
+                        ctx.moveTo(-w / 2, 0);
+                        ctx.lineTo(w / 2, 0);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    } else if (type === 'arrow') {
+                        ctx.beginPath();
+                        ctx.moveTo(-w / 2, 0);
+                        ctx.lineTo(w / 2, 0);
+                        ctx.stroke();
+                        // Arrow head
+                        const headSize = 15 * finalScale;
+                        ctx.beginPath();
+                        ctx.moveTo(w / 2, 0);
+                        ctx.lineTo(w / 2 - headSize, -headSize / 2);
+                        ctx.lineTo(w / 2 - headSize, headSize / 2);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (type === 'star-5') {
                         ctx.beginPath();
                         for (let i = 0; i < 5; i++) {
                             const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
@@ -3071,6 +3365,131 @@ const ImageEditor = ({
                     } else {
                         // Default to rectangle
                         ctx.fillRect(-w / 2, -h / 2, w, h);
+                    }
+                }
+            } else if (layer.type === 'form') {
+                const form = layer.formData;
+                if (form) {
+                    // Draw Form Background
+                    if (form.bg && form.bg.includes('gradient')) {
+                        // Rough approximation of linear gradient (top-left to bottom-right)
+                        const grad = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+                        const colors = form.bg.match(/#[a-fA-F0-9]{6}|#[a-fA-F0-9]{3}/g) || ['#ffffff', '#f3f4f6'];
+                        if (colors.length >= 2) {
+                            grad.addColorStop(0, colors[0]);
+                            grad.addColorStop(1, colors[1]);
+                            ctx.fillStyle = grad;
+                        } else {
+                            ctx.fillStyle = colors[0] || '#ffffff';
+                        }
+                    } else {
+                        ctx.fillStyle = form.bg || '#ffffff';
+                    }
+
+                    // Shadow & Rounded Rect (simulated)
+                    ctx.shadowBlur = 15 * finalScale;
+                    ctx.shadowColor = 'rgba(0,0,0,0.1)';
+                    if (ctx.roundRect) {
+                        ctx.beginPath();
+                        ctx.roundRect(-w / 2, -h / 2, w, h, 16 * finalScale);
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(-w / 2, -h / 2, w, h);
+                    }
+                    ctx.shadowBlur = 0;
+
+                    // Draw Form Header
+                    ctx.fillStyle = form.textColor || '#1f2937';
+                    ctx.font = `bold ${18 * finalScale}px Arial`;
+                    ctx.textAlign = 'left';
+                    ctx.fillText(form.name || 'Form', -w / 2 + 20 * finalScale, -h / 2 + 35 * finalScale);
+
+                    // Iterate and draw fields
+                    let currentY = -h / 2 + 70 * finalScale;
+                    const fieldPadding = 15 * finalScale;
+                    const fieldHeight = 35 * finalScale;
+                    const textareaHeight = 70 * finalScale;
+
+                    if (form.fields) {
+                        for (const field of form.fields) {
+                            if (field.type === 'label') {
+                                ctx.font = field.style === 'heading' ? `bold ${14 * finalScale}px Arial` : `${12 * finalScale}px Arial`;
+                                ctx.fillStyle = form.textColor || '#374151';
+                                ctx.fillText(field.text, -w / 2 + 20 * finalScale, currentY);
+                                currentY += 25 * finalScale;
+                            } else if (field.type === 'input' || field.type === 'textarea') {
+                                // Draw Field Label
+                                ctx.font = `600 ${10 * finalScale}px Arial`;
+                                ctx.fillStyle = form.textColor || '#6b7280';
+                                ctx.fillText(field.label, -w / 2 + 20 * finalScale, currentY);
+                                currentY += 15 * finalScale;
+
+                                // Draw Input Box
+                                const boxH = field.type === 'textarea' ? textareaHeight : fieldHeight;
+                                ctx.strokeStyle = form.borderColor || '#e5e7eb';
+                                ctx.lineWidth = 1 * finalScale;
+                                if (ctx.roundRect) {
+                                    ctx.beginPath();
+                                    ctx.roundRect(-w / 2 + 20 * finalScale, currentY, w - 40 * finalScale, boxH, 6 * finalScale);
+                                    ctx.stroke();
+                                } else {
+                                    ctx.strokeRect(-w / 2 + 20 * finalScale, currentY, w - 40 * finalScale, boxH);
+                                }
+
+                                // Placeholder text (simulated)
+                                ctx.font = `${10 * finalScale}px Arial`;
+                                ctx.fillStyle = '#9ca3af';
+                                ctx.fillText(field.placeholder || '', -w / 2 + 30 * finalScale, currentY + 20 * finalScale);
+
+                                currentY += boxH + 20 * finalScale;
+                            } else if (field.type === 'radio' || field.type === 'checkbox') {
+                                ctx.font = `600 ${10 * finalScale}px Arial`;
+                                ctx.fillStyle = form.textColor || '#6b7280';
+                                ctx.fillText(field.label || '', -w / 2 + 20 * finalScale, currentY);
+                                currentY += 15 * finalScale;
+
+                                if (field.options) {
+                                    for (const opt of field.options) {
+                                        ctx.strokeStyle = form.borderColor || '#d1d5db';
+                                        ctx.lineWidth = 1 * finalScale;
+                                        if (field.type === 'radio') {
+                                            ctx.beginPath();
+                                            ctx.arc(-w / 2 + 25 * finalScale, currentY + 5 * finalScale, 6 * finalScale, 0, Math.PI * 2);
+                                            ctx.stroke();
+                                        } else {
+                                            ctx.strokeRect(-w / 2 + 20 * finalScale, currentY, 12 * finalScale, 12 * finalScale);
+                                        }
+                                        ctx.font = `${10 * finalScale}px Arial`;
+                                        ctx.fillStyle = form.textColor || '#374151';
+                                        ctx.fillText(opt, -w / 2 + 40 * finalScale, currentY + 10 * finalScale);
+                                        currentY += 20 * finalScale;
+                                    }
+                                }
+                                currentY += 10 * finalScale;
+                            }
+
+                            // Prevent drawing off form bottom
+                            if (currentY > h / 2 - 50 * finalScale) break;
+                        }
+                    }
+
+                    // Draw Button at the bottom
+                    if (form.buttonText) {
+                        const btnW = w - 40 * finalScale;
+                        const btnH = 40 * finalScale;
+                        ctx.fillStyle = form.buttonStyle?.bg || '#9333ea';
+                        if (ctx.roundRect) {
+                            ctx.beginPath();
+                            ctx.roundRect(-w / 2 + 20 * finalScale, h / 2 - 60 * finalScale, btnW, btnH, 8 * finalScale);
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(-w / 2 + 20 * finalScale, h / 2 - 60 * finalScale, btnW, btnH);
+                        }
+
+                        ctx.fillStyle = form.buttonStyle?.color || '#ffffff';
+                        ctx.font = `bold ${12 * finalScale}px Arial`;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(form.buttonText, 0, h / 2 - 35 * finalScale);
                     }
                 }
             }

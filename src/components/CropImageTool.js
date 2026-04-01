@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Shield, Scissors, Download, RefreshCw, X, ZoomIn, ZoomOut, RotateCw, FlipHorizontal, FlipVertical, Sun, Contrast, Droplet, Sliders, Maximize2, Copy, Check, Info } from 'lucide-react';
 
 // ─── Google Font Import ────────────────────────────────────────────────────────
-const FontLink = () => (
+const FontLink = ({ colors, darkMode }) => (
     <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
     * { box-sizing: border-box; }
@@ -17,19 +17,19 @@ const FontLink = () => (
     .anim-fadeup-3 { animation: fadeUp 0.5s 0.2s ease both; }
     .shimmer-btn:hover::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent); animation:shimmer 0.8s linear; pointer-events:none; border-radius:inherit; }
     .shimmer-btn { position:relative; overflow:hidden; }
-    input[type=range] { -webkit-appearance:none; appearance:none; height:4px; border-radius:99px; outline:none; cursor:pointer; }
-    input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#18b7aa; border:2px solid #ffffff; cursor:pointer; }
+    input[type=range] { -webkit-appearance:none; appearance:none; height:4px; border-radius:99px; outline:none; cursor:pointer; background:${colors.border}; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:${colors.accent}; border:2px solid ${colors.surface}; cursor:pointer; }
     .sidebar-scroll::-webkit-scrollbar { width:4px; }
     .sidebar-scroll::-webkit-scrollbar-track { background:transparent; }
-    .sidebar-scroll::-webkit-scrollbar-thumb { background:#c7d5e3; border-radius:4px; }
-    .tab-active { border-bottom:2px solid #18b7aa; color:#18b7aa; }
-    .tab-inactive { border-bottom:2px solid transparent; color:#6b7280; }
-    .handle-hover:hover { transform:scale(1.4); background:#18b7aa !important; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background:${colors.textFaint}; border-radius:4px; }
+    .tab-active { border-bottom:2px solid ${colors.accent}; color:${colors.accent}; }
+    .tab-inactive { border-bottom:2px solid transparent; color:${colors.textMuted}; }
+    .handle-hover:hover { transform:scale(1.4); background:${colors.accent} !important; }
   `}</style>
 );
 
 // ─── Color Token ──────────────────────────────────────────────────────────────
-const C = {
+const LIGHT_C = {
     bg: '#f5f7fb',
     surface: '#ffffff',
     surfaceHover: '#eef4fb',
@@ -45,7 +45,61 @@ const C = {
     danger: '#e25555',
     warn: '#c28a14',
     success: '#2f9e67',
+    pageStart: '#f9fbff',
+    editorStart: '#f8fbff',
+    glass: 'rgba(255,255,255,0.72)',
+    shadow: '0 20px 60px rgba(148, 163, 184, 0.16)',
+    sideShadow: '16px 0 40px rgba(148, 163, 184, 0.12)',
+    canvasShadow: '0 28px 60px rgba(148, 163, 184, 0.25)',
+    previewShadow: '0 24px 60px rgba(148, 163, 184, 0.25)',
+    imageShadow: '0 16px 40px rgba(148, 163, 184, 0.28)',
+    gridDot: '#d9e4ef',
+    overlay: 'rgba(255,255,255,0.6)',
+    outline: 'rgba(148,163,184,0.45)',
+    glow: 'rgba(24,183,170,0.08)',
+    modalBackdrop: 'rgba(241,245,249,0.82)',
+    imageBg: '#ffffff',
+    checkerA: '#eef4fb',
+    checkerB: '#d9e7f5',
 };
+
+const DARK_C = {
+    bg: '#08111f',
+    surface: '#0f172a',
+    surfaceHover: '#162235',
+    canvas: '#071320',
+    border: '#233246',
+    accent: '#22d3c5',
+    accentStrong: '#14b8a6',
+    accentDim: '#22d3c522',
+    text: '#e6eef9',
+    textMuted: '#9fb0c7',
+    textFaint: '#6f859f',
+    textOnAccent: '#042f2c',
+    danger: '#fb7185',
+    warn: '#f59e0b',
+    success: '#4ade80',
+    pageStart: '#040b16',
+    editorStart: '#06111d',
+    glass: 'rgba(7,17,31,0.78)',
+    shadow: '0 20px 60px rgba(2, 6, 23, 0.45)',
+    sideShadow: '16px 0 40px rgba(2, 6, 23, 0.35)',
+    canvasShadow: '0 28px 60px rgba(2, 6, 23, 0.55)',
+    previewShadow: '0 24px 60px rgba(2, 6, 23, 0.48)',
+    imageShadow: '0 16px 40px rgba(2, 6, 23, 0.48)',
+    gridDot: '#1d334b',
+    overlay: 'rgba(3, 11, 23, 0.72)',
+    outline: 'rgba(148,163,184,0.3)',
+    glow: 'rgba(34,211,197,0.12)',
+    modalBackdrop: 'rgba(2,6,23,0.8)',
+    imageBg: '#0b1220',
+    checkerA: '#122033',
+    checkerB: '#0c1726',
+};
+
+function getCropTheme(darkMode) {
+    return darkMode ? DARK_C : LIGHT_C;
+}
 
 const ASPECT_RATIOS = [
     { label: 'Free', value: 'free' },
@@ -73,7 +127,8 @@ function applyFilters(ctx, canvas, img, sx, sy, sw, sh, filters, rotation, flipH
     ctx.restore();
 }
 
-export default function CropImageTool() {
+export default function CropImageTool({ darkMode = false }) {
+    const C = getCropTheme(darkMode);
     const [image, setImage] = useState(null); // base64
     const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
     const [crop, setCrop] = useState({ x: 0, y: 0, w: 200, h: 200 });
@@ -270,10 +325,10 @@ export default function CropImageTool() {
     // ══════════════════════════ LANDING ══════════════════════════════════════════
     if (!image) return (
         <>
-            <FontLink />
-            <div style={{ minHeight: '100vh', width: '100%', overflowX: 'hidden', background: `linear-gradient(180deg, #f9fbff 0%, ${C.bg} 100%)`, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
+            <FontLink colors={C} darkMode={darkMode} />
+            <div style={{ minHeight: '100vh', width: '100%', overflowX: 'hidden', background: `linear-gradient(180deg, ${C.pageStart} 0%, ${C.bg} 100%)`, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
                 {/* Top bar */}
-                <div style={{ borderBottom: `1px solid ${C.border}`, padding: isMobile ? '0 16px' : '0 32px', height: 60, display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(12px)' }}>
+                <div style={{ borderBottom: `1px solid ${C.border}`, padding: isMobile ? '0 16px' : '0 32px', height: 60, display: 'flex', alignItems: 'center', gap: 12, background: C.glass, backdropFilter: 'blur(12px)' }}>
                     <div style={{ width: 28, height: 28, background: C.accent, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Scissors size={14} color={C.textOnAccent} />
                     </div>
@@ -315,7 +370,7 @@ export default function CropImageTool() {
                             background: isDragOver ? `${C.accent}08` : C.surface,
                             transition: 'all 0.25s ease',
                             marginBottom: isMobile ? 32 : 48,
-                            boxShadow: '0 20px 60px rgba(148, 163, 184, 0.16)',
+                            boxShadow: C.shadow,
                         }}
                     >
                         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => loadFile(e.target.files[0])} />
@@ -353,11 +408,11 @@ export default function CropImageTool() {
     // ══════════════════════════ EDITOR ═══════════════════════════════════════════
     return (
         <>
-            <FontLink />
-            <div style={{ display: 'flex', flexDirection: isStackedLayout ? 'column' : 'row', width: '100%', minHeight: '100vh', background: `linear-gradient(180deg, #f8fbff 0%, ${C.bg} 100%)`, color: C.text, overflowX: 'hidden', overflowY: 'hidden', fontFamily: "'DM Sans', sans-serif" }}>
+            <FontLink colors={C} darkMode={darkMode} />
+            <div style={{ display: 'flex', flexDirection: isStackedLayout ? 'column' : 'row', width: '100%', minHeight: '100vh', background: `linear-gradient(180deg, ${C.editorStart} 0%, ${C.bg} 100%)`, color: C.text, overflowX: 'hidden', overflowY: 'hidden', fontFamily: "'DM Sans', sans-serif" }}>
 
                 {/* ── SIDEBAR ─────────────────────────────────────────────────────────── */}
-                <div style={{ width: isStackedLayout ? '100%' : 320, flexShrink: 0, background: C.surface, borderRight: isStackedLayout ? 'none' : `1px solid ${C.border}`, borderBottom: isStackedLayout ? `1px solid ${C.border}` : 'none', display: 'flex', flexDirection: 'column', height: isStackedLayout ? 'auto' : '100vh', boxShadow: isStackedLayout ? 'none' : '16px 0 40px rgba(148, 163, 184, 0.12)' }}>
+                <div style={{ width: isStackedLayout ? '100%' : 320, flexShrink: 0, background: C.surface, borderRight: isStackedLayout ? 'none' : `1px solid ${C.border}`, borderBottom: isStackedLayout ? `1px solid ${C.border}` : 'none', display: 'flex', flexDirection: 'column', height: isStackedLayout ? 'auto' : '100vh', boxShadow: isStackedLayout ? 'none' : C.sideShadow }}>
 
                     {/* Header */}
                     <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -401,7 +456,7 @@ export default function CropImageTool() {
                                 </div>
 
                                 {/* Dimensions */}
-                                <Section label="Dimensions">
+                                <Section label="Dimensions" colors={C}>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                                         {[['W', 'w', naturalSize.w], ['H', 'h', naturalSize.h]].map(([lbl, key, max]) => (
                                             <label key={key} style={{ position: 'relative' }}>
@@ -428,7 +483,7 @@ export default function CropImageTool() {
                                 </Section>
 
                                 {/* Aspect Ratio */}
-                                <Section label="Aspect Ratio">
+                                <Section label="Aspect Ratio" colors={C}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
                                         {ASPECT_RATIOS.map(r => (
                                             <button key={r.value} onClick={() => setAspectRatio(r.value)}
@@ -440,7 +495,7 @@ export default function CropImageTool() {
                                 </Section>
 
                                 {/* Transform */}
-                                <Section label="Transform">
+                                <Section label="Transform" colors={C}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                                         {[
                                             { icon: <RotateCw size={16} />, label: 'Rotate', action: handleRotate },
@@ -459,7 +514,7 @@ export default function CropImageTool() {
                                 </Section>
 
                                 {/* Zoom */}
-                                <Section label={`Zoom: ${Math.round(zoom * 100)}%`}>
+                                <Section label={`Zoom: ${Math.round(zoom * 100)}%`} colors={C}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                         <button onClick={() => setZoom(v => Math.max(0.25, v - 0.1))} style={{ background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: 8, color: C.textMuted, cursor: 'pointer', padding: '6px 8px', lineHeight: 0 }}><ZoomOut size={14} /></button>
                                         <input type="range" min="0.25" max="3" step="0.05" value={zoom} onChange={e => setZoom(+e.target.value)}
@@ -469,7 +524,7 @@ export default function CropImageTool() {
                                 </Section>
 
                                 {/* Quick actions */}
-                                <Section label="Quick Select">
+                                <Section label="Quick Select" colors={C}>
                                     <button onClick={selectAll} style={{ width: '100%', padding: '8px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.surfaceHover, color: C.textMuted, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
                                         onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + '55'; e.currentTarget.style.color = C.text; }}
                                         onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
@@ -478,7 +533,7 @@ export default function CropImageTool() {
                                 </Section>
 
                                 {/* Output Format */}
-                                <Section label="Export Format">
+                                <Section label="Export Format" colors={C}>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                                         {['png', 'jpg', 'webp'].map(fmt => (
                                             <button key={fmt} onClick={() => setOutputFormat(fmt)}
@@ -503,7 +558,7 @@ export default function CropImageTool() {
                                     { key: 'saturation', icon: <Droplet size={14} />, label: 'Saturation', min: 0, max: 300, default: 100 },
                                     { key: 'blur', icon: <Sliders size={14} />, label: 'Blur (px)', min: 0, max: 10, default: 0 },
                                 ].map(f => (
-                                    <Section key={f.key} label={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{f.icon}{f.label}: <span style={{ color: C.accent }}>{filters[f.key]}{f.key === 'blur' ? 'px' : '%'}</span></span>}>
+                                    <Section key={f.key} label={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{f.icon}{f.label}: <span style={{ color: C.accent }}>{filters[f.key]}{f.key === 'blur' ? 'px' : '%'}</span></span>} colors={C}>
                                         <input type="range" min={f.min} max={f.max} step="1" value={filters[f.key]}
                                             onChange={e => setFilters(p => ({ ...p, [f.key]: +e.target.value }))}
                                             style={{ width: '100%', accentColor: C.accent }} />
@@ -524,7 +579,7 @@ export default function CropImageTool() {
                     <div style={{ padding: '16px 20px', borderTop: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <button onClick={handlePreview}
-                            style={{ padding: '10px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.surfaceHover, color: C.text, fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}
+                                style={{ padding: '10px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.surfaceHover, color: C.text, fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}
                                 onMouseEnter={e => e.currentTarget.style.borderColor = C.accent + '55'}
                                 onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
                                 Preview
@@ -670,10 +725,10 @@ export default function CropImageTool() {
 }
 
 // ── Helper component ───────────────────────────────────────────────────────────
-function Section({ label, children }) {
+function Section({ label, children, colors }) {
     return (
         <div>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.6px', textTransform: 'uppercase', color: C.textFaint, marginBottom: 10 }}>{label}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.6px', textTransform: 'uppercase', color: colors.textFaint, marginBottom: 10 }}>{label}</div>
             {children}
         </div>
     );

@@ -3306,8 +3306,10 @@ const ImageEditor = ({
                                     r(false);
                                 };
                                 setTimeout(() => {
-                                    if (!video.readyState) {
-                                        console.warn(`[Video] Timeout loading: ${videoUrl}`);
+                                    if (video.readyState >= 2) {
+                                        r(true); // Video loaded enough
+                                    } else {
+                                        console.warn(`[Video] Timeout loading (readyState=${video.readyState}): ${videoUrl}`);
                                         r(false);
                                     }
                                 }, 8000);
@@ -3343,7 +3345,7 @@ const ImageEditor = ({
                                     video.removeEventListener('seeked', onSeeked);
                                     video.removeEventListener('error', onError);
                                     r();
-                                }, 200);
+                                }, 500);
                             });
 
                             ctx.drawImage(video, -w / 2, -h / 2, w, h);
@@ -7193,50 +7195,82 @@ const ImageEditor = ({
 
                             {/* Thumbnails Row */}
                             <div className="flex items-center gap-3 pb-2">
-                                {pages.map((page, index) => (
-                                    <div key={page.id} className="relative group flex-shrink-0">
-                                        <button
-                                            onClick={() => switchPage(page.id)}
-                                            className="flex flex-col items-center gap-1 group transition-all"
-                                        >
-                                            <div className={`w-20 h-12 rounded-lg border-2 overflow-hidden relative bg-white transition-all ${activePageId === page.id ? 'border-purple-600 ring-2 ring-purple-600/20 shadow-lg scale-105' : 'border-gray-300 dark:border-gray-600 hover:border-purple-400'}`}>
-                                                {/* Content Preview */}
-                                                <div className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
-                                                    {page.layers.length > 0 ? (
-                                                        <div className="w-full h-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                                                            {page.layers.find(l => l.shapeType === 'image') ? <ImageIcon className="w-4 h-4 opacity-50" /> : <div className="flex gap-0.5 transform scale-50"><div className="w-2 h-2 bg-gray-300 rounded-full"></div></div>}
-                                                        </div>
-                                                    ) : 'Empty'}
-                                                </div>
-                                                {/* Page Number Badge */}
-                                                <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[9px] px-1.5 py-0.5 rounded-tr-md font-medium backdrop-blur-sm">
-                                                    {index + 1}
-                                                </div>
-                                            </div>
-                                        </button>
+                                {pages.map((page, index) => {
+                                    // Check if this page has audio coverage
+                                    const PAGE_SLOT_PX = 92;
+                                    const PAGE_CONTENT_PX = 80;
+                                    const pageStartPx = index * PAGE_SLOT_PX;
+                                    const pageEndPx = pageStartPx + PAGE_CONTENT_PX;
 
-                                        {/* Page Actions on Hover */}
-                                        <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all transform scale-75 hover:scale-100 z-10">
+                                    const hasAudio = designAudios.some(track => {
+                                        if (track.muted) return false;
+                                        const trackStartPx = track.startTime || 0;
+                                        const trackEndPx = trackStartPx + (track.width || 0);
+                                        return trackStartPx < pageEndPx && trackEndPx > pageStartPx;
+                                    });
+
+                                    return (
+                                        <div key={page.id} className="relative group flex-shrink-0">
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); handleDuplicatePage(page.id); }}
-                                                className="bg-white dark:bg-gray-700 text-purple-600 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-purple-50 dark:hover:bg-purple-900/30"
-                                                title="Duplicate Page"
+                                                onClick={() => switchPage(page.id)}
+                                                className="flex flex-col items-center gap-1 group transition-all"
                                             >
-                                                <Copy className="w-3 h-3" />
+                                                <div className={`w-20 h-12 rounded-lg border-2 overflow-hidden relative bg-white transition-all ${activePageId === page.id ? 'border-purple-600 ring-2 ring-purple-600/20 shadow-lg scale-105' : 'border-gray-300 dark:border-gray-600 hover:border-purple-400'}`}>
+                                                    {/* Content Preview */}
+                                                    <div className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
+                                                        {page.layers.length > 0 ? (
+                                                            <div className="w-full h-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                                                                {page.layers.find(l => l.shapeType === 'image') ? <ImageIcon className="w-4 h-4 opacity-50" /> : <div className="flex gap-0.5 transform scale-50"><div className="w-2 h-2 bg-gray-300 rounded-full"></div></div>}
+                                                            </div>
+                                                        ) : 'Empty'}
+                                                    </div>
+                                                    {/* Page Number Badge */}
+                                                    <div className="absolute bottom-0 left-0 bg-black/50 text-white text-[9px] px-1.5 py-0.5 rounded-tr-md font-medium backdrop-blur-sm">
+                                                        {index + 1}
+                                                    </div>
+                                                    {/* Audio Indicator (Purple Waveform at Bottom) */}
+                                                    {hasAudio && (
+                                                        <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-purple-600/90 to-purple-500/70 flex items-end justify-center overflow-hidden rounded-b-sm">
+                                                            <div className="flex items-end gap-[1px] pb-0.5">
+                                                                {Array.from({ length: 16 }).map((_, i) => (
+                                                                    <div
+                                                                        key={i}
+                                                                        className="w-1 bg-white/90 rounded-full flex-shrink-0 animate-pulse"
+                                                                        style={{
+                                                                            height: `${20 + Math.sin(i * 1.2) * 30 + Math.random() * 30}%`,
+                                                                            animationDelay: `${i * 50}ms`
+                                                                        }}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </button>
 
-                                            {pages.length > 1 && (
+                                            {/* Page Actions on Hover */}
+                                            <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all transform scale-75 hover:scale-100 z-10">
                                                 <button
-                                                    onClick={(e) => deletePage(e, page.id)}
-                                                    className="bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                                    title="Delete Page"
+                                                    onClick={(e) => { e.stopPropagation(); handleDuplicatePage(page.id); }}
+                                                    className="bg-white dark:bg-gray-700 text-purple-600 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+                                                    title="Duplicate Page"
                                                 >
-                                                    <X className="w-3 h-3" />
+                                                    <Copy className="w-3 h-3" />
                                                 </button>
-                                            )}
+
+                                                {pages.length > 1 && (
+                                                    <button
+                                                        onClick={(e) => deletePage(e, page.id)}
+                                                        className="bg-white dark:bg-gray-700 text-red-500 rounded-full p-0.5 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                                        title="Delete Page"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
 
                                 {/* Add Page Button */}
                                 <button

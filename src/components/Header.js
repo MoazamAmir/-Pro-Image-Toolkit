@@ -143,7 +143,7 @@ const Header = ({
                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 shadow-lg shadow-blue-500/20 transition-all duration-300 group-hover:scale-105 sm:h-12 sm:w-12">
                                 <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-white drop-shadow-sm" />
                             </div>
-                            
+
                             <Sparkles className="w-3 h-3 text-cyan-300 absolute -top-0.5 -right-0.5 animate-pulse" />
                         </div>
                         <div className="flex flex-col">

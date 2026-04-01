@@ -284,8 +284,21 @@ const ExportManager = ({
 
                 if (hasAudio) {
                     const audioFiles = [];
-                    const audioDurations = [];
 
+                    // --- Pixel-to-Seconds conversion ---
+                    // Timeline UI: each page = 80px wide + 12px gap = 92px per slot, each page = 3.0s
+                    const PAGE_SLOT_PX = 92;
+                    const PAGE_CONTENT_PX = 80;
+                    const SECONDS_PER_PAGE = 3.0;
+
+                    const pxToSec = (px) => {
+                        const fullPages = Math.floor(px / PAGE_SLOT_PX);
+                        const remainderPx = px - (fullPages * PAGE_SLOT_PX);
+                        const secInPage = (Math.min(remainderPx, PAGE_CONTENT_PX) / PAGE_CONTENT_PX) * SECONDS_PER_PAGE;
+                        return fullPages * SECONDS_PER_PAGE + secInPage;
+                    };
+
+                    // --- Load audio tracks ---
                     for (let i = 0; i < designAudios.length; i++) {
                         const track = designAudios[i];
                         if (track.muted) continue;
@@ -302,116 +315,170 @@ const ExportManager = ({
                             await ffmpeg.writeFile(fileName, audioData);
                             console.log(`[Export] Audio track ${i + 1} loaded (${audioBlob.size} bytes)`);
 
-                            // Get actual audio duration (trimEnd - trimStart or full duration)
                             const trimStart = track.trimStart || 0;
                             const trimEnd = track.trimEnd || track.duration || 0;
                             const audioDur = trimEnd - trimStart;
+
+                            // Convert pixel position to seconds
+                            const startTimeSec = pxToSec(track.startTime || 0);
 
                             audioFiles.push({
                                 ...track,
                                 fileName,
                                 trimStart,
                                 trimEnd,
-                                actualDuration: audioDur
-                            });
-                            audioDurations.push({
-                                startTime: track.startTime || 0, // It is already in seconds from AudioTimeline
-                                duration: audioDur
+                                actualDuration: audioDur,
+                                startTimeSec
                             });
                         } catch (e) {
                             console.error(`[Export] Failed to load audio track ${i + 1}:`, e);
                         }
                     }
+
                     if (audioFiles.length === 0) {
                         console.warn('[Export] No audio tracks loaded, exporting video only');
                     }
 
-                    // --- Fixed Rendering with Proper Audio Timing ---
+                    // --- Calculate per-page durations based on audio coverage ---
                     const fps = 30;
-                    const SECONDS_PER_PAGE = 3.0;
+                    const transitionDuration = 0.5;
+                    const MIN_PAGE_DURATION = 3.0; // Minimum 3 seconds per page
 
-                    // Calculate total video duration based on pages OR audio (whichever is longer)
-                    const baseVideoDuration = pagesToExport.length * SECONDS_PER_PAGE;
+                    // For each page, calculate exact audio coverage
+                    const pageDurations = pagesToExport.map((page, pageIdx) => {
+                        const pageStartPx = pageIdx * PAGE_SLOT_PX;
+                        const pageEndPx = pageStartPx + PAGE_CONTENT_PX;
 
-                    // Calculate when each audio track ends (startTime + duration)
-                    let maxAudioEndTime = baseVideoDuration;
-                    if (audioDurations.length > 0) {
-                        const endTimes = audioDurations.map(a => a.startTime + a.duration);
-                        maxAudioEndTime = Math.max(maxAudioEndTime, ...endTimes);
+                        let totalAudioCoverage = 0;
+
+                        for (const track of audioFiles) {
+                            const trackStartPx = track.startTime || 0;
+                            const trackEndPx = trackStartPx + (track.width || 0);
+                            const totalTrackWidthPx = trackEndPx - trackStartPx;
+
+                            // Check if this audio overlaps with this page
+                            if (totalTrackWidthPx > 0 && trackStartPx < pageEndPx && trackEndPx > pageStartPx) {
+                                const overlapStartPx = Math.max(trackStartPx, pageStartPx);
+                                const overlapEndPx = Math.min(trackEndPx, pageEndPx);
+                                const overlapPx = overlapEndPx - overlapStartPx;
+
+                                // Calculate what fraction of the track this overlap represents
+                                const overlapFraction = overlapPx / totalTrackWidthPx;
+                                const audioTimeOnPage = track.actualDuration * overlapFraction;
+
+                                // Add to total coverage (multiple tracks can overlap)
+                                totalAudioCoverage += audioTimeOnPage;
+                            }
+                        }
+
+                        // Use audio coverage if greater than minimum, otherwise use default
+                        const pageDuration = Math.max(totalAudioCoverage, MIN_PAGE_DURATION);
+                        console.log(`[Export] Page ${pageIdx + 1}: audioCoverage=${totalAudioCoverage.toFixed(2)}s, duration=${pageDuration.toFixed(2)}s`);
+                        return pageDuration;
+                    });
+
+                    // Calculate cumulative page start times
+                    const pageStartTimes = [0];
+                    for (let i = 1; i < pageDurations.length; i++) {
+                        pageStartTimes.push(pageStartTimes[i - 1] + pageDurations[i - 1]);
                     }
 
-                    const totalDuration = maxAudioEndTime;
+                    const totalDuration = pageStartTimes[pageStartTimes.length - 1] + pageDurations[pageDurations.length - 1];
                     const totalFrames = Math.ceil(totalDuration * fps);
-                    const durationPerPage = SECONDS_PER_PAGE;
-                    const transitionDuration = 0.5;
 
-                    console.log(`[Export] Video duration: ${totalDuration}s, Total frames: ${totalFrames}`);
+                    console.log(`[Export] Page durations: ${pageDurations.map((d, i) => `P${i + 1}=${d.toFixed(1)}s`).join(', ')}`);
+                    console.log(`[Export] Video duration: ${totalDuration.toFixed(1)}s, Total frames: ${totalFrames}`);
 
+                    // --- Render frames with dynamic page durations ---
+                    // Improved frame rendering for smoother transitions
                     for (let i = 0; i < totalFrames; i++) {
                         const currentTime = i / fps;
-                        let pageIdx = Math.floor(currentTime / durationPerPage);
 
-                        // Clamp to last page if video extends beyond pages (for audio)
-                        if (pageIdx >= pagesToExport.length) {
-                            pageIdx = pagesToExport.length - 1;
+                        // Determine which page to show based on cumulative timing
+                        let pageIdx = 0;
+                        for (let p = pagesToExport.length - 1; p >= 0; p--) {
+                            if (currentTime >= pageStartTimes[p]) {
+                                pageIdx = p;
+                                break;
+                            }
                         }
 
                         const nextPageIdx = pageIdx + 1;
-                        const pageChangeTime = (pageIdx + 1) * durationPerPage;
+                        const pageEndTime = pageStartTimes[pageIdx] + pageDurations[pageIdx];
+                        const timeInPage = currentTime - pageStartTimes[pageIdx];
+                        const timeUntilNextPage = pageEndTime - currentTime;
 
                         let finalCanvas;
 
-                        // Transition logic (only if not on the last extended segment)
-                        if (nextPageIdx < pagesToExport.length && currentTime > (pageChangeTime - transitionDuration / 2)) {
-                            const tStart = pageChangeTime - transitionDuration / 2;
-                            const progress = Math.max(0, Math.min(1, (currentTime - tStart) / transitionDuration));
+                        // Transition logic between pages (smoother crossfade)
+                        if (nextPageIdx < pagesToExport.length && timeUntilNextPage <= transitionDuration / 2) {
+                            const progress = Math.max(0, Math.min(1, (transitionDuration / 2 - timeUntilNextPage) / (transitionDuration / 2)));
                             const easedProgress = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
                             const canvasA = await renderFinalCanvas(pagesToExport[pageIdx].layers, null, {
-                                scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
+                                scale: size, transparent: transparentBg, frameTime: timeInPage, duration: pageDurations[pageIdx],
                                 useOriginalResolution: true, limitResolution: true, isFrame: true
                             });
                             const canvasB = await renderFinalCanvas(pagesToExport[nextPageIdx].layers, null, {
-                                scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
+                                scale: size, transparent: transparentBg, frameTime: 0, duration: pageDurations[nextPageIdx],
                                 useOriginalResolution: true, limitResolution: true, isFrame: true
                             });
 
+                            // Crossfade composite
                             const composite = document.createElement('canvas');
                             composite.width = canvasA.width;
                             composite.height = canvasA.height;
                             const ctx = composite.getContext('2d');
-                            ctx.drawImage(canvasA, -easedProgress * canvasA.width, 0);
+
+                            // Draw current page
+                            ctx.drawImage(canvasA, 0, 0);
+                            // Crossfade to next page with slide effect
+                            ctx.globalAlpha = easedProgress;
                             ctx.drawImage(canvasB, (1 - easedProgress) * canvasB.width, 0);
+                            ctx.globalAlpha = 1.0;
+
                             finalCanvas = composite;
                         } else {
-                            const page = pagesToExport[pageIdx];
-                            finalCanvas = await renderFinalCanvas(page.layers, null, {
-                                scale: size, transparent: transparentBg, frameTime: currentTime, duration: totalDuration,
+                            finalCanvas = await renderFinalCanvas(pagesToExport[pageIdx].layers, null, {
+                                scale: size, transparent: transparentBg, frameTime: timeInPage, duration: pageDurations[pageIdx],
                                 useOriginalResolution: true, limitResolution: true, isFrame: true
                             });
                         }
 
                         if (i % 5 === 0) setExportProgress(Math.round((i / totalFrames) * 85));
-                        // Using JPEG for faster processing of intermediate frames
                         const blob = await new Promise(r => finalCanvas.toBlob(r, 'image/jpeg', 0.95));
                         await ffmpeg.writeFile(`frame_${i.toString().padStart(5, '0')}.jpg`, await fetchFile(blob));
                     }
 
-                    // Build FFmpeg audio filter chain
+                    // --- Build FFmpeg audio filter chain with improved timing ---
                     let audioFilter = '';
                     let audioInputs = '';
 
                     if (audioFiles.length > 0) {
                         audioFiles.forEach((f, idx) => {
-                            const startTimeSec = f.startTime || 0; // It is already in seconds
-                            const delayMs = Math.round(startTimeSec * 1000);
+                            // Calculate audio start time based on pixel position and dynamic page durations
+                            const trackStartPx = f.startTime || 0;
+                            const startPageIdx = Math.min(Math.floor(trackStartPx / PAGE_SLOT_PX), pagesToExport.length - 1);
+                            const pxIntoPage = trackStartPx - (startPageIdx * PAGE_SLOT_PX);
+                            const fractionIntoPage = Math.min(pxIntoPage / PAGE_CONTENT_PX, 1.0);
+                            const audioStartSec = pageStartTimes[startPageIdx] + fractionIntoPage * pageDurations[startPageIdx];
+
+                            const delayMs = Math.round(audioStartSec * 1000);
                             const volumeLevel = (f.volume || 100) / 100;
 
-                            // Use actual audio file duration, apply delay and volume
-                            audioFilter += `[${idx + 1}:a]adelay=${delayMs}|${delayMs},volume=${volumeLevel}[a${idx}];`;
+                            console.log(`[Export] Audio "${f.name}": startPx=${trackStartPx}, startSec=${audioStartSec.toFixed(2)}s, delay=${delayMs}ms, volume=${volumeLevel}`);
+
+                            // Apply trim, delay, and volume
+                            let filterChain = `[${idx + 1}:a]`;
+                            if (f.trimStart > 0 || (f.trimEnd > 0 && f.trimEnd < (f.duration || Infinity))) {
+                                filterChain += `atrim=start=${f.trimStart}:end=${f.trimEnd},asetpts=PTS-STARTPTS,`;
+                            }
+                            filterChain += `adelay=${delayMs}|${delayMs},volume=${volumeLevel}[a${idx}]`;
+
+                            audioFilter += filterChain + ';';
                             audioInputs += `[a${idx}]`;
                         });
-                        audioFilter += `${audioInputs}amix=inputs=${audioFiles.length}:duration=longest:dropout_transition=0[outa]`;
+                        audioFilter += `${audioInputs}amix=inputs=${audioFiles.length}:duration=longest:dropout_transition=2[outa]`;
                     }
 
                     const ffmpegArgs = ['-framerate', fps.toString(), '-i', 'frame_%05d.jpg'];
@@ -419,17 +486,19 @@ const ExportManager = ({
                     ffmpegArgs.push(
                         '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
                         '-c:v', 'libx264',
-                        '-crf', '23',
-                        '-preset', 'medium',
+                        '-crf', '18',  // Lower CRF = better quality (18-23 is good range)
+                        '-preset', 'slow',  // Slower preset = better compression/quality
                         '-pix_fmt', 'yuv420p',
-                        '-movflags', '+faststart'
+                        '-movflags', '+faststart',
+                        '-profile:v', 'high',
+                        '-level', '4.0'
                     );
                     if (audioFiles.length > 0) {
-                        ffmpegArgs.push('-filter_complex', audioFilter, '-map', '0:v', '-map', '[outa]', '-c:a', 'aac', '-b:a', '128k');
+                        ffmpegArgs.push('-filter_complex', audioFilter, '-map', '0:v', '-map', '[outa]', '-c:a', 'aac', '-b:a', '192k');
                     }
                     ffmpegArgs.push('output.mp4');
 
-                    console.log('[Export] Encoding video...');
+                    console.log('[Export] Encoding video with args:', ffmpegArgs.join(' '));
                     await ffmpeg.exec(ffmpegArgs);
 
                     console.log('[Export] Reading output...');

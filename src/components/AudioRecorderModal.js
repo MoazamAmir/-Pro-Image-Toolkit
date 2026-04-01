@@ -219,7 +219,7 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                     width: '100vw',
                     height: '100vh',
                     zIndex: 999999,
-                    background: 'rgba(0,0,0,0.65)',
+                    background: 'rgba(2,6,23,0.58)',
                     backdropFilter: 'blur(8px)',
                     WebkitBackdropFilter: 'blur(8px)',
                     display: 'flex',
@@ -235,18 +235,19 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                     style={{
                         width: '100%',
                         maxWidth: '480px',
-                        background: darkMode ? '#1e1e2e' : '#ffffff',
-                        border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e5e7eb'}`,
+                        background: darkMode ? 'rgba(2,6,23,0.94)' : 'rgba(255,255,255,0.94)',
+                        border: `1px solid ${darkMode ? 'rgba(148,163,184,0.14)' : 'rgba(148,163,184,0.16)'}`,
                         borderRadius: '24px',
                         overflow: 'hidden',
-                        boxShadow: '0 25px 60px rgba(0,0,0,0.4)',
+                        boxShadow: '0 30px 70px rgba(15,23,42,0.28)',
+                        backdropFilter: 'blur(24px)',
                     }}
                 >
                     {/* Header */}
                     <div className="arm-header">
                         <div className="arm-header-left">
                             <div className="arm-icon-box">
-                                <Mic className="w-5 h-5 text-purple-400" />
+                                <Mic className="w-5 h-5 text-cyan-300" />
                             </div>
                             <div>
                                 <h3 className="arm-title">Record Audio</h3>
@@ -299,7 +300,7 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                         {phase === 'done' && (
                             <div className="arm-done-details">
                                 <div className="arm-duration-badge">
-                                    <Clock className="w-3 h-3 text-purple-400" />
+                                    <Clock className="w-3 h-3 text-cyan-300" />
                                     <span>Total Duration: {fmt(elapsedTime)}</span>
                                 </div>
                                 <div className="arm-name-field">
@@ -365,25 +366,25 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                         .arm-header {
                             display: flex; align-items: center; justify-content: space-between;
                             padding: 20px 24px;
-                            border-bottom: 1px solid ${darkMode ? 'rgba(255,255,255,0.05)' : '#f3f4f6'};
+                            border-bottom: 1px solid ${darkMode ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.12)'};
                         }
                         .arm-header-left { display: flex; align-items: center; gap: 14px; }
                         .arm-icon-box {
                             width: 44px; height: 44px; border-radius: 14px;
                             display: flex; align-items: center; justify-content: center;
-                            background: ${darkMode ? 'rgba(124,58,237,0.15)' : '#ede9fe'};
+                            background: ${darkMode ? 'rgba(34,211,238,0.12)' : 'rgba(14,165,233,0.10)'};
                             flex-shrink: 0;
                         }
                         .arm-title { font-size: 16px; font-weight: 800; color: ${darkMode ? '#fff' : '#111827'}; margin: 0; }
-                        .arm-subtitle { font-size: 11px; font-weight: 600; color: #9ca3af; margin: 2px 0 0; }
+                        .arm-subtitle { font-size: 11px; font-weight: 600; color: #94a3b8; margin: 2px 0 0; }
                         .arm-close-btn {
                             width: 36px; height: 36px; border: none; border-radius: 10px; cursor: pointer;
-                            background: ${darkMode ? 'rgba(255,255,255,0.05)' : '#f3f4f6'};
-                            color: ${darkMode ? '#9ca3af' : '#6b7280'};
+                            background: ${darkMode ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.92)'};
+                            color: ${darkMode ? '#94a3b8' : '#64748b'};
                             display: flex; align-items: center; justify-content: center;
                             flex-shrink: 0; transition: background 0.15s;
                         }
-                        .arm-close-btn:hover { background: ${darkMode ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}; }
+                        .arm-close-btn:hover { background: ${darkMode ? 'rgba(34,211,238,0.10)' : 'rgba(14,165,233,0.08)'}; }
                         .arm-body { padding: 24px; }
                         .arm-error {
                             display: flex; align-items: center; gap: 8px; padding: 10px 14px;
@@ -393,9 +394,9 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                         .arm-waveform-container {
                             position: relative; height: 120px;
                             display: flex; flex-direction: column; align-items: center; justify-content: center;
-                            background: ${darkMode ? 'rgba(0,0,0,0.3)' : '#f9fafb'};
-                            border-radius: 16px;
-                            border: 1px solid ${darkMode ? 'rgba(255,255,255,0.05)' : '#e5e7eb'};
+                            background: ${darkMode ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.96)'};
+                            border-radius: 18px;
+                            border: 1px solid ${darkMode ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.14)'};
                             overflow: hidden;
                         }
                         .arm-rec-badge {
@@ -412,9 +413,9 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                         .arm-waveform { display: flex; align-items: center; gap: 2px; height: 60px; padding: 0 20px; }
                         .arm-wave-bar {
                             width: 4px; border-radius: 2px; min-height: 4px; flex-shrink: 0;
-                            background: ${darkMode ? '#6d28d9' : '#c4b5fd'};
+                            background: ${darkMode ? '#06b6d4' : '#38bdf8'};
                         }
-                        .arm-wave-bar.arm-wave-active { background: linear-gradient(to top, #7c3aed, #a78bfa); }
+                        .arm-wave-bar.arm-wave-active { background: linear-gradient(to top, #06b6d4, #2563eb); }
                         .arm-timer {
                             font-family: 'JetBrains Mono', 'SF Mono', monospace;
                             font-size: 22px; font-weight: 800;
@@ -428,15 +429,15 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                         .arm-input {
                             width: 100%; padding: 10px 14px; border-radius: 10px;
                             font-size: 13px; font-weight: 600; outline: none;
-                            border: 1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e5e7eb'};
-                            background: ${darkMode ? 'rgba(0,0,0,0.3)' : '#f9fafb'};
+                            border: 1px solid ${darkMode ? 'rgba(148,163,184,0.14)' : 'rgba(148,163,184,0.16)'};
+                            background: ${darkMode ? 'rgba(15,23,42,0.72)' : '#f8fafc'};
                             color: ${darkMode ? '#fff' : '#111827'};
                             transition: border-color 0.15s; box-sizing: border-box;
                         }
-                        .arm-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+                        .arm-input:focus { border-color: #06b6d4; box-shadow: 0 0 0 3px rgba(6,182,212,0.12); }
                         .arm-footer {
                             padding: 16px 24px;
-                            border-top: 1px solid ${darkMode ? 'rgba(255,255,255,0.05)' : '#f3f4f6'};
+                            border-top: 1px solid ${darkMode ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.12)'};
                         }
                         .arm-btn-group { display: flex; gap: 8px; }
                         .arm-btn-primary {
@@ -444,17 +445,17 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                             display: flex; align-items: center; justify-content: center; gap: 8px;
                             border: none; border-radius: 12px; cursor: pointer;
                             font-size: 13px; font-weight: 700;
-                            background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white;
-                            box-shadow: 0 4px 12px rgba(124,58,237,0.3); transition: all 0.2s;
+                            background: linear-gradient(135deg, #06b6d4, #2563eb); color: white;
+                            box-shadow: 0 10px 24px rgba(37,99,235,0.24); transition: all 0.2s;
                         }
-                        .arm-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,58,237,0.4); }
+                        .arm-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(37,99,235,0.28); }
                         .arm-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
                         .arm-btn-secondary {
                             flex: 1; padding: 12px;
                             display: flex; align-items: center; justify-content: center; gap: 8px;
-                            border: 1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e5e7eb'};
+                            border: 1px solid ${darkMode ? 'rgba(148,163,184,0.14)' : 'rgba(148,163,184,0.16)'};
                             border-radius: 12px; cursor: pointer; font-size: 13px; font-weight: 700;
-                            background: ${darkMode ? 'rgba(255,255,255,0.05)' : '#fff'};
+                            background: ${darkMode ? 'rgba(15,23,42,0.72)' : '#fff'};
                             color: ${darkMode ? '#d1d5db' : '#374151'}; transition: all 0.15s;
                         }
                         .arm-btn-secondary:hover { background: ${darkMode ? 'rgba(255,255,255,0.1)' : '#f9fafb'}; }
@@ -480,10 +481,10 @@ const AudioRecorderModal = ({ onClose, onSave, darkMode, user }) => {
                         .arm-duration-badge {
                             display: inline-flex; align-items: center; gap: 6px;
                             padding: 6px 12px; border-radius: 8px;
-                            background: ${darkMode ? 'rgba(124,58,237,0.1)' : '#f3f0ff'};
-                            color: ${darkMode ? '#a78bfa' : '#7c3aed'};
+                            background: ${darkMode ? 'rgba(34,211,238,0.10)' : 'rgba(14,165,233,0.08)'};
+                            color: ${darkMode ? '#67e8f9' : '#0284c7'};
                             font-size: 12px; font-weight: 700; margin-bottom: 12px;
-                            border: 1px solid ${darkMode ? 'rgba(124,58,237,0.2)' : '#e0d7ff'};
+                            border: 1px solid ${darkMode ? 'rgba(34,211,238,0.16)' : 'rgba(14,165,233,0.16)'};
                         }
                     `}</style>
                 </div>

@@ -92,7 +92,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
             bottom: 0,
             width: '100vw',
             height: '100vh',
-            backgroundColor: '#FAFAFA',
+            background: 'radial-gradient(circle at top left, rgba(6,182,212,0.08), transparent 26%), radial-gradient(circle at top right, rgba(59,130,246,0.10), transparent 32%), linear-gradient(135deg, #ecfeff 0%, #f8fafc 42%, #e2e8f0 100%)',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 9999,
@@ -106,9 +106,10 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexShrink: 0,
-                backgroundColor: '#FFFFFF',
-                borderBottom: '1px solid #E5E7EB',
-                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.02)'
+                background: 'rgba(255,255,255,0.82)',
+                borderBottom: '1px solid rgba(148,163,184,0.16)',
+                backdropFilter: 'blur(18px)',
+                boxShadow: '0 10px 30px rgba(15, 23, 42, 0.06)'
             }}>
                 {/* Logo */}
                 <div style={{
@@ -120,7 +121,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                         fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
                         fontSize: '26px',
                         fontWeight: '700',
-                        background: 'linear-gradient(135deg, #06B6D4 0%, #8B5CF6 50%, #6366F1 100%)',
+                        background: 'linear-gradient(135deg, #06B6D4 0%, #0EA5E9 45%, #2563EB 100%)',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         backgroundClip: 'text',
@@ -245,7 +246,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                                 alignItems: 'center',
                                 gap: '10px',
                                 padding: '14px 18px',
-                                backgroundColor: '#F3F4F6',
+                            backgroundColor: 'rgba(255,255,255,0.68)',
                                 borderRadius: '12px',
                                 marginBottom: '32px',
                                 border: '1px solid #E5E7EB'
@@ -350,7 +351,7 @@ const AccessDenied = ({ user, onRequestAccess, onSwitchAccount }) => {
                             margin: 0,
                             marginTop: '24px'
                         }}>
-                            Need help? <a href="#" style={{ color: '#8B5CF6', textDecoration: 'none', fontWeight: '500' }}>Contact support</a>
+                            Need help? <a href="#" style={{ color: '#0284C7', textDecoration: 'none', fontWeight: '600' }}>Contact support</a>
                         </p>
                     </div>
 

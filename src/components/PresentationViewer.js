@@ -37,7 +37,7 @@ const PresentationViewer = ({
             const pageLayers = page.layers || [];
             const pageCanvasSize = page.canvasSize || canvasSize;
             const canvas = await renderFinalCanvas(pageLayers, adjustments, {
-                scale: 1, transparent: false, useOriginalResolution: false
+                scale: 1, transparent: false, useOriginalResolution: false, canvasSize: pageCanvasSize
             });
             if (canvas) {
                 return canvas.toDataURL('image/jpeg', 0.9);
@@ -279,7 +279,10 @@ const PresentationViewer = ({
                     position: fixed;
                     inset: 0;
                     z-index: 999999;
-                    background: #000;
+                    background:
+                        radial-gradient(circle at top left, rgba(6,182,212,0.12), transparent 26%),
+                        radial-gradient(circle at top right, rgba(59,130,246,0.14), transparent 30%),
+                        linear-gradient(160deg, #030712 0%, #0b1220 48%, #020617 100%);
                     display: flex;
                     flex-direction: column;
                     font-family: 'Outfit', 'Inter', sans-serif;
@@ -297,7 +300,9 @@ const PresentationViewer = ({
                     position: relative;
                     cursor: pointer;
                     overflow: hidden;
-                    background: radial-gradient(ellipse at center, #1a1a2e 0%, #000 70%);
+                    background:
+                        radial-gradient(circle at center, rgba(34,211,238,0.12) 0%, rgba(15,23,42,0.28) 30%, rgba(2,6,23,0.95) 76%),
+                        linear-gradient(180deg, #08111f 0%, #020617 100%);
                 }
 
                 .pv-canvas-wrapper {
@@ -313,8 +318,9 @@ const PresentationViewer = ({
                     max-width: 100%;
                     max-height: calc(100vh - 120px);
                     object-fit: contain;
-                    border-radius: 4px;
-                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+                    border-radius: 18px;
+                    border: 1px solid rgba(148, 163, 184, 0.16);
+                    box-shadow: 0 28px 90px rgba(2, 8, 23, 0.68);
                 }
 
                 .pv-loading {
@@ -328,7 +334,7 @@ const PresentationViewer = ({
                     width: 40px;
                     height: 40px;
                     border: 3px solid rgba(255,255,255,0.1);
-                    border-top-color: #8B3DFF;
+                    border-top-color: #22d3ee;
                     border-radius: 50%;
                     animation: pv-spin 0.8s linear infinite;
                 }
@@ -345,7 +351,7 @@ const PresentationViewer = ({
                     justify-content: center;
                     opacity: 0;
                     transition: opacity 0.2s;
-                    color: rgba(255,255,255,0.6);
+                    color: rgba(226,232,240,0.55);
                     z-index: 10;
                 }
                 .pv-nav-hint-left { left: 0; }
@@ -361,7 +367,7 @@ const PresentationViewer = ({
                 }
                 .pv-progress-bar-fill {
                     height: 100%;
-                    background: linear-gradient(90deg, #2dd4bf, #14b8a6);
+                    background: linear-gradient(90deg, #22d3ee, #38bdf8, #2563eb);
                     border-radius: 0 2px 2px 0;
                 }
 
@@ -373,9 +379,9 @@ const PresentationViewer = ({
                     align-items: center;
                     justify-content: space-between;
                     padding: 0 16px;
-                    background: rgba(15, 15, 25, 0.95);
-                    backdrop-filter: blur(20px);
-                    border-top: 1px solid rgba(255,255,255,0.05);
+                    background: rgba(2, 6, 23, 0.76);
+                    backdrop-filter: blur(24px) saturate(150%);
+                    border-top: 1px solid rgba(148,163,184,0.12);
                 }
 
                 .pv-toolbar-left,
@@ -393,13 +399,13 @@ const PresentationViewer = ({
                     justify-content: center;
                     border: none;
                     background: transparent;
-                    color: rgba(255,255,255,0.5);
+                    color: rgba(203,213,225,0.65);
                     cursor: pointer;
                     border-radius: 10px;
                     transition: all 0.15s;
                 }
                 .pv-toolbar-btn:hover:not(:disabled) {
-                    background: rgba(255,255,255,0.08);
+                    background: rgba(34,211,238,0.10);
                     color: white;
                 }
                 .pv-toolbar-btn:disabled {
@@ -410,7 +416,7 @@ const PresentationViewer = ({
                 .pv-page-indicator {
                     font-size: 14px;
                     font-weight: 800;
-                    color: rgba(255,255,255,0.7);
+                    color: rgba(226,232,240,0.82);
                     min-width: 40px;
                     text-align: center;
                     letter-spacing: 0.5px;
@@ -453,13 +459,7 @@ const PresentationViewer = ({
 
                 /* Premium Polish */
                 .pv-toolbar {
-                    background: rgba(10, 10, 15, 0.85);
-                    backdrop-filter: blur(25px) saturate(200%);
-                    -webkit-backdrop-filter: blur(25px) saturate(200%);
-                    border-top: 1px solid rgba(255,255,255,0.1);
-                }
-                .pv-viewer {
-                    background: radial-gradient(circle at center, #111122 0%, #000 100%);
+                    box-shadow: 0 -10px 30px rgba(2, 8, 23, 0.35);
                 }
             `}</style>
         </div>,

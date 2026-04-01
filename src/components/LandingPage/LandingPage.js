@@ -53,6 +53,12 @@ const LandingPage = ({ onLoginSuccess, isSessionLink }) => {
         { name: "Image to PDF", uses: "1.5M uses" }
     ];
 
+    const heroHighlights = [
+        { label: "Editor Canvas", value: "Smooth layer-based design workspace" },
+        { label: "Export Stack", value: "Images, PDF, video, and presentation output" },
+        { label: "Realtime", value: "Share, present, and collaborate from one flow" }
+    ];
+
     const handleActionClick = (toolName = null) => {
         setPendingTool(toolName);
         setShowAuthModal(true);
@@ -134,7 +140,7 @@ const LandingPage = ({ onLoginSuccess, isSessionLink }) => {
             <main className="landing-hero">
                 <div className="hero-badge">
                     <Star size={14} fill="currentColor" />
-                    <span>Trusted by 10M+ creators worldwide</span>
+                    <span>Creative workflow suite for modern visual teams</span>
                 </div>
 
                 <h1 className="hero-title">
@@ -145,9 +151,9 @@ const LandingPage = ({ onLoginSuccess, isSessionLink }) => {
                 </h1>
 
                 <p className="hero-subtitle">
-                    Professional-grade image processing, video conversion, and creative tools.
+                    A polished browser workspace for converting, editing, exporting, and presenting visual content.
                     <br />
-                    No software installation required. Start creating instantly.
+                    Built for creators who want speed, quality, and a cleaner workflow in one place.
                 </p>
 
                 <div className="hero-cta-group">
@@ -163,15 +169,33 @@ const LandingPage = ({ onLoginSuccess, isSessionLink }) => {
                 <div className="hero-features">
                     <div className="feature-item">
                         <Check size={16} />
-                        <span>No credit card required</span>
+                        <span>Fast browser-based workflow</span>
                     </div>
                     <div className="feature-item">
                         <Check size={16} />
-                        <span>Free forever plan</span>
+                        <span>Professional export controls</span>
                     </div>
                     <div className="feature-item">
                         <Check size={16} />
-                        <span>Cancel anytime</span>
+                        <span>Editing plus live presentation</span>
+                    </div>
+                </div>
+
+                <div className="hero-preview-panel">
+                    <div className="hero-preview-header">
+                        <div>
+                            <span className="hero-preview-eyebrow">Workflow Overview</span>
+                            <h3>Designed to feel faster and more professional</h3>
+                        </div>
+                        <div className="hero-preview-status">Live toolkit</div>
+                    </div>
+                    <div className="hero-preview-grid">
+                        {heroHighlights.map((item) => (
+                            <div key={item.label} className="hero-preview-card">
+                                <span className="hero-preview-label">{item.label}</span>
+                                <p>{item.value}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </main>

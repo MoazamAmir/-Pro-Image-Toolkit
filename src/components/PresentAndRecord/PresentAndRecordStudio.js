@@ -397,15 +397,15 @@ const PresentAndRecordStudio = ({
             )}
 
             <style>{`
-                .prs-studio { position: fixed; inset: 0; z-index: 999999; background: #0f111a; display: flex; flex-direction: column; font-family: 'Outfit', 'Inter', sans-serif; color: white; overflow: hidden; }
+                .prs-studio { position: fixed; inset: 0; z-index: 999999; background: radial-gradient(circle at top left, rgba(6,182,212,0.10), transparent 24%), radial-gradient(circle at top right, rgba(59,130,246,0.12), transparent 30%), linear-gradient(160deg, #020617 0%, #0b1120 52%, #020617 100%); display: flex; flex-direction: column; font-family: 'Outfit', 'Inter', sans-serif; color: white; overflow: hidden; }
                 .prs-is-setup .prs-topbar, .prs-is-setup .prs-content { filter: blur(15px); pointer-events: none; opacity: 0.5; transition: all 0.5s ease; }
                 
                 /* Topbar Styling */
-                .prs-topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: rgba(15, 17, 26, 0.8); backdrop-blur: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); z-index: 100; flex-wrap: wrap; }
+                .prs-topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; background: rgba(2, 6, 23, 0.80); backdrop-filter: blur(24px) saturate(140%); border-bottom: 1px solid rgba(148,163,184,0.12); z-index: 100; flex-wrap: wrap; }
                 .prs-brand { display: flex; align-items: center; gap: 15px; }
-                .prs-logo { width: 36px; height: 36px; background: linear-gradient(135deg, #7c3aed, #4f46e5); border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); }
+                .prs-logo { width: 36px; height: 36px; background: linear-gradient(135deg, #06b6d4, #2563eb); border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22); }
                 .prs-logo-text { font-size: 18px; font-weight: 900; letter-spacing: -0.5px; }
-                .prs-status-text { font-size: 10px; font-weight: 700; color: #7c3aed; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; }
+                .prs-status-text { font-size: 10px; font-weight: 700; color: #67e8f9; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; }
                 
                 .prs-timer-container { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.05); }
                 .prs-timer { font-family: 'Space Mono', monospace; font-size: 20px; font-weight: bold; min-width: 60px; }
@@ -420,34 +420,34 @@ const PresentAndRecordStudio = ({
                 .prs-stop-icon { width: 10px; height: 10px; background: white; border-radius: 2px; }
 
                 /* Sidebar Styling */
-                .prs-content { flex: 1; display: flex; overflow: hidden; background: radial-gradient(circle at center, #1a1c2e 0%, #0f111a 100%); transition: flex-direction 0.3s ease; }
+                .prs-content { flex: 1; display: flex; overflow: hidden; background: radial-gradient(circle at center, rgba(34,211,238,0.10) 0%, rgba(15,23,42,0.24) 32%, rgba(2,6,23,0.95) 78%), linear-gradient(180deg, #08111f 0%, #020617 100%); transition: flex-direction 0.3s ease; }
                 .prs-left-sidebar { width: 180px; display: flex; flex-direction: column; padding: 30px 20px; border-right: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
                 .prs-recording-badge { background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 9px; font-weight: 900; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(239, 68, 68, 0.2); }
                 .prs-rec-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; animation: pulse 1.5s infinite; }
                 @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
                 
-                .prs-audio-monitor-box { width: 100%; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 15px; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(255,255,255,0.05); }
+                .prs-audio-monitor-box { width: 100%; padding: 15px; background: rgba(15,23,42,0.58); border-radius: 15px; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(148,163,184,0.12); }
                 .prs-audio-bars { flex: 1; display: flex; align-items: flex-end; gap: 3px; height: 24px; }
-                .prs-audio-bar { flex: 1; background: #8B3DFF; border-radius: 2px; min-height: 4px; }
+                .prs-audio-bar { flex: 1; background: #06b6d4; border-radius: 2px; min-height: 4px; }
                 
                 .prs-thumbnail-card { margin-top: auto; }
                 .prs-thumb-label { font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 10px; display: block; }
-                .prs-thumbnail { width: 100%; aspect-ratio: 4/3; border-radius: 12px; border: 2px solid #7c3aed; overflow: hidden; background: #000; box-shadow: 0 8px 25px rgba(0,0,0,0.4); }
+                .prs-thumbnail { width: 100%; aspect-ratio: 4/3; border-radius: 14px; border: 2px solid #06b6d4; overflow: hidden; background: #000; box-shadow: 0 12px 28px rgba(2,8,23,0.38); }
                 .prs-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
 
                 /* Stage Styling */
                 .prs-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; min-width: 0; }
                 .prs-main-stage { position: relative; width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 25px; }
-                .prs-canvas-container { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+                .prs-canvas-container { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 24px; overflow: hidden; border: 1px solid rgba(148,163,184,0.12); box-shadow: 0 30px 80px rgba(2,8,23,0.46); }
                 .prs-canvas { width: 100%; height: 100%; object-fit: contain; }
-                .prs-camera-overlay { position: absolute; bottom: 5%; left: 5%; width: 20%; aspect-ratio: 1/1; border-radius: 50%; overflow: hidden; border: 4px solid #8B3DFF; box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 50; }
+                .prs-camera-overlay { position: absolute; bottom: 5%; left: 5%; width: 20%; aspect-ratio: 1/1; border-radius: 50%; overflow: hidden; border: 4px solid #06b6d4; box-shadow: 0 18px 40px rgba(2,8,23,0.50); z-index: 50; }
                 .prs-camera-overlay video { width: 100%; height: 100%; object-fit: cover; }
 
                 .prs-page-nav-overlay { display: flex; align-items: center; justify-content: center; gap: 15px; }
                 .prs-nav-circle-btn { width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-                .prs-nav-circle-btn:hover:not(:disabled) { background: #7c3aed; transform: scale(1.1); }
+                .prs-nav-circle-btn:hover:not(:disabled) { background: #06b6d4; transform: scale(1.1); }
                 .prs-nav-circle-btn:disabled { opacity: 0.2; cursor: not-allowed; }
-                .prs-page-pill { padding: 8px 24px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 99px; font-size: 13px; font-weight: 800; color: #a78bfa; }
+                .prs-page-pill { padding: 8px 24px; background: rgba(34, 211, 238, 0.10); border: 1px solid rgba(34, 211, 238, 0.18); border-radius: 99px; font-size: 13px; font-weight: 800; color: #67e8f9; }
 
                 /* Notes Styling */
                 .prs-right-sidebar { width: 280px; display: flex; flex-direction: column; padding: 30px 20px; border-left: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
@@ -460,26 +460,26 @@ const PresentAndRecordStudio = ({
                 /* Overlays */
                 .prs-overlay { position: absolute; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
                 .prs-setup-bg { background: rgba(15, 17, 26, 0.9); }
-                .card-glass { background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 30px 80px rgba(0,0,0,0.8); border-radius: 32px; overflow: hidden; }
+                .card-glass { background: rgba(2, 6, 23, 0.94); border: 1px solid rgba(148,163,184,0.14); box-shadow: 0 30px 80px rgba(2,8,23,0.52); border-radius: 32px; overflow: hidden; backdrop-filter: blur(24px); }
                 .prs-setup-card { width: 90%; max-width: 440px; padding: 30px; }
                 .prs-setup-header { text-align: center; margin-bottom: 30px; }
-                .prs-setup-icon-box { width: 64px; height: 64px; background: rgba(124, 58, 237, 0.1); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+                .prs-setup-icon-box { width: 64px; height: 64px; background: rgba(34, 211, 238, 0.10); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
                 .prs-setup-header h3 { font-size: 24px; font-weight: 900; margin-bottom: 8px; }
 
                 .prs-input-config { display: flex; flex-direction: column; gap: 20px; margin-bottom: 30px; }
                 .prs-custom-select { position: relative; }
                 .prs-select-trigger { width: 100%; padding: 14px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; color: white; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                .prs-select-options { position: absolute; bottom: 100%; left: 0; right: 0; background: #2a2a3e; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; max-height: 200px; overflow-y: auto; z-index: 50; margin-bottom: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+                .prs-select-options { position: absolute; bottom: 100%; left: 0; right: 0; background: #0f172a; border: 1px solid rgba(148,163,184,0.14); border-radius: 12px; max-height: 200px; overflow-y: auto; z-index: 50; margin-bottom: 8px; box-shadow: 0 10px 30px rgba(2,8,23,0.40); }
                 .prs-select-options button { width: 100%; padding: 12px 20px; background: transparent; border: none; color: white; text-align: left; cursor: pointer; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
                 .prs-select-options button:hover { background: rgba(124, 58, 237, 0.1); }
                 
                 .prs-mic-bar-bg { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; }
-                .prs-mic-bar-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #ec4899); transition: width 0.1s; }
+                .prs-mic-bar-fill { height: 100%; background: linear-gradient(90deg, #06b6d4, #2563eb); transition: width 0.1s; }
 
                 .prs-error-alert { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #ef4444; }
 
-                .prs-btn-primary { width: 100%; padding: 16px; background: #7c3aed; color: white; font-weight: 800; border-radius: 16px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4); margin-bottom: 15px; transition: all 0.2s; }
-                .prs-btn-primary:hover { background: #6d28d9; transform: translateY(-2px); }
+                .prs-btn-primary { width: 100%; padding: 16px; background: linear-gradient(135deg, #06b6d4, #2563eb); color: white; font-weight: 800; border-radius: 16px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 14px 30px rgba(37, 99, 235, 0.26); margin-bottom: 15px; transition: all 0.2s; }
+                .prs-btn-primary:hover { filter: brightness(1.04); transform: translateY(-2px); }
                 .prs-btn-ghost { width: 100%; background: transparent; border: none; color: rgba(255,255,255,0.4); font-weight: 700; cursor: pointer; font-size: 12px; }
                 
                 /* Countdown */

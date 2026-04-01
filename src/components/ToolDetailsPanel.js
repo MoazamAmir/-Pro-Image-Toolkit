@@ -144,14 +144,14 @@ const ToolDetailsPanel = ({ toolName, darkMode, converters, handleSetActiveConve
     return (
         <div className={`mt-16 transition-all duration-300 ease-in-out pb-20`}>
 
-            <div className={`relative overflow-hidden rounded-3xl p-10 mb-12 text-center shadow-2xl ${darkMode
-                ? 'bg-gradient-to-br from-gray-800 via-gray-900 to-black text-white'
-                : 'bg-gradient-to-br from-white via-blue-50 to-indigo-50 text-gray-900'
+            <div className={`relative overflow-hidden rounded-[32px] p-10 mb-12 text-center shadow-[0_28px_80px_rgba(15,23,42,0.18)] border ${darkMode
+                ? 'bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white border-slate-800'
+                : 'bg-gradient-to-br from-white via-cyan-50 to-slate-100 text-gray-900 border-slate-200/70'
                 }`}>
 
                 <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                    <div className="absolute top-10 left-10 w-32 h-32 bg-blue-500 rounded-full blur-3xl"></div>
-                    <div className="absolute bottom-10 right-10 w-40 h-40 bg-purple-500 rounded-full blur-3xl"></div>
+                    <div className="absolute top-10 left-10 w-32 h-32 bg-cyan-500 rounded-full blur-3xl"></div>
+                    <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-500 rounded-full blur-3xl"></div>
                 </div>
 
                 <div className="relative z-10 flex flex-col items-center">
@@ -168,9 +168,9 @@ const ToolDetailsPanel = ({ toolName, darkMode, converters, handleSetActiveConve
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-                <div className={`rounded-3xl p-8 shadow-lg border transition-all duration-300 hover:shadow-xl ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                <div className={`rounded-[28px] p-8 shadow-lg border transition-all duration-300 hover:shadow-xl ${darkMode ? 'bg-slate-900/88 border-slate-800' : 'bg-white/90 border-slate-200/70 backdrop-blur-sm'}`}>
                     <div className="flex items-center mb-8">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mr-4 shadow-sm ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mr-4 shadow-sm ${darkMode ? 'bg-cyan-500/10 text-cyan-300' : 'bg-cyan-50 text-sky-600'}`}>
                             <Info className="w-6 h-6" />
                         </div>
                         <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>How to Use</h3>
@@ -187,9 +187,9 @@ const ToolDetailsPanel = ({ toolName, darkMode, converters, handleSetActiveConve
                     </div>
                 </div>
 
-                <div className={`rounded-3xl p-8 shadow-lg border transition-all duration-300 hover:shadow-xl ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                <div className={`rounded-[28px] p-8 shadow-lg border transition-all duration-300 hover:shadow-xl ${darkMode ? 'bg-slate-900/88 border-slate-800' : 'bg-white/90 border-slate-200/70 backdrop-blur-sm'}`}>
                     <div className="flex items-center mb-8">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mr-4 shadow-sm ${darkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mr-4 shadow-sm ${darkMode ? 'bg-sky-500/10 text-sky-300' : 'bg-sky-50 text-sky-600'}`}>
                             <Zap className="w-6 h-6" />
                         </div>
                         <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Key Benefits</h3>
@@ -212,13 +212,13 @@ const ToolDetailsPanel = ({ toolName, darkMode, converters, handleSetActiveConve
                 </div>
             </div>
 
-            <div className={`rounded-3xl shadow-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <div className={`rounded-[28px] shadow-lg border overflow-hidden ${darkMode ? 'bg-slate-900/88 border-slate-800' : 'bg-white/92 border-slate-200/70 backdrop-blur-sm'}`}>
                 <button
                     onClick={() => setIsRelatedToolsOpen(!isRelatedToolsOpen)}
                     className="w-full flex items-center justify-between p-8 text-left"
                 >
                     <div className="flex items-center">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${darkMode ? 'bg-indigo-900 text-indigo-400' : 'bg-indigo-100 text-indigo-600'}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${darkMode ? 'bg-cyan-500/10 text-cyan-300' : 'bg-cyan-100 text-sky-600'}`}>
                             <Grid3x3 className="w-5 h-5" />
                         </div>
                         <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Related Tools</h3>
@@ -235,9 +235,9 @@ const ToolDetailsPanel = ({ toolName, darkMode, converters, handleSetActiveConve
                                 <button
                                     key={index}
                                     onClick={() => handleRelatedToolClick(tool.link)}
-                                    className={`group flex items-center p-4 rounded-xl border transition-all ${darkMode ? 'bg-gray-700/30 border-gray-600 hover:bg-gray-700' : 'bg-gray-50 border-gray-100 hover:bg-blue-50'}`}
+                                    className={`group flex items-center p-4 rounded-xl border transition-all ${darkMode ? 'bg-slate-800/60 border-slate-700 hover:bg-slate-800' : 'bg-slate-50 border-slate-200 hover:bg-cyan-50'}`}
                                 >
-                                    <ArrowRight className={`w-4 h-4 mr-3 transition-transform group-hover:translate-x-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                                    <ArrowRight className={`w-4 h-4 mr-3 transition-transform group-hover:translate-x-1 ${darkMode ? 'text-cyan-300' : 'text-sky-600'}`} />
                                     <span className="font-medium truncate">{tool.name}</span>
                                 </button>
                             ))}

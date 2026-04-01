@@ -471,11 +471,11 @@ const AudioTimeline = ({ audioTracks = [], onUpdateTracks, darkMode, activeTrack
                     border-top: 1px solid rgba(0,0,0,0.08);
                     font-family: 'Inter', 'Outfit', sans-serif;
                     user-select: none;
-                    background: #fafbfc;
+                    background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
                     animation: atSlideUp 0.3s ease;
                 }
                 .at-dark {
-                    background: #14161f;
+                    background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
                     border-top-color: rgba(255,255,255,0.06);
                 }
                 @keyframes atSlideUp {
@@ -500,15 +500,15 @@ const AudioTimeline = ({ audioTracks = [], onUpdateTracks, darkMode, activeTrack
                     background: transparent; color: #6b7280;
                 }
                 .at-dark .at-ctrl-btn { color: #9ca3af; }
-                .at-ctrl-btn:hover { background: rgba(124,58,237,0.08); color: #7c3aed; }
-                .at-ctrl-btn.at-active { background: rgba(124,58,237,0.15); color: #7c3aed; }
+                .at-ctrl-btn:hover { background: rgba(6,182,212,0.08); color: #0891b2; }
+                .at-ctrl-btn.at-active { background: rgba(6,182,212,0.14); color: #0891b2; }
                 .at-play-btn {
                     width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
                     border: none; border-radius: 50%; cursor: pointer; transition: all 0.2s;
-                    background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white;
-                    box-shadow: 0 2px 8px rgba(124,58,237,0.3);
+                    background: linear-gradient(135deg, #06b6d4, #2563eb); color: white;
+                    box-shadow: 0 8px 18px rgba(37,99,235,0.24);
                 }
-                .at-play-btn:hover { transform: scale(1.1); box-shadow: 0 4px 16px rgba(124,58,237,0.4); }
+                .at-play-btn:hover { transform: scale(1.1); box-shadow: 0 12px 24px rgba(37,99,235,0.28); }
                 .at-time-display { font-size: 12px; font-weight: 700; color: #1f2937; }
                 .at-dark .at-time-display { color: #e5e7eb; }
                 .at-time-sep { font-size: 10px; color: #9ca3af; margin: 0 2px; }
@@ -536,7 +536,7 @@ const AudioTimeline = ({ audioTracks = [], onUpdateTracks, darkMode, activeTrack
                     border-bottom: 1px solid rgba(0,0,0,0.03); transition: background 0.15s;
                 }
                 .at-dark .at-track-lane { border-bottom-color: rgba(255,255,255,0.03); }
-                .at-track-lane.at-drag-over { background: rgba(124,58,237,0.05); }
+                .at-track-lane.at-drag-over { background: rgba(6,182,212,0.06); }
                 .at-track-label {
                     width: 160px; min-width: 160px; display: flex; align-items: center; gap: 6px;
                     padding: 0 8px 0 12px; font-size: 11px; flex-shrink: 0;
@@ -547,10 +547,10 @@ const AudioTimeline = ({ audioTracks = [], onUpdateTracks, darkMode, activeTrack
                 .at-track-info { display: flex; align-items: center; gap: 6px; flex: 1; cursor: pointer; overflow: hidden; }
                 .at-track-icon {
                     width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
-                    background: linear-gradient(135deg, #ede9fe, #ddd6fe); color: #7c3aed; flex-shrink: 0;
+                    background: linear-gradient(135deg, #e0f2fe, #dbeafe); color: #0284c7; flex-shrink: 0;
                 }
-                .at-dark .at-track-icon { background: linear-gradient(135deg, #312e81, #3b0764); color: #a78bfa; }
-                .at-track-icon.at-glow { box-shadow: 0 0 8px rgba(124,58,237,0.4); }
+                .at-dark .at-track-icon { background: linear-gradient(135deg, #164e63, #1e3a8a); color: #67e8f9; }
+                .at-track-icon.at-glow { box-shadow: 0 0 10px rgba(34,211,238,0.36); }
                 .at-track-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #374151; }
                 .at-dark .at-track-name { color: #d1d5db; }
                 .at-mute-btn {
@@ -565,18 +565,18 @@ const AudioTimeline = ({ audioTracks = [], onUpdateTracks, darkMode, activeTrack
                 .at-track-timeline { flex: 1; position: relative; height: 32px; margin-right: 12px; }
                 .at-track-block {
                     position: absolute; top: 1px; bottom: 1px;
-                    background: linear-gradient(90deg, #814bf6 0%, #6e3ad9 100%);
+                    background: linear-gradient(90deg, #06b6d4 0%, #2563eb 100%);
                     border-radius: 8px; cursor: move; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                     display: flex; align-items: center; overflow: hidden;
                     border: 1px solid rgba(255,255,255,0.1);
                 }
                 .at-track-block:hover { 
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 20px rgba(129,75,246,0.3);
+                    box-shadow: 0 6px 24px rgba(37,99,235,0.24);
                     border-color: rgba(255,255,255,0.2);
                 }
                 .at-block-active { 
-                    box-shadow: 0 0 0 2px #814bf6, 0 6px 24px rgba(129,75,246,0.4); 
+                    box-shadow: 0 0 0 2px #06b6d4, 0 8px 28px rgba(37,99,235,0.28); 
                     border-color: rgba(255,255,255,0.3);
                 }
                 .at-block-muted { opacity: 0.4; filter: grayscale(1); }
@@ -639,8 +639,8 @@ const AudioTimeline = ({ audioTracks = [], onUpdateTracks, darkMode, activeTrack
                 .at-dark .at-ctx-divider { background: rgba(255,255,255,0.05); }
                 .at-ctx-volume { display: flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 12px; font-weight: 500; color: #374151; }
                 .at-dark .at-ctx-volume { color: #d1d5db; }
-                .at-vol-slider { flex: 1; accent-color: #7c3aed; height: 3px; cursor: pointer; }
-                .at-vol-val { font-size: 10px; font-weight: 700; color: #7c3aed; min-width: 32px; text-align: right; }
+                .at-vol-slider { flex: 1; accent-color: #06b6d4; height: 3px; cursor: pointer; }
+                .at-vol-val { font-size: 10px; font-weight: 700; color: #0891b2; min-width: 32px; text-align: right; }
 
                 /* Light theme track colors */
                 .at-light .at-track-lane:nth-child(even) { background: rgba(0,0,0,0.01); }

@@ -87,8 +87,10 @@ const PresenterWindow = ({ designId, user }) => {
     // Magic Shortcuts State
     const [activeMagicEffect, setActiveMagicEffect] = useState(null); // 'blur' | 'quiet' | 'bubbles' | 'confetti' | 'drumroll' | 'curtain' | 'mic-drop'
     const [showMagicPopup, setShowMagicPopup] = useState(false);
+    const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [showRecSetup, setShowRecSetup] = useState(false);
     const audioRef = useRef(null);
+    const moreMenuRef = useRef(null);
 
     const magicShortcuts = [
         { id: 'blur', label: 'Blur', key: 'B', icon: <div className="pw-m-icon blur-icon">🌐</div> },
@@ -282,6 +284,16 @@ const PresenterWindow = ({ designId, user }) => {
         return () => window.removeEventListener('keydown', handleKey);
     }, [currentPageIndex, totalPages, triggerMagicEffect, showMagicPopup, goNext, goPrev]);
 
+    useEffect(() => {
+        const onDocClick = (e) => {
+            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+                setShowMoreMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', onDocClick);
+        return () => document.removeEventListener('mousedown', onDocClick);
+    }, []);
+
     // -- Live Session --
     const startLiveSession = async () => {
         if (!designId || !user) return;
@@ -380,6 +392,28 @@ const PresenterWindow = ({ designId, user }) => {
             setCopiedInvite(true);
             setTimeout(() => setCopiedInvite(false), 2000);
         });
+    };
+
+    const copyQuickLink = async () => {
+        const liveUrl = liveSession?.id && sessionCode ? `${window.location.origin}/live/${sessionCode.replace(/\s/g, '')}` : null;
+        const presenterUrl = `${window.location.origin}/presenter/${designId}`;
+        const textToCopy = liveUrl || presenterUrl;
+
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+            setCopiedInvite(true);
+            setTimeout(() => setCopiedInvite(false), 1800);
+        } catch (error) {
+            console.error('Clipboard copy failed:', error);
+        }
+    };
+
+    const handleClosePresenter = () => {
+        if (window.opener) {
+            window.close();
+            return;
+        }
+        window.history.back();
     };
 
     // Fullscreen
@@ -617,7 +651,7 @@ const PresenterWindow = ({ designId, user }) => {
                             title={isMicOn ? "Turn off Microphone" : "Turn on Microphone"}
                             onClick={toggleMic}
                         >
-                            {isMicOn ? <Mic size={18} className="text-purple-400" /> : <MicOff size={18} />}
+                            {isMicOn ? <Mic size={18} className="text-cyan-300" /> : <MicOff size={18} />}
                         </button>
 
                         <button
@@ -725,16 +759,46 @@ const PresenterWindow = ({ designId, user }) => {
                             </div>
                         </div>
                     )}
-                    <button className="pw-tool-btn" title="Timer">
+                    <button
+                        className={`pw-tool-btn ${timerRunning ? 'active' : ''}`}
+                        title={timerRunning ? 'Pause timer' : 'Start timer'}
+                        onClick={() => setTimerRunning((v) => !v)}
+                    >
                         <Timer size={18} />
                     </button>
-                    <button className="pw-tool-btn" title="Clipboard">
+                    <button className={`pw-tool-btn ${copiedInvite ? 'active' : ''}`} title="Copy link" onClick={copyQuickLink}>
                         <Clipboard size={18} />
                     </button>
-                    <button className="pw-tool-btn" title="More options">
-                        <MoreHorizontal size={18} />
-                    </button>
-                    <button className="pw-tool-btn" title="Close" onClick={() => window.close()}>
+                    <div className="pw-tool-group" ref={moreMenuRef}>
+                        <button
+                            className={`pw-tool-btn ${showMoreMenu ? 'active' : ''}`}
+                            title="More options"
+                            onClick={() => setShowMoreMenu((v) => !v)}
+                        >
+                            <MoreHorizontal size={18} />
+                        </button>
+                        {showMoreMenu && (
+                            <div className="pw-more-menu">
+                                <button className="pw-more-item" onClick={() => { setActiveTool(activeTool === 'laser' ? null : 'laser'); setShowDrawingToolbar(false); setShowMoreMenu(false); }}>
+                                    <PenTool size={14} />
+                                    <span>{activeTool === 'laser' ? 'Disable laser' : 'Enable laser'}</span>
+                                </button>
+                                <button className="pw-more-item" onClick={() => { toggleFullscreen(); setShowMoreMenu(false); }}>
+                                    <Maximize2 size={14} />
+                                    <span>Toggle fullscreen</span>
+                                </button>
+                                <button className="pw-more-item" onClick={() => { setElapsed(0); setTimerRunning(false); setShowMoreMenu(false); }}>
+                                    <RotateCcw size={14} />
+                                    <span>Reset timer</span>
+                                </button>
+                                <button className="pw-more-item" onClick={async () => { if (liveSession?.id) await endLiveSession(); else await startLiveSession(); setShowMoreMenu(false); }}>
+                                    <Radio size={14} />
+                                    <span>{liveSession?.id ? 'End live session' : 'Start live session'}</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <button className="pw-tool-btn" title="Close presenter" onClick={handleClosePresenter}>
                         <X size={18} />
                     </button>
                 </div>
@@ -895,7 +959,7 @@ const PresenterWindow = ({ designId, user }) => {
                                     )}
                                     {activeMagicEffect === 'confetti' && (
                                         <div className="pw-confetti-container">
-                                            {[...Array(30)].map((_, i) => <div key={i} className="pw-confetti-piece" style={{ left: `${Math.random() * 100}%`, backgroundColor: ['#8B3DFF', '#FFD700', '#00C2FF', '#FF3B3B'][i % 4], animationDelay: `${Math.random() * 0.5}s` }} />)}
+                                            {[...Array(30)].map((_, i) => <div key={i} className="pw-confetti-piece" style={{ left: `${Math.random() * 100}%`, backgroundColor: ['#06b6d4', '#38bdf8', '#2563eb', '#67e8f9'][i % 4], animationDelay: `${Math.random() * 0.5}s` }} />)}
                                         </div>
                                     )}
                                     {activeMagicEffect === 'curtain' && (
@@ -1226,7 +1290,10 @@ const presenterStyles = `
 
     .pw-root {
         position: fixed; inset: 0; z-index: 999999;
-        background: #1a1a2e;
+        background:
+            radial-gradient(circle at top left, rgba(6,182,212,0.10), transparent 24%),
+            radial-gradient(circle at top right, rgba(59,130,246,0.12), transparent 30%),
+            linear-gradient(160deg, #020617 0%, #0b1120 52%, #020617 100%);
         font-family: 'Inter', 'Outfit', sans-serif;
         color: #e0e0e0;
         display: flex; flex-direction: column;
@@ -1237,11 +1304,11 @@ const presenterStyles = `
         flex: 1; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 16px;
     }
-    .pw-loading p { color: #9ca3af; font-size: 14px; }
+    .pw-loading p { color: #cbd5e1; font-size: 14px; }
     .pw-spinner {
         width: 40px; height: 40px;
         border: 3px solid rgba(255,255,255,0.08);
-        border-top-color: #8B3DFF;
+        border-top-color: #22d3ee;
         border-radius: 50%;
         animation: pw-spin 0.8s linear infinite;
     }
@@ -1252,18 +1319,19 @@ const presenterStyles = `
         height: 48px; flex-shrink: 0;
         display: flex; align-items: center; justify-content: space-between;
         padding: 0 20px;
-        background: rgba(15, 15, 30, 0.95);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        background: rgba(2, 6, 23, 0.82);
+        border-bottom: 1px solid rgba(148,163,184,0.12);
+        backdrop-filter: blur(24px) saturate(140%);
     }
     .pw-topbar-left { display: flex; align-items: center; gap: 12px; }
-    .pw-clock { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+    .pw-clock { font-size: 20px; font-weight: 700; color: #f8fafc; letter-spacing: -0.5px; }
     
     .pw-voice-badge {
         display: flex; align-items: center; gap: 8px;
         padding: 4px 12px; border-radius: 20px;
-        background: rgba(139, 61, 255, 0.15);
-        border: 1px solid rgba(139, 61, 255, 0.4);
-        color: #a78bfa; font-size: 11px; font-weight: 800;
+        background: rgba(34, 211, 238, 0.10);
+        border: 1px solid rgba(34, 211, 238, 0.22);
+        color: #67e8f9; font-size: 11px; font-weight: 800;
         letter-spacing: 0.5px;
         animation: pw-pulse 2s infinite;
     }
@@ -1275,7 +1343,7 @@ const presenterStyles = `
 
     .pw-wave-bar {
         width: 2px; height: 4px;
-        background: #a78bfa;
+        background: #67e8f9;
         border-radius: 1px;
         animation: pw-wave 1s ease-in-out infinite;
     }
@@ -1295,32 +1363,74 @@ const presenterStyles = `
     }
 
     .pw-divider { color: rgba(255,255,255,0.2); font-size: 18px; margin: 0 4px; }
-    .pw-timer { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.7); font-variant-numeric: tabular-nums; }
+    .pw-timer { font-size: 20px; font-weight: 600; color: rgba(226,232,240,0.72); font-variant-numeric: tabular-nums; }
 
-    .pw-topbar-tools { display: flex; align-items: center; gap: 2px; }
+    .pw-topbar-tools {
+        display: flex; align-items: center; gap: 6px;
+        padding: 4px;
+        border-radius: 14px;
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid rgba(148,163,184,0.14);
+    }
     .pw-tool-btn {
-        width: 36px; height: 36px;
+        width: 34px; height: 34px;
         display: flex; align-items: center; justify-content: center;
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.04);
-        color: rgba(255,255,255,0.6);
-        border-radius: 8px; cursor: pointer;
+        border: 1px solid rgba(148,163,184,0.16);
+        background: rgba(15,23,42,0.68);
+        color: rgba(226,232,240,0.68);
+        border-radius: 10px; cursor: pointer;
         transition: all 0.15s;
     }
-    .pw-tool-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
-    .pw-tool-btn.active { background: rgba(139,61,255,0.2); border-color: #8B3DFF; color: #c4a0ff; }
+    .pw-tool-btn:hover { background: rgba(34,211,238,0.10); color: #fff; transform: translateY(-1px); }
+    .pw-tool-btn.active { background: rgba(34,211,238,0.12); border-color: rgba(34,211,238,0.34); color: #67e8f9; box-shadow: 0 0 0 1px rgba(34,211,238,0.18); }
 
     .pw-tool-group { position: relative; display: flex; align-items: center; }
+    .pw-more-menu {
+        position: absolute;
+        top: 44px;
+        right: 0;
+        min-width: 190px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 6px;
+        border-radius: 14px;
+        background: rgba(2, 6, 23, 0.94);
+        border: 1px solid rgba(148,163,184,0.18);
+        box-shadow: 0 24px 50px rgba(2,8,23,0.48);
+        z-index: 1200;
+        backdrop-filter: blur(14px);
+    }
+    .pw-more-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        color: rgba(226,232,240,0.82);
+        font-size: 12px;
+        font-weight: 600;
+        text-align: left;
+        padding: 8px 10px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .pw-more-item:hover {
+        background: rgba(34,211,238,0.12);
+        color: #fff;
+    }
     
     .pw-drawing-toolbar {
         position: absolute;
         top: 44px; right: 0;
-        background: rgba(30, 30, 50, 0.98);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
+        background: rgba(2, 6, 23, 0.88);
+        border: 1px solid rgba(148,163,184,0.14);
+        border-radius: 18px;
         padding: 6px;
         display: flex; align-items: center; gap: 4px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        box-shadow: 0 24px 50px rgba(2,8,23,0.42);
         z-index: 1000;
         backdrop-filter: blur(10px);
     }
@@ -1333,7 +1443,7 @@ const presenterStyles = `
         cursor: pointer; transition: all 0.2s;
     }
     .pw-draw-tool:hover { background: rgba(255,255,255,0.08); color: #fff; }
-    .pw-draw-tool.active { background: #8B3DFF; color: #fff; }
+    .pw-draw-tool.active { background: linear-gradient(135deg, #06b6d4, #2563eb); color: #fff; }
     
     .pw-draw-divider { width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 4px; }
     
@@ -1364,7 +1474,7 @@ const presenterStyles = `
     .pw-drawing-toolbar {
         padding: 8px 12px;
         gap: 8px;
-        background: #2b2b45;
+        background: rgba(15,23,42,0.78);
     }
     
     .pw-draw-tool {
@@ -1385,7 +1495,7 @@ const presenterStyles = `
         content: '';
         position: absolute; bottom: -4px;
         width: 4px; height: 4px; border-radius: 50%;
-        background: #8B3DFF;
+        background: #22d3ee;
     }
     
     .pw-draw-tool svg {
@@ -1414,14 +1524,17 @@ const presenterStyles = `
     .pw-slide-container {
         flex: 1; display: flex; align-items: center; justify-content: center;
         position: relative; padding: 20px 40px;
-        background: radial-gradient(ellipse at center, #222244 0%, #1a1a2e 60%);
+        background:
+            radial-gradient(circle at center, rgba(34,211,238,0.10) 0%, rgba(15,23,42,0.24) 32%, rgba(2,6,23,0.95) 78%),
+            linear-gradient(180deg, #08111f 0%, #020617 100%);
     }
     .pw-slide-frame {
         display: flex; align-items: center; justify-content: center;
         position: relative;
         background: #fff;
-        border-radius: 6px;
-        box-shadow: 0 20px 80px rgba(0,0,0,0.5);
+        border-radius: 18px;
+        border: 1px solid rgba(148,163,184,0.16);
+        box-shadow: 0 28px 95px rgba(2,8,23,0.58);
         overflow: hidden;
         container-type: size;
     }
@@ -1454,14 +1567,14 @@ const presenterStyles = `
     .pw-nav-arrow {
         position: absolute; top: 50%; transform: translateY(-50%);
         width: 44px; height: 44px; border-radius: 50%;
-        background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
-        color: rgba(255,255,255,0.7); cursor: pointer;
+        background: rgba(2,6,23,0.68); border: 1px solid rgba(148,163,184,0.14);
+        color: rgba(226,232,240,0.78); cursor: pointer;
         display: flex; align-items: center; justify-content: center;
         transition: all 0.2s; z-index: 10;
         opacity: 0;
     }
     .pw-slide-container:hover .pw-nav-arrow { opacity: 1; }
-    .pw-nav-arrow:hover { background: rgba(0,0,0,0.7); color: #fff; }
+    .pw-nav-arrow:hover { background: rgba(15,23,42,0.92); color: #fff; transform: translateY(-50%) scale(1.04); }
     .pw-nav-left { left: 16px; }
     .pw-nav-right { right: 16px; }
 
@@ -1470,13 +1583,14 @@ const presenterStyles = `
         height: 40px; flex-shrink: 0;
         display: flex; align-items: center; justify-content: space-between;
         padding: 0 16px;
-        background: rgba(15, 15, 30, 0.9);
-        border-top: 1px solid rgba(255,255,255,0.05);
+        background: rgba(2, 6, 23, 0.76);
+        border-top: 1px solid rgba(148,163,184,0.12);
+        backdrop-filter: blur(24px) saturate(140%);
     }
     .pw-bottom-left, .pw-bottom-right { display: flex; align-items: center; gap: 4px; }
     .pw-page-num {
         font-size: 13px; font-weight: 600;
-        color: rgba(255,255,255,0.6);
+        color: rgba(203,213,225,0.72);
         min-width: 40px; text-align: center;
         font-variant-numeric: tabular-nums;
     }
@@ -1501,7 +1615,7 @@ const presenterStyles = `
         transition: all 0.2s;
     }
     .pw-thumb:hover { border-color: rgba(139,61,255,0.4); }
-    .pw-thumb.active { border-color: #8B3DFF; box-shadow: 0 0 0 1px #8B3DFF; }
+    .pw-thumb.active { border-color: #22d3ee; box-shadow: 0 0 0 1px #22d3ee; }
     .pw-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .pw-thumb-empty { width: 100%; height: 100%; background: rgba(255,255,255,0.05); }
 
@@ -1509,13 +1623,14 @@ const presenterStyles = `
     .pw-sidebar {
         width: 280px; flex-shrink: 0;
         display: flex; flex-direction: column;
-        background: rgba(20, 20, 38, 0.98);
-        border-left: 1px solid rgba(255,255,255,0.06);
+        background: rgba(2, 6, 23, 0.84);
+        border-left: 1px solid rgba(148,163,184,0.12);
+        backdrop-filter: blur(26px) saturate(140%);
     }
 
     .pw-sidebar-tabs {
         display: flex; flex-shrink: 0;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        border-bottom: 1px solid rgba(148,163,184,0.12);
     }
     .pw-stab {
         flex: 1; display: flex; flex-direction: column; align-items: center;
@@ -1527,7 +1642,7 @@ const presenterStyles = `
         border-bottom: 2px solid transparent;
     }
     .pw-stab:hover { color: rgba(255,255,255,0.7); }
-    .pw-stab.active { color: #fff; border-bottom-color: #8B3DFF; }
+    .pw-stab.active { color: #fff; border-bottom-color: #22d3ee; }
 
     .pw-sidebar-content { flex: 1; overflow-y: auto; padding: 16px; }
 
@@ -1575,7 +1690,7 @@ const presenterStyles = `
         background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
         color: #fff; font-size: 14px; outline: none; transition: border-color 0.2s;
     }
-    .pw-setup-select:focus { border-color: #8B3DFF; }
+    .pw-setup-select:focus { border-color: #22d3ee; }
 
     .pw-mic-meter-container {
         position: relative; height: 12px; margin-bottom: 8px;
@@ -1597,11 +1712,11 @@ const presenterStyles = `
 
     .pw-start-rec-btn {
         width: 100%; padding: 14px; border-radius: 14px;
-        background: #8B3DFF; border: none; color: #fff;
+        background: linear-gradient(135deg, #06b6d4, #2563eb); border: none; color: #fff;
         font-weight: 700; font-size: 15px; cursor: pointer;
         transition: all 0.2s;
     }
-    .pw-start-rec-btn:hover { background: #9b5aeb; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(139, 61, 255, 0.3); }
+    .pw-start-rec-btn:hover { filter: brightness(1.05); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(37, 99, 235, 0.28); }
 
     .pw-rec-indicator {
         position: absolute; top: 0; right: 0;
@@ -1623,7 +1738,7 @@ const presenterStyles = `
     .pw-live-bubble {
         position: absolute;
         width: 48px; height: 48px;
-        background: linear-gradient(135deg, #8B3DFF, #a855f7);
+        background: linear-gradient(135deg, #06b6d4, #2563eb);
         border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         font-size: 20px;
@@ -1815,7 +1930,7 @@ const presenterStyles = `
         padding: 16px 20px;
         border-bottom: 1px solid rgba(255,255,255,0.08);
     }
-    .pw-mic-modal-icon { color: #8B3DFF; }
+    .pw-mic-modal-icon { color: #22d3ee; }
     .pw-mic-modal-header h3 { font-size: 16px; font-weight: 600; margin: 0; flex: 1; }
     .pw-close-modal { padding: 4px; color: rgba(255,255,255,0.5); border: none; background: transparent; cursor: pointer; }
     .pw-close-modal:hover { color: #fff; }
@@ -1830,7 +1945,7 @@ const presenterStyles = `
         border-radius: 8px;
         padding: 10px 14px;
     }
-    .pw-device-selector svg { color: #a78bfa; flex-shrink: 0; }
+    .pw-device-selector svg { color: #67e8f9; flex-shrink: 0; }
     .pw-device-select {
         flex: 1; background: transparent; border: none;
         color: #fff; font-size: 14px; outline: none;
@@ -1855,9 +1970,9 @@ const presenterStyles = `
     }
     .pw-btn-cancel:hover { background: rgba(255,255,255,0.1); color: #fff; }
     .pw-btn-connect {
-        background: #8B3DFF; color: #fff;
+        background: linear-gradient(135deg, #06b6d4, #2563eb); color: #fff;
     }
-    .pw-btn-connect:hover { background: #7a32e6; }
+    .pw-btn-connect:hover { filter: brightness(1.05); }
     .pw-btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .pw-rec-overlay {
@@ -1881,7 +1996,7 @@ const presenterStyles = `
 
     .pw-countdown-num {
         font-size: 120px; font-weight: 800;
-        color: #8B3DFF;
+        color: #22d3ee;
         text-shadow: 0 0 30px rgba(139, 61, 255, 0.5);
         animation: pw-scale-in 1s ease-out infinite;
     }
@@ -1891,9 +2006,9 @@ const presenterStyles = `
     }
 
     .pw-processing-card, .pw-done-card {
-        background: #1e1e2e;
+        background: rgba(2, 6, 23, 0.92);
         padding: 40px; border-radius: 24px;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(148,163,184,0.14);
         text-align: center;
         max-width: 400px; width: 90%;
         box-shadow: 0 20px 50px rgba(0,0,0,0.5);
@@ -1906,7 +2021,7 @@ const presenterStyles = `
         overflow: hidden;
     }
     .pw-progress-fill {
-        height: 100%; background: #8B3DFF;
+        height: 100%; background: linear-gradient(90deg, #22d3ee, #38bdf8, #2563eb);
         transition: width 0.3s ease;
     }
 
@@ -1916,7 +2031,7 @@ const presenterStyles = `
 
     .pw-done-actions { display: grid; gap: 12px; }
     .pw-btn-download {
-        background: #8B3DFF; color: #fff;
+        background: linear-gradient(135deg, #06b6d4, #2563eb); color: #fff;
         border: none; padding: 12px; border-radius: 12px;
         font-weight: 600; cursor: pointer;
         display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -1939,8 +2054,8 @@ const presenterStyles = `
         position: absolute;
         top: 48px; right: 80px;
         width: 180px;
-        background: rgba(30, 30, 50, 0.98);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(2, 6, 23, 0.92);
+        border: 1px solid rgba(148,163,184,0.14);
         border-radius: 12px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.6);
         z-index: 2000;
@@ -1963,7 +2078,7 @@ const presenterStyles = `
         font-family: inherit;
     }
     .pw-magic-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
-    .pw-magic-item.active { background: rgba(139, 61, 255, 0.15); color: #c4a0ff; }
+    .pw-magic-item.active { background: rgba(34, 211, 238, 0.10); color: #67e8f9; }
     .pw-magic-icon { 
         font-size: 16px; width: 20px; height: 20px; 
         display: flex; align-items: center; justify-content: center; 
@@ -2016,8 +2131,8 @@ const presenterStyles = `
         backdrop-filter: blur(8px);
     }
     .pw-mic-modal-content {
-        width: 400px; background: #1a1a2e;
-        border: 1px solid rgba(255,255,255,0.1);
+        width: 400px; background: rgba(2, 6, 23, 0.96);
+        border: 1px solid rgba(148,163,184,0.14);
         border-radius: 16px; overflow: hidden;
         box-shadow: 0 30px 60px rgba(0,0,0,0.6);
     }
@@ -2031,27 +2146,27 @@ const presenterStyles = `
     
     .pw-device-selector {
         display: flex; align-items: center; gap: 12px;
-        background: rgba(255,255,255,0.05); padding: 12px 16px;
-        border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(15,23,42,0.72); padding: 12px 16px;
+        border-radius: 12px; border: 1px solid rgba(148,163,184,0.14);
         margin-bottom: 20px;
     }
     .pw-device-select {
         flex: 1; background: transparent; border: none;
         color: #fff; font-size: 14px; outline: none;
     }
-    .pw-device-select option { background: #1a1a2e; color: #fff; }
+    .pw-device-select option { background: #0f172a; color: #fff; }
 
     .pw-system-audio-toggle {
-        background: rgba(139, 61, 255, 0.05);
-        border: 1px dashed rgba(139, 61, 255, 0.3);
+        background: rgba(34, 211, 238, 0.06);
+        border: 1px dashed rgba(34, 211, 238, 0.24);
         border-radius: 10px; padding: 12px;
     }
     .pw-toggle-label {
         display: flex; align-items: center; gap: 10px;
-        font-size: 13px; font-weight: 600; color: #c4a0ff;
+        font-size: 13px; font-weight: 600; color: #67e8f9;
         cursor: pointer;
     }
-    .pw-toggle-label input { width: 16px; height: 16px; accent-color: #8B3DFF; }
+    .pw-toggle-label input { width: 16px; height: 16px; accent-color: #06b6d4; }
     .pw-toggle-hint { font-size: 11px; color: rgba(255,255,255,0.4); margin: 6px 0 0 26px; }
 
     .pw-mic-modal-footer {
@@ -2064,8 +2179,8 @@ const presenterStyles = `
     }
     .pw-btn-cancel { background: transparent; color: rgba(255,255,255,0.5); }
     .pw-btn-cancel:hover { color: #fff; background: rgba(255,255,255,0.05); }
-    .pw-btn-connect { background: #8B3DFF; color: #fff; }
-    .pw-btn-connect:hover { background: #7a32e6; transform: translateY(-1px); }
+    .pw-btn-connect { background: linear-gradient(135deg, #06b6d4, #2563eb); color: #fff; }
+    .pw-btn-connect:hover { filter: brightness(1.05); transform: translateY(-1px); }
     .pw-btn-connect:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
     @keyframes pw-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -2197,7 +2312,7 @@ const presenterStyles = `
     }
     
     .pw-root {
-        background: radial-gradient(circle at top right, #1e1e3f, #0f0f1e);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
     }
 `;
 

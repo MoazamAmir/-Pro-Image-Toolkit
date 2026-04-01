@@ -6,7 +6,7 @@ const PageThumbnail = ({ layers, canvasSize, darkMode }) => {
 
     return (
         <div
-            className="relative w-full h-full bg-white dark:bg-gray-900 pointer-events-none overflow-hidden shadow-sm"
+            className="relative w-full h-full bg-white dark:bg-slate-950 pointer-events-none overflow-hidden shadow-[0_10px_30px_rgba(15,23,42,0.16)] border border-slate-200/70 dark:border-slate-800/80 rounded-xl"
         >
             {/* Background Layer First */}
             {layers.filter(l => l.isBackground).map(layer => (

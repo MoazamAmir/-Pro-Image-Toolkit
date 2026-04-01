@@ -1,9 +1,10 @@
 // src/components/ConverterUI.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { Upload, FileText, X, Download, CheckCircle, Settings, Zap, Edit2 } from 'lucide-react';
-import CropImageTool from './CropImageTool';
-import ToolDetailsPanel from './ToolDetailsPanel';
-import ImageEditor from './ImageEditor';
+
+const CropImageTool = lazy(() => import('./CropImageTool'));
+const ToolDetailsPanel = lazy(() => import('./ToolDetailsPanel'));
+const ImageEditor = lazy(() => import('./ImageEditor'));
 const ConverterUI = ({
     activeConverter,
     selectedFile,
@@ -118,7 +119,7 @@ const ConverterUI = ({
                 video.src = previewUrl;
                 video.setAttribute('data-src', previewUrl);
             }
-            
+
             const handleReady = () => {
                 video.currentTime = selectedTime;
             };
@@ -128,11 +129,11 @@ const ConverterUI = ({
             } else {
                 video.addEventListener('loadedmetadata', handleReady);
             }
-            
+
             const handleLoadedMetadata = () => {
                 setVideoDuration(video.duration);
             };
-            
+
             video.addEventListener('loadedmetadata', handleLoadedMetadata);
             return () => {
                 video.removeEventListener('loadedmetadata', handleReady);
@@ -237,7 +238,7 @@ const ConverterUI = ({
                     Pro Image <span className="gradient-text">Toolkit</span>
                 </h1>
                 <p className={`text-lg sm:text-xl md:text-2xl ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2 sm:mb-3 font-medium px-4`}>Convert files instantly online</p>
-                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-8 sm:mb-12 text-sm sm:text-base md:text-lg px-4`}>34+ tools • No uploads • No registration</p>
+                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-8 sm:mb-12 text-sm sm:text-base md:text-lg px-4`}>34+ tools • Browser processing • Sign in only for save/share</p>
                 <div className="max-w-3xl mx-auto px-4">
                     <div
                         className={`${theme.border} ${theme.bgSecondary} rounded-xl sm:rounded-2xl p-8 sm:p-12 md:p-16 transition-all duration-500 cursor-pointer shadow-premium hover:shadow-premium-lg hover:scale-105 transform`}
@@ -256,7 +257,11 @@ const ConverterUI = ({
     }
 
     if (activeConverter?.to === 'crop') {
-        return <CropImageTool isDarkMode={darkMode} />;
+        return (
+            <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Loading crop workspace...</div>}>
+                <CropImageTool isDarkMode={darkMode} />
+            </Suspense>
+        );
     }
 
     // const to = activeConverter.to;
@@ -312,7 +317,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                     </div>
                 )}
 
-                {!isConverting && !convertedFile && to === 'watermark' && !selectedFile && (
+                {!isConverting && !convertedFile && to === 'watermark' && selectedFile && (
                     <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
                         <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
                             <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
@@ -384,7 +389,7 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                     </div>
                 )}
 
-                {!isConverting && !convertedFile && to === 'mirror' && !selectedFile && (
+                {!isConverting && !convertedFile && to === 'mirror' && selectedFile && (
                     <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-premium`}>
                         <h3 className={`font-bold text-lg sm:text-xl mb-3 sm:mb-4 ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center`}>
                             <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
@@ -959,18 +964,20 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                 )}
 
                 {selectedFile && !convertedFile && isEditing && (
-                    <ImageEditor
-                        file={selectedFile}
-                        onApply={handleImageEdit}
-                        onCancel={() => {
-                            setEditedFile(null);
-                            setIsEditing(false);
-                        }}
-                        darkMode={darkMode}
-                        isViewOnly={isViewOnly}
-                        initialDesignId={initialDesignId}
-                        user={user}
-                    />
+                    <Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-sm text-slate-500">Loading editor workspace...</div>}>
+                        <ImageEditor
+                            file={selectedFile}
+                            onApply={handleImageEdit}
+                            onCancel={() => {
+                                setEditedFile(null);
+                                setIsEditing(false);
+                            }}
+                            darkMode={darkMode}
+                            isViewOnly={isViewOnly}
+                            initialDesignId={initialDesignId}
+                            user={user}
+                        />
+                    </Suspense>
                 )}
 
                 {selectedFile && !convertedFile && !isEditing && (
@@ -1259,14 +1266,16 @@ mb-4 sm:mb-6 md:mb-18 tracking-tight`}>
                 }
             </div >
             {!isConverting && !isEditing && (
-                <ToolDetailsPanel
-                    toolName={activeConverter?.name}
-                    activeConverter={activeConverter}
-                    darkMode={darkMode}
-                    converters={converters}
-                    handleSetActiveConverter={handleSetActiveConverter}
-                    className="mt-5"
-                />
+                <Suspense fallback={null}>
+                    <ToolDetailsPanel
+                        toolName={activeConverter?.name}
+                        activeConverter={activeConverter}
+                        darkMode={darkMode}
+                        converters={converters}
+                        handleSetActiveConverter={handleSetActiveConverter}
+                        className="mt-5"
+                    />
+                </Suspense>
             )}
         </div >
     );

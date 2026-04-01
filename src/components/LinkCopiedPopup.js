@@ -12,7 +12,7 @@ const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
         bottom: 0,
         width: '100vw',
         height: '100vh',
-        backgroundColor: 'transparent',
+        backgroundColor: 'rgba(2, 6, 23, 0.28)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -25,9 +25,10 @@ const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
     };
 
     const popupStyle = {
-        backgroundColor: 'white',
-        borderRadius: '16px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        background: 'rgba(255,255,255,0.94)',
+        border: '1px solid rgba(148,163,184,0.18)',
+        borderRadius: '24px',
+        boxShadow: '0 30px 70px rgba(15, 23, 42, 0.22)',
         width: '100%',
         maxWidth: '360px',
         margin: '16px',
@@ -64,26 +65,26 @@ const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
     const lockIconContainerStyle = {
         width: '80px',
         height: '80px',
-        background: 'linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%)',
-        borderRadius: '16px',
+        background: 'linear-gradient(135deg, #06b6d4 0%, #2563eb 100%)',
+        borderRadius: '22px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: '20px',
-        boxShadow: '0 10px 25px -5px rgba(139, 92, 246, 0.4)'
+        boxShadow: '0 16px 36px rgba(37, 99, 235, 0.28)'
     };
 
     const titleStyle = {
         fontSize: '18px',
         fontWeight: '600',
-        color: '#111827',
+        color: '#0f172a',
         marginBottom: '8px',
         lineHeight: '1.4'
     };
 
     const descriptionStyle = {
         fontSize: '13px',
-        color: '#6b7280',
+        color: '#475569',
         marginBottom: '24px',
         lineHeight: '1.5'
     };
@@ -98,7 +99,7 @@ const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
     const primaryButtonStyle = {
         width: '100%',
         padding: '12px 16px',
-        backgroundColor: '#8B3DFF',
+        background: 'linear-gradient(135deg, #06b6d4 0%, #2563eb 100%)',
         color: 'white',
         fontSize: '14px',
         fontWeight: '600',
@@ -106,7 +107,7 @@ const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
         borderRadius: '10px',
         cursor: 'pointer',
         transition: 'all 0.2s',
-        boxShadow: '0 4px 12px rgba(139, 61, 255, 0.3)'
+        boxShadow: '0 12px 28px rgba(37, 99, 235, 0.22)'
     };
 
     const secondaryButtonStyle = {
@@ -194,8 +195,8 @@ const LinkCopiedPopup = ({ isOpen, onClose, onAllowAccess, onCopyPrivate }) => {
                         <button
                             onClick={onAllowAccess}
                             style={primaryButtonStyle}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = '#7a32e6'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = '#8B3DFF'}
+                            onMouseEnter={(e) => e.target.style.filter = 'brightness(1.04)'}
+                            onMouseLeave={(e) => e.target.style.filter = 'none'}
                         >
                             Allow view access
                         </button>

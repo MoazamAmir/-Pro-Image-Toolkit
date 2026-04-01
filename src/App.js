@@ -1,22 +1,13 @@
 // src/App.js
-import React, { useState, useRef, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Moon, Sun, Edit2, AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import Header from './components/Header';
-import Footer from './components/Footer';
-import ConverterUI from './components/ConverterUI';
-import CropImageTool from './components/CropImageTool';
-import ToolDetailsPanel from './components/ToolDetailsPanel';
-import ImageEditor from './components/ImageEditor';
-import PresenterWindow from './components/PresenterWindow';
-import AudienceViewer from './components/AudienceViewer';
-import LandingPage from './components/LandingPage/LandingPage';
-import { onAuthChange, logOut, getGoogleRedirectResult, auth, deleteUserAccount } from './services/firebase';
+import { onAuthChange, logOut, deleteUserAccount } from './services/firebase';
 import firebaseSyncService from './services/FirebaseSyncService';
 import localRecordingsService from './services/LocalRecordingsService';
-import { AuthModal, DeleteAccountModal } from './components/Auth';
+import { DeleteAccountModal } from './components/Auth';
 
 import {
   convertImage,
@@ -53,17 +44,90 @@ import {
   convertHEIC,
   convertHEICToPDF,
   convertHEICToTIFF,
-  convertEPUBToPDF,
   base64ToImage,
 } from './utils/ConverterFunctions';
 
 // Define converters outside component to avoid dependency issues
 import { converters } from './utils/toolList';
 
+const Header = lazy(() => import('./components/Header'));
+const Footer = lazy(() => import('./components/FooterModern'));
+const ConverterUI = lazy(() => import('./components/ConverterUI'));
+const PresenterWindow = lazy(() => import('./components/PresenterWindow'));
+const AudienceViewer = lazy(() => import('./components/AudienceViewer'));
+const LandingPage = lazy(() => import('./components/LandingPage/LandingPage'));
+
+const AppShellFallback = ({ label = 'Loading workspace...' }) => (
+  <div style={{
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'radial-gradient(circle at top, #eff6ff 0%, #f8fafc 45%, #e2e8f0 100%)',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }}>
+    <div style={{
+      width: 'min(420px, calc(100vw - 32px))',
+      padding: '28px',
+      borderRadius: '24px',
+      background: 'rgba(255,255,255,0.86)',
+      border: '1px solid rgba(148,163,184,0.2)',
+      boxShadow: '0 24px 80px rgba(15,23,42,0.12)',
+      backdropFilter: 'blur(18px)',
+      textAlign: 'left'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px' }}>
+        <div style={{
+          width: '46px',
+          height: '46px',
+          borderRadius: '14px',
+          background: 'linear-gradient(135deg, #0f766e, #2563eb)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontWeight: 700,
+          boxShadow: '0 18px 40px rgba(37,99,235,0.22)'
+        }}>
+          P
+        </div>
+        <div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Pro Image Toolkit</div>
+          <div style={{ fontSize: '13px', color: '#475569' }}>{label}</div>
+        </div>
+      </div>
+      <div style={{
+        height: '10px',
+        borderRadius: '999px',
+        background: 'rgba(148,163,184,0.16)',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          width: '38%',
+          height: '100%',
+          borderRadius: 'inherit',
+          background: 'linear-gradient(90deg, #0f766e, #2563eb)',
+          animation: 'app-shell-progress 1.2s ease-in-out infinite alternate'
+        }} />
+      </div>
+      <style>{`@keyframes app-shell-progress { from { transform: translateX(-8%); } to { transform: translateX(130%); } }`}</style>
+    </div>
+  </div>
+);
+
+const revokeIfBlobUrl = (url) => {
+  if (typeof url === 'string' && url.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+  }
+};
+
 const App = () => {
   const { toolSlug, designId, sessionCode } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const isPublicViewRoute = location.pathname.startsWith('/view/') && Boolean(designId);
+  const isLiveAudienceRoute = location.pathname.startsWith('/live/') && Boolean(sessionCode);
+  const requiresAuth = !isPublicViewRoute && !isLiveAudienceRoute && !location.pathname.startsWith('/edit/');
   const [activeConverter, setActiveConverter] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [convertedFile, setConvertedFile] = useState(null);
@@ -131,8 +195,6 @@ const App = () => {
   // Auth State
   const [user, setUser] = useState(null);
   const [authInitializing, setAuthInitializing] = useState(true); // NEW: Track auth loading
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
   const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
@@ -159,6 +221,22 @@ const App = () => {
       const nameWithoutExt = convertedFile.name.replace(/\.[^/.]+$/, '');
       setCustomFileName(nameWithoutExt);
     }
+  }, [convertedFile]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
+  useEffect(() => {
+    return () => {
+      revokeIfBlobUrl(previewUrl);
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      revokeIfBlobUrl(convertedFile?.url);
+    };
   }, [convertedFile]);
 
   // Global Error Handler for diagnostics
@@ -877,7 +955,7 @@ const App = () => {
           if (from === 'txt') return await convertTXTToDOCX(sourceFile);
           if (from === 'png') return await convertPNGToDOCX(sourceFile);
           if (from === 'pdf') return await convertPDFToWORD(sourceFile);
-          return await convertMediaFFmpeg(sourceFile, 'docx');
+          throw new Error(`Conversion ${from.toUpperCase()} -> DOCX is not supported yet. Try TXT, PNG, or PDF as source.`);
         }
 
         if (to === 'txt' && from === 'pdf') return await convertPDFToText(sourceFile, setConversionProgress);
@@ -904,6 +982,15 @@ const App = () => {
         if (from === 'wav' && to === 'mp3') return await convertWAVToMP3(sourceFile);
         if (to === 'mp3' && (from === 'video' || sourceFile.type?.startsWith('video/'))) return await extractAudioFromVideo(sourceFile);
         if (from === 'gif' && to === 'mp4') return await convertGIFToVideo(sourceFile);
+
+        const sourceMime = Array.isArray(sourceFile) ? sourceFile[0]?.type || '' : sourceFile?.type || '';
+        const mediaLikeSource = sourceMime.startsWith('image/') || sourceMime.startsWith('video/') || sourceMime.startsWith('audio/')
+          || ['video', 'audio', 'image', 'gif', 'mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'flv', '3gp', 'mpg', 'mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'wma', 'opus', 'aiff', 'jfif', 'jpg', 'jpeg', 'png', 'webp', 'bmp', 'tiff'].includes(from);
+        const mediaLikeTarget = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'mp4', 'webm', 'avi', 'mov', 'mkv', 'wmv', 'flv', '3gp', 'mpg', 'mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'wma', 'opus', 'aiff', 'tiff', 'pdf'].includes(to);
+
+        if (!mediaLikeSource || !mediaLikeTarget) {
+          throw new Error(`Conversion ${from.toUpperCase()} -> ${to.toUpperCase()} is not supported yet. Please choose a supported pair.`);
+        }
 
         return await convertMediaFFmpeg(sourceFile, to);
       })();
@@ -938,7 +1025,7 @@ const App = () => {
       }
     } catch (err) {
       console.error('Conversion error:', err);
-      alert('❌ Conversion failed. Please try again.');
+      setError(err?.message || 'Conversion failed. Please try again.');
     } finally {
       clearInterval(progressInterval);
       setIsConverting(false);
@@ -995,14 +1082,14 @@ const App = () => {
   };
 
   // Show loading while Firebase auth is initializing
-  if (authInitializing) {
+  if (authInitializing && requiresAuth) {
     return (
       <div style={{
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #f8f8ff, #faf5ff)',
+        background: 'radial-gradient(circle at top, #eff6ff 0%, #f8fafc 45%, #e2e8f0 100%)',
         fontFamily: 'Outfit, sans-serif'
       }}>
         <div style={{ textAlign: 'center' }}>
@@ -1010,8 +1097,8 @@ const App = () => {
             width: '56px',
             height: '56px',
             margin: '0 auto 20px',
-            border: '4px solid #e9d5ff',
-            borderTopColor: '#9333ea',
+            border: '4px solid rgba(37, 99, 235, 0.14)',
+            borderTopColor: '#0f766e',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite'
           }} />
@@ -1023,44 +1110,56 @@ const App = () => {
   }
 
   // If no user is logged in, show Landing Page
-  if (!user) {
-    const isSessionLink = location.pathname.startsWith('/live/') || location.pathname.startsWith('/presenter/');
+  if (!user && requiresAuth) {
+    const isSessionLink = location.pathname.startsWith('/presenter/');
     return (
-      <LandingPage
-        onLoginSuccess={handleLandingPageLogin}
-        isSessionLink={isSessionLink}
-      />
+      <Suspense fallback={<AppShellFallback label="Preparing the website..." />}>
+        <LandingPage
+          onLoginSuccess={handleLandingPageLogin}
+          isSessionLink={isSessionLink}
+        />
+      </Suspense>
     );
   }
 
   // Audience Live Viewer route (standalone)
-  if (location.pathname.startsWith('/live/') && sessionCode) {
-    return <AudienceViewer sessionCode={sessionCode} user={user} />;
+  if (isLiveAudienceRoute) {
+    return (
+      <Suspense fallback={<AppShellFallback label="Joining live session..." />}>
+        <AudienceViewer sessionCode={sessionCode} />
+      </Suspense>
+    );
   }
 
   // Presenter Window route (standalone)
   if (location.pathname.startsWith('/presenter/') && designId) {
-    return <PresenterWindow designId={designId} user={user} />;
+    return (
+      <Suspense fallback={<AppShellFallback label="Opening presenter mode..." />}>
+        <PresenterWindow designId={designId} user={user} />
+      </Suspense>
+    );
   }
 
   // User is logged in, show main app
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-purple-50 to-blue-50'} flex flex-col transition-all duration-500`}>
+    <div className={`app-shell min-h-screen flex flex-col transition-all duration-500`}>
       {!isEditing && (
-        <Header
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-          converters={converters}
-          handleSetActiveConverter={handleSetActiveConverter}
-          setSelectedFile={setSelectedFile}
-          setConvertedFile={setConvertedFile}
-          conversionQuality={conversionQuality}
-          setConversionQuality={setConversionQuality}
-          setPreviewUrl={setPreviewUrl}
-          user={user}
-          onLogout={async () => { await logOut(); setUser(null); }}
-          onDeleteAccount={() => setDeleteAccountModalOpen(true)}
-        />
+        <Suspense fallback={<div className="h-16 bg-slate-950/80" />}>
+          <Header
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            converters={converters}
+            handleSetActiveConverter={handleSetActiveConverter}
+            setSelectedFile={setSelectedFile}
+            setConvertedFile={setConvertedFile}
+            conversionQuality={conversionQuality}
+            setConversionQuality={setConversionQuality}
+            setPreviewUrl={setPreviewUrl}
+            user={user}
+            onLogout={async () => { await logOut(); setUser(null); }}
+            onDeleteAccount={() => setDeleteAccountModalOpen(true)}
+          />
+        </Suspense>
       )}
       
       {/* Account Deletion Confirmation */}
@@ -1090,109 +1189,115 @@ const App = () => {
       )}
 
       <main className={!isEditing ? "flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full" : "w-screen h-screen"}>
-        <ConverterUI
-          converters={converters}
-          handleSetActiveConverter={handleSetActiveConverter}
-          activeConverter={activeConverter}
-          selectedFile={selectedFile}
-          convertedFile={convertedFile}
-          isConverting={isConverting}
-          previewUrl={previewUrl}
-          darkMode={darkMode}
-          resizeWidth={resizeWidth}
-          resizeHeight={resizeHeight}
-          setResizeWidth={setResizeWidth}
-          setResizeHeight={setResizeHeight}
-          resizeMode={resizeMode}
-          setResizeMode={setResizeMode}
-          resizePercentage={resizePercentage}
-          setResizePercentage={setResizePercentage}
-          lockAspectRatio={lockAspectRatio}
-          setLockAspectRatio={setLockAspectRatio}
-          resizeFormat={resizeFormat}
-          setResizeFormat={setResizeFormat}
-          targetFileSize={targetFileSize}
-          setTargetFileSize={setTargetFileSize}
-          socialMediaPreset={socialMediaPreset}
-          setSocialMediaPreset={setSocialMediaPreset}
-          originalDimensions={originalDimensions}
-          setOriginalDimensions={setOriginalDimensions}
-          handleResizeWidthChange={handleResizeWidthChange}
-          handleResizeHeightChange={handleResizeHeightChange}
-          fileInputRef={fileInputRef}
-          handleFileSelect={handleFileSelect}
-          handleImageEdit={handleImageEdit}
-          editedFile={editedFile}
-          setEditedFile={setEditedFile}
-          isEditing={isEditing}
-          setIsEditing={setIsEditing}
-          isViewOnly={isViewOnly}
-          initialDesignId={designId}
-          handleDragEnter={handleDragEnter}
-          handleDragLeave={handleDragLeave}
-          handleDragOver={handleDragOver}
-          handleDrop={handleDrop}
-          handleConvert={handleConvert}
-          handleDownload={handleDownload}
-          setSelectedFile={setSelectedFile}
-          setPreviewUrl={setPreviewUrl}
-          setConvertedFile={setConvertedFile}
-          customFileName={customFileName}
-          setCustomFileName={setCustomFileName}
-          ffmpegLoading={ffmpegLoading}
-          conversionQuality={conversionQuality}
-          setConversionQuality={setConversionQuality}
-          conversionProgress={conversionProgress}
-          watermarkText={watermarkText}
-          setWatermarkText={setWatermarkText}
-          watermarkPosition={watermarkPosition}
-          setWatermarkPosition={setWatermarkPosition}
-          watermarkFontSize={watermarkFontSize}
-          setWatermarkFontSize={setWatermarkFontSize}
-          watermarkOpacity={watermarkOpacity}
-          setWatermarkOpacity={setWatermarkOpacity}
-          watermarkColor={watermarkColor}
-          setWatermarkColor={setWatermarkColor}
-          brightness={brightness}
-          setBrightness={setBrightness}
-          contrast={contrast}
-          setContrast={setContrast}
-          mirrorDirection={mirrorDirection}
-          setMirrorDirection={setMirrorDirection}
-          sharpenIntensity={sharpenIntensity}
-          setSharpenIntensity={setSharpenIntensity}
-          videoDuration={videoDuration}
-          setVideoDuration={setVideoDuration}
-          selectedTime={selectedTime}
-          setSelectedTime={setSelectedTime}
-          generatedThumbnails={generatedThumbnails}
-          setGeneratedThumbnails={setGeneratedThumbnails}
-          gifTrimStart={gifTrimStart}
-          setGifTrimStart={setGifTrimStart}
-          gifTrimEnd={gifTrimEnd}
-          setGifTrimEnd={setGifTrimEnd}
-          gifWidth={gifWidth}
-          setGifWidth={setGifWidth}
-          gifLoopCount={gifLoopCount}
-          setGifLoopCount={setGifLoopCount}
-          gifPreserveTransparency={gifPreserveTransparency}
-          setGifPreserveTransparency={setGifPreserveTransparency}
-          gifFPS={gifFPS}
-          setGifFPS={setGifFPS}
-          gifCompression={gifCompression}
-          setGifCompression={setGifCompression}
-          gifOptimizeBackground={gifOptimizeBackground}
-          setGifOptimizeBackground={setGifOptimizeBackground}
-          containers={containers}
-          selectedContainerId={selectedContainerId}
-          setSelectedContainerId={setSelectedContainerId}
-          addContainer={addContainer}
-          selectedDownloadType={selectedDownloadType}
-          setSelectedDownloadType={setSelectedDownloadType}
-          user={user}
-        />
+        <Suspense fallback={<AppShellFallback label="Loading toolkit..." />}>
+          <ConverterUI
+            converters={converters}
+            handleSetActiveConverter={handleSetActiveConverter}
+            activeConverter={activeConverter}
+            selectedFile={selectedFile}
+            convertedFile={convertedFile}
+            isConverting={isConverting}
+            previewUrl={previewUrl}
+            darkMode={darkMode}
+            resizeWidth={resizeWidth}
+            resizeHeight={resizeHeight}
+            setResizeWidth={setResizeWidth}
+            setResizeHeight={setResizeHeight}
+            resizeMode={resizeMode}
+            setResizeMode={setResizeMode}
+            resizePercentage={resizePercentage}
+            setResizePercentage={setResizePercentage}
+            lockAspectRatio={lockAspectRatio}
+            setLockAspectRatio={setLockAspectRatio}
+            resizeFormat={resizeFormat}
+            setResizeFormat={setResizeFormat}
+            targetFileSize={targetFileSize}
+            setTargetFileSize={setTargetFileSize}
+            socialMediaPreset={socialMediaPreset}
+            setSocialMediaPreset={setSocialMediaPreset}
+            originalDimensions={originalDimensions}
+            setOriginalDimensions={setOriginalDimensions}
+            handleResizeWidthChange={handleResizeWidthChange}
+            handleResizeHeightChange={handleResizeHeightChange}
+            fileInputRef={fileInputRef}
+            handleFileSelect={handleFileSelect}
+            handleImageEdit={handleImageEdit}
+            editedFile={editedFile}
+            setEditedFile={setEditedFile}
+            isEditing={isEditing}
+            setIsEditing={setIsEditing}
+            isViewOnly={isViewOnly}
+            initialDesignId={designId}
+            handleDragEnter={handleDragEnter}
+            handleDragLeave={handleDragLeave}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+            handleConvert={handleConvert}
+            handleDownload={handleDownload}
+            setSelectedFile={setSelectedFile}
+            setPreviewUrl={setPreviewUrl}
+            setConvertedFile={setConvertedFile}
+            customFileName={customFileName}
+            setCustomFileName={setCustomFileName}
+            ffmpegLoading={ffmpegLoading}
+            conversionQuality={conversionQuality}
+            setConversionQuality={setConversionQuality}
+            conversionProgress={conversionProgress}
+            watermarkText={watermarkText}
+            setWatermarkText={setWatermarkText}
+            watermarkPosition={watermarkPosition}
+            setWatermarkPosition={setWatermarkPosition}
+            watermarkFontSize={watermarkFontSize}
+            setWatermarkFontSize={setWatermarkFontSize}
+            watermarkOpacity={watermarkOpacity}
+            setWatermarkOpacity={setWatermarkOpacity}
+            watermarkColor={watermarkColor}
+            setWatermarkColor={setWatermarkColor}
+            brightness={brightness}
+            setBrightness={setBrightness}
+            contrast={contrast}
+            setContrast={setContrast}
+            mirrorDirection={mirrorDirection}
+            setMirrorDirection={setMirrorDirection}
+            sharpenIntensity={sharpenIntensity}
+            setSharpenIntensity={setSharpenIntensity}
+            videoDuration={videoDuration}
+            setVideoDuration={setVideoDuration}
+            selectedTime={selectedTime}
+            setSelectedTime={setSelectedTime}
+            generatedThumbnails={generatedThumbnails}
+            setGeneratedThumbnails={setGeneratedThumbnails}
+            gifTrimStart={gifTrimStart}
+            setGifTrimStart={setGifTrimStart}
+            gifTrimEnd={gifTrimEnd}
+            setGifTrimEnd={setGifTrimEnd}
+            gifWidth={gifWidth}
+            setGifWidth={setGifWidth}
+            gifLoopCount={gifLoopCount}
+            setGifLoopCount={setGifLoopCount}
+            gifPreserveTransparency={gifPreserveTransparency}
+            setGifPreserveTransparency={setGifPreserveTransparency}
+            gifFPS={gifFPS}
+            setGifFPS={setGifFPS}
+            gifCompression={gifCompression}
+            setGifCompression={setGifCompression}
+            gifOptimizeBackground={gifOptimizeBackground}
+            setGifOptimizeBackground={setGifOptimizeBackground}
+            containers={containers}
+            selectedContainerId={selectedContainerId}
+            setSelectedContainerId={setSelectedContainerId}
+            addContainer={addContainer}
+            selectedDownloadType={selectedDownloadType}
+            setSelectedDownloadType={setSelectedDownloadType}
+            user={user || (isPublicViewRoute ? { displayName: 'Guest Viewer', uid: null } : null)}
+          />
+        </Suspense>
       </main>
-      {!isEditing && <Footer darkMode={darkMode} />}
+      {!isEditing && (
+        <Suspense fallback={null}>
+          <Footer darkMode={darkMode} />
+        </Suspense>
+      )}
     </div>
   );
 };

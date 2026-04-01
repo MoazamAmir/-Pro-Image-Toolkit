@@ -11,7 +11,7 @@ import {
     setPersistence,
     browserLocalPersistence
 } from 'firebase/auth';
-import { getAnalytics } from "firebase/analytics";
+import { getAnalytics, isSupported } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -28,9 +28,18 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const analytics = getAnalytics(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+
+isSupported()
+    .then((supported) => {
+        if (supported) {
+            getAnalytics(app);
+        }
+    })
+    .catch((error) => {
+        console.warn("Analytics init skipped:", error?.message || error);
+    });
 
 // Set persistence as default
 setPersistence(auth, browserLocalPersistence).catch((error) => {

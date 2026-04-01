@@ -18,7 +18,7 @@ const SlideRenderer = ({
             <div className={`sr-empty ${className}`} style={{
                 width: '500px', height: '350px',
                 display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyCenter: 'center', gap: '12px',
+                alignItems: 'center', justifyContent: 'center', gap: '12px',
                 background: 'rgba(255,255,255,0.03)',
                 border: '1px dashed rgba(255,255,255,0.1)',
                 borderRadius: '12px', color: 'rgba(255,255,255,0.2)'
@@ -30,20 +30,23 @@ const SlideRenderer = ({
     }
 
     const { layers = [] } = page;
+    const effectiveCanvasSize = page.canvasSize || canvasSize;
 
     return (
         <div
             className={`slide-renderer-root ${className}`}
             style={{
-                width: canvasSize?.width ? `${canvasSize.width}px` : '100%',
-                height: canvasSize?.height ? `${canvasSize.height}px` : '100%',
+                width: effectiveCanvasSize?.width ? `${effectiveCanvasSize.width}px` : '100%',
+                height: effectiveCanvasSize?.height ? `${effectiveCanvasSize.height}px` : '100%',
                 maxWidth: '100%',
                 maxHeight: '100%',
                 position: 'relative',
                 containerType: 'size',
                 background: '#fff',
                 overflow: 'hidden',
-                boxShadow: '0 20px 80px rgba(0,0,0,0.3)',
+                borderRadius: '18px',
+                border: '1px solid rgba(148,163,184,0.16)',
+                boxShadow: '0 26px 90px rgba(2,8,23,0.28)',
                 ...style
             }}
         >

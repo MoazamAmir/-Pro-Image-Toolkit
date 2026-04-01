@@ -20,9 +20,9 @@ import LinkCopiedPopup from './LinkCopiedPopup';
 
 /* ─── Design Tokens ─── */
 const tokens = {
-    brand: '#6C47FF',
-    brandHover: '#5B38E8',
-    brandLight: 'rgba(108,71,255,.08)',
+    brand: '#6366f1',
+    brandHover: '#4f46e5',
+    brandLight: 'rgba(99,102,241,0.15)',
     success: '#1D9E75',
     danger: '#E24B4A',
     amber: '#BA7517',
@@ -30,7 +30,7 @@ const tokens = {
 
 /* ─── Small reusable atoms ─── */
 const Label = ({ children, className = '' }) => (
-    <span className={`block text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5 ${className}`}>
+    <span className={`block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-gray-500 mb-1.5 ${className}`}>
         {children}
     </span>
 );
@@ -43,7 +43,7 @@ const BrandButton = ({ onClick, disabled, children, className = '', size = 'defa
         disabled={disabled}
         className={`w-full flex items-center justify-center gap-2 font-semibold rounded-xl transition-all active:scale-[.98] disabled:opacity-60
       ${size === 'sm' ? 'py-2.5 text-xs' : 'py-3.5 text-sm'}
-      bg-[#6C47FF] hover:bg-[#5B38E8] text-white shadow-sm shadow-purple-500/20
+      bg-gradient-to-tr from-[#6366f1] to-[#a855f7] hover:from-[#4f46e5] hover:to-[#9333ea] text-white shadow-[0_4px_20px_rgba(99,102,241,0.4)]
       ${className}`}
     >
         {children}
@@ -53,7 +53,7 @@ const BrandButton = ({ onClick, disabled, children, className = '', size = 'defa
 const GhostButton = ({ onClick, children, className = '' }) => (
     <button
         onClick={onClick}
-        className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all active:scale-[.98] ${className}`}
+        className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-[.98] ${className}`}
     >
         {children}
     </button>
@@ -94,19 +94,19 @@ const CheckBox = ({ checked, onChange }) => (
 const ActionTile = ({ icon: Icon, label, onClick, badge }) => (
     <button
         onClick={onClick}
-        className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-purple-50 dark:hover:bg-purple-900/10 hover:border-purple-200 dark:hover:border-purple-900/30 transition-all group active:scale-95"
+        className="flex flex-col items-center gap-1.5 p-2.5 rounded-[20px] border border-slate-100 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm hover:bg-purple-50 dark:hover:bg-purple-900/10 hover:border-purple-200 dark:hover:border-purple-900/30 transition-all group active:scale-95"
     >
         <div className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-500 group-hover:text-[#6C47FF] group-hover:border-purple-200 dark:group-hover:border-purple-900/40 transition-all relative">
             <Icon className="w-4 h-4" />
             {badge && <div className="absolute -top-1.5 -right-1.5">{badge}</div>}
         </div>
-        <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-400 text-center leading-tight group-hover:text-[#6C47FF] transition-colors uppercase tracking-wide">{label}</span>
+        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 text-center leading-tight group-hover:text-[#6C47FF] transition-colors uppercase tracking-wide">{label}</span>
     </button>
 );
 
 /* ─── View header ─── */
 const ViewHeader = ({ title, onBack, extra }) => (
-    <div className="flex items-center px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div className="flex items-center px-5 py-4 border-b border-slate-200/40 dark:border-slate-800/40 bg-white/10 dark:bg-slate-950/20 backdrop-blur-md">
         {onBack && <BackButton onClick={onBack} />}
         <h2 className="font-semibold text-sm text-gray-900 dark:text-white flex-1">{title}</h2>
         {extra}
@@ -132,7 +132,8 @@ const ExportManager = ({
     isOpen, onClose, pages = [], activePageId, layers = [],
     renderFinalCanvas, generateSVG, canvasSize, darkMode,
     designId, onDesignIdGenerated, canvasPreviewRef, adjustments,
-    user, onStartRecordingStudio, onStartPresentation, designAudios = []
+    user, onStartRecordingStudio, onStartPresentation, designAudios = [],
+    localInstanceId
 }) => {
     const [view, setView] = useState('share_design');
     const [publicViewStatus, setPublicViewStatus] = useState('idle');
@@ -654,7 +655,7 @@ const ExportManager = ({
         let urlToCopy = shareUrl;
         if (!designId) {
             try {
-                const currentState = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now() };
+                const currentState = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now(), lastUpdatedBy: localInstanceId };
                 const newId = await FirebaseSyncService.createDesign(currentState, user?.uid);
                 onDesignIdGenerated(newId);
                 urlToCopy = `${window.location.origin}/edit/${newId}`;
@@ -669,7 +670,7 @@ const ExportManager = ({
         try {
             let id = designId;
             if (!id) {
-                const state = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now() };
+                const state = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now(), lastUpdatedBy: localInstanceId };
                 id = await FirebaseSyncService.createDesign(state, user?.uid);
                 onDesignIdGenerated(id);
             }
@@ -1213,7 +1214,7 @@ const ExportManager = ({
                             let did = designId;
                             if (!did) {
                                 try {
-                                    const s = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now() };
+                                    const s = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now(), lastUpdatedBy: localInstanceId };
                                     did = await FirebaseSyncService.createDesign(s, user?.uid);
                                     onDesignIdGenerated?.(did);
                                 } catch { alert('Failed to save design. Please try again.'); return; }
@@ -1264,7 +1265,7 @@ const ExportManager = ({
 
                     <div className="w-full mt-2">
                         <Label>Access status</Label>
-                        <div className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex flex-col gap-3">
+                        <div className="p-3 rounded-[20px] border border-slate-100 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm/50 flex flex-col gap-3">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Design Role</span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelf ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'} border border-transparent`}>
@@ -1308,7 +1309,7 @@ const ExportManager = ({
         <div className="fixed inset-0 z-[1000] flex items-start justify-end pointer-events-none">
             <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
             <div
-                className="relative mt-14 mr-4 z-[1001] pointer-events-auto bg-white dark:bg-gray-900 w-[calc(100vw-32px)] sm:w-[360px] rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col"
+                className="relative mt-14 mr-4 z-[1001] pointer-events-auto bg-white/80 dark:bg-slate-950/90 w-[calc(100vw-32px)] sm:w-[360px] rounded-[32px] shadow-[0_40px_100px_rgba(15,23,42,0.4)] border border-white/20 dark:border-slate-800/50 overflow-hidden flex flex-col backdrop-blur-[40px] ring-1 ring-black/5 dark:ring-white/5"
                 style={{ maxHeight: 'calc(100vh - 80px)', animation: 'slideDown .25s cubic-bezier(.16,1,.3,1)' }}
             >
                 {view === 'share_design' ? renderShareDesignView()
@@ -1341,3 +1342,4 @@ const ExportManager = ({
 };
 
 export default ExportManager;
+

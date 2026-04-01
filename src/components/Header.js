@@ -116,11 +116,14 @@ const Header = ({
     };
 
     return (
-        <header className={`${darkMode ? 'bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900' : 'bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-600'} shadow-2xl sticky top-0 z-50 transition-all duration-500 backdrop-blur-md border-b ${darkMode ? 'border-purple-800/30' : 'border-white/20'}`}>
+        <header
+            className="sticky top-0 z-50 transition-all duration-500 backdrop-blur-xl border-b reveal-up"
+            style={{ background: 'var(--surface-header)', borderColor: 'var(--border-strong)', boxShadow: 'var(--shadow-soft)' }}
+        >
             {/* Animated background effect */}
-            <div className="absolute inset-0 overflow-hidden opacity-20">
-                <div className={`absolute -top-1/2 -left-1/4 w-96 h-96 ${darkMode ? 'bg-purple-500' : 'bg-white'} rounded-full blur-3xl animate-pulse`}></div>
-                <div className={`absolute -bottom-1/2 -right-1/4 w-96 h-96 ${darkMode ? 'bg-blue-500' : 'bg-yellow-200'} rounded-full blur-3xl animate-pulse`} style={{ animationDelay: '1s' }}></div>
+            <div className="absolute inset-0 overflow-hidden opacity-70 pointer-events-none">
+                <div className={`absolute -top-28 left-1/4 w-72 h-72 ${darkMode ? 'bg-teal-500/18' : 'bg-blue-500/10'} rounded-full blur-3xl`}></div>
+                <div className={`absolute -bottom-24 right-0 w-72 h-72 ${darkMode ? 'bg-blue-500/16' : 'bg-teal-500/10'} rounded-full blur-3xl`}></div>
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
@@ -137,16 +140,18 @@ const Header = ({
                         }}
                     >
                         <div className="relative">
-                            <Zap className="w-7 h-7 sm:w-9 sm:h-9 text-yellow-400 mr-2.5 sm:mr-3 transition-all duration-300 group-hover:scale-110 group-hover:rotate-12 drop-shadow-lg" />
-                            <div className="absolute inset-0 bg-yellow-400 blur-xl opacity-30 group-hover:opacity-50 transition-opacity duration-300"></div>
-                            <Sparkles className="w-3 h-3 text-yellow-300 absolute -top-1 -right-1 animate-pulse" />
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 shadow-lg shadow-blue-500/20 transition-all duration-300 group-hover:scale-105 sm:h-12 sm:w-12">
+                                <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-white drop-shadow-sm" />
+                            </div>
+                            
+                            <Sparkles className="w-3 h-3 text-cyan-300 absolute -top-0.5 -right-0.5 animate-pulse" />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-lg sm:text-2xl font-bold text-white group-hover:text-yellow-300 transition-all duration-300 tracking-tight leading-tight">
+                            <span className={`text-lg sm:text-[1.4rem] font-bold transition-all duration-300 tracking-tight leading-tight ${darkMode ? 'text-white group-hover:text-cyan-300' : 'text-white group-hover:text-cyan-200'}`}>
                                 Pro Image Toolkit
                             </span>
-                            <span className={`text-[9px] sm:text-[10px] ${darkMode ? 'text-purple-300' : 'text-white/80'} font-medium tracking-wider`}>
-                                CONVERT • EDIT • OPTIMIZE
+                            <span className={`text-[9px] sm:text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-300'} font-semibold tracking-[0.24em] uppercase`}>
+                                CONVERT | EDIT | OPTIMIZE
                             </span>
                         </div>
                     </div>
@@ -165,7 +170,7 @@ const Header = ({
                                     ref={(el) => (dropdownRefs.current[category] = el)}
                                 >
                                     <button
-                                        className={`${darkMode ? 'text-gray-200 hover:text-yellow-300 hover:bg-white/10' : 'text-white hover:text-yellow-100 hover:bg-white/20'} px-3 lg:px-4 py-2.5 text-xs lg:text-sm font-semibold flex items-center gap-1.5 transition-all duration-300 rounded-xl backdrop-blur-sm group relative overflow-hidden`}
+                                        className={`${darkMode ? 'text-slate-200 hover:text-cyan-200 hover:bg-white/8' : 'text-slate-100 hover:text-white hover:bg-white/14'} px-3 lg:px-4 py-2.5 text-xs lg:text-sm font-semibold flex items-center gap-1.5 transition-all duration-300 rounded-xl backdrop-blur-sm group relative overflow-hidden`}
                                     >
                                         <span className="relative z-10 flex items-center gap-1.5">
                                             <span className="hidden lg:inline">{displayName}</span>
@@ -180,8 +185,12 @@ const Header = ({
                                     {/* Dropdown */}
                                     {activeDropdown === category && (
                                         <div
-                                            className={`absolute top-full left-0 mt-3 ${darkMode ? 'bg-gray-900/95 border-purple-700/50' : 'bg-white/95 border-purple-300/50'} shadow-2xl rounded-2xl border-2 z-50 animate-slideDown backdrop-blur-xl overflow-hidden`}
-                                            style={{ minWidth: '200px' }}
+                                            className="absolute top-full left-0 mt-3 shadow-2xl rounded-2xl border z-50 animate-slideDown overflow-hidden"
+                                            style={{
+                                                minWidth: '220px',
+                                                background: 'rgba(8, 15, 30, 0.98)',
+                                                borderColor: 'rgba(71, 85, 105, 0.85)'
+                                            }}
                                         >
                                             <style>{`
                                                 @keyframes slideDown {
@@ -200,7 +209,7 @@ const Header = ({
                                             `}</style>
 
                                             {/* Category Header */}
-                                            <div className={`px-4 py-3 ${darkMode ? 'bg-purple-900/30 border-b border-purple-700/30' : 'bg-purple-100/50 border-b border-purple-300/30'} flex items-center gap-2`}>
+                                            <div className="px-4 py-3 border-b flex items-center gap-2" style={{ background: 'rgba(15, 23, 42, 0.92)', borderColor: 'rgba(51, 65, 85, 0.9)' }}>
                                                 {/* <div className={`${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
                                                     {getCategoryIcon(category)}
                                                 </div> */}
@@ -221,13 +230,10 @@ const Header = ({
                                                                 e.stopPropagation();
                                                                 handleToolClick(tool);
                                                             }}
-                                                            className={`block w-full text-left px-4 py-2.5 text-xs font-medium transition-all duration-200 group relative ${darkMode
-                                                                ? 'text-gray-200 hover:bg-purple-800/40 hover:text-white'
-                                                                : 'text-gray-700 hover:bg-purple-100 hover:text-purple-900'
-                                                                }`}
+                                                            className="block w-full text-left px-4 py-2.5 text-xs font-medium transition-all duration-200 group relative text-slate-100 hover:bg-cyan-500/12 hover:text-white"
                                                         >
                                                             <span className="relative z-10">{toolName}</span>
-                                                            <div className={`absolute left-0 top-0 h-full w-1 ${darkMode ? 'bg-purple-500' : 'bg-purple-600'} transform scale-y-0 group-hover:scale-y-100 transition-transform duration-200 origin-top`}></div>
+                                                            <div className={`absolute left-0 top-0 h-full w-1 ${darkMode ? 'bg-cyan-400' : 'bg-cyan-400'} transform scale-y-0 group-hover:scale-y-100 transition-transform duration-200 origin-top`}></div>
                                                         </button>
                                                     );
                                                 })}
@@ -246,7 +252,7 @@ const Header = ({
                             ref={(el) => (dropdownRefs.current['mobile'] = el)}
                         >
                             <button
-                                className={`${darkMode ? 'text-gray-200 hover:text-yellow-300 bg-white/5' : 'text-white hover:text-yellow-100 bg-white/20'} px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all duration-300 rounded-xl backdrop-blur-sm border ${darkMode ? 'border-purple-700/30' : 'border-white/30'}`}
+                                className={`${darkMode ? 'text-slate-200 hover:text-cyan-200 bg-white/5' : 'text-slate-100 hover:text-white bg-white/12'} px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all duration-300 rounded-xl backdrop-blur-sm border ${darkMode ? 'border-slate-800/70' : 'border-slate-700/78'}`}
                                 onClick={() => setActiveDropdown(activeDropdown === 'mobile' ? null : 'mobile')}
                             >
                                 <span>Tools</span>
@@ -257,7 +263,7 @@ const Header = ({
 
                             {activeDropdown === 'mobile' && (
                                 <div
-                                    className={`fixed top-16 left-1/2 transform -translate-x-1/2 mt-2 ${darkMode ? 'bg-gray-900/98 border-purple-700/50' : 'bg-white/98 border-purple-300/50'} shadow-2xl rounded-3xl border-2 z-50 w-[95vw] max-h-[80vh] overflow-y-auto backdrop-blur-xl`}
+                                    className={`fixed top-16 left-1/2 transform -translate-x-1/2 mt-2 ${darkMode ? 'bg-slate-950/98 border-slate-800/90' : 'bg-slate-900/98 border-slate-700/90'} shadow-2xl rounded-3xl border z-50 w-[95vw] max-h-[80vh] overflow-y-auto backdrop-blur-xl`}
                                 >
                                     <div className="p-5">
                                         {Object.entries(converters).map(([category, items]) => {
@@ -266,11 +272,11 @@ const Header = ({
 
                                             return (
                                                 <div key={category} className="mb-6 last:mb-0">
-                                                    <div className={`flex items-center mb-3 pb-2 ${darkMode ? 'border-purple-700/30' : 'border-purple-300/30'} border-b-2`}>
-                                                        <div className={`w-6 h-6 mr-2.5 flex items-center justify-center rounded-lg ${darkMode ? 'bg-purple-900/40 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>
+                                                    <div className={`flex items-center mb-3 pb-2 ${darkMode ? 'border-slate-800/80' : 'border-slate-700/80'} border-b`}>
+                                                        <div className={`w-6 h-6 mr-2.5 flex items-center justify-center rounded-lg ${darkMode ? 'bg-cyan-500/10 text-cyan-300' : 'bg-cyan-500/10 text-cyan-300'}`}>
                                                             {getCategoryIcon(category)}
                                                         </div>
-                                                        <h3 className={`font-bold text-sm ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+                                                        <h3 className={`font-bold text-sm ${darkMode ? 'text-slate-100' : 'text-slate-100'}`}>
                                                             {displayName}
                                                         </h3>
                                                     </div>
@@ -285,7 +291,7 @@ const Header = ({
                                                                         handleToolClick(tool);
                                                                         setActiveDropdown(null);
                                                                     }}
-                                                                    className={`text-[11px] ${darkMode ? 'text-gray-300 bg-gray-800/50 hover:bg-purple-800/50 hover:text-white border-gray-700' : 'text-gray-700 bg-gray-50 hover:bg-purple-100 border-gray-200'} text-left py-3 px-3 rounded-xl transition-all duration-200 font-semibold border hover:scale-[1.02] transform`}
+                                                                    className={`text-[11px] ${darkMode ? 'text-slate-200 bg-slate-900/70 hover:bg-cyan-500/10 hover:text-white border-slate-800' : 'text-slate-100 bg-slate-900/70 hover:bg-cyan-500/10 border-slate-700'} text-left py-3 px-3 rounded-xl transition-all duration-200 font-semibold border hover:scale-[1.02] transform`}
                                                                 >
                                                                     {toolName}
                                                                 </button>
@@ -305,14 +311,14 @@ const Header = ({
                     <div className="flex items-center space-x-2 sm:space-x-3">
                         <button
                             onClick={() => setIsSearchOpen(true)}
-                            className={`p-2.5 sm:p-3 rounded-xl ${darkMode ? 'bg-gray-800/60 hover:bg-gray-700/60 border-purple-700/30' : 'bg-white/25 hover:bg-white/35 border-white/30'} transition-all duration-300 hover:scale-110 transform backdrop-blur-md shadow-xl border-2 group relative overflow-hidden`}
+                            className={`p-2.5 sm:p-3 rounded-xl ${darkMode ? 'bg-slate-900/75 hover:bg-slate-800/80 border-slate-800/90' : 'bg-white/12 hover:bg-white/18 border-slate-700/78'} transition-all duration-300 hover:scale-110 transform backdrop-blur-md shadow-xl border group relative overflow-hidden`}
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                             <Search className="w-5 h-5 sm:w-5 sm:h-5 text-white relative z-10 drop-shadow-lg" />
                         </button>
                         <button
                             onClick={() => setDarkMode(!darkMode)}
-                            className={`p-2.5 sm:p-3 rounded-xl ${darkMode ? 'bg-gray-800/60 hover:bg-gray-700/60 border-purple-700/30' : 'bg-white/25 hover:bg-white/35 border-white/30'} transition-all duration-300 hover:scale-110 transform backdrop-blur-md shadow-xl border-2 group relative overflow-hidden`}
+                            className={`p-2.5 sm:p-3 rounded-xl ${darkMode ? 'bg-slate-900/75 hover:bg-slate-800/80 border-slate-800/90' : 'bg-white/12 hover:bg-white/18 border-slate-700/78'} transition-all duration-300 hover:scale-110 transform backdrop-blur-md shadow-xl border group relative overflow-hidden`}
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                             {darkMode ? (
@@ -327,7 +333,7 @@ const Header = ({
                             <div className="relative" ref={(el) => (dropdownRefs.current['user'] = el)}>
                                 <button
                                     onClick={() => setActiveDropdown(activeDropdown === 'user' ? null : 'user')}
-                                    className={`flex items-center gap-2 p-1.5 sm:p-2 pr-3 rounded-xl ${darkMode ? 'bg-gray-800/60 hover:bg-gray-700/60 border-purple-700/30' : 'bg-white/25 hover:bg-white/35 border-white/30'} transition-all duration-300 backdrop-blur-md shadow-xl border-2`}
+                                    className={`flex items-center gap-2 p-1.5 sm:p-2 pr-3 rounded-xl ${darkMode ? 'bg-slate-900/75 hover:bg-slate-800/80 border-slate-800/90' : 'bg-white/12 hover:bg-white/18 border-slate-700/78'} transition-all duration-300 backdrop-blur-md shadow-xl border`}
                                 >
                                     {user.photoURL ? (
                                         <img
@@ -336,20 +342,20 @@ const Header = ({
                                             className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover"
                                         />
                                     ) : (
-                                        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${darkMode ? 'bg-purple-600' : 'bg-purple-500'} flex items-center justify-center`}>
+                                        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${darkMode ? 'bg-cyan-500' : 'bg-cyan-500'} flex items-center justify-center`}>
                                             <User className="w-4 h-4 text-white" />
                                         </div>
                                     )}
-                                    <ChevronDown className={`w-3.5 h-3.5 text-white transition-transform duration-300 ${activeDropdown === 'user' ? 'rotate-180' : ''}`} />
+                                    <ChevronDown className={`w-3.5 h-3.5 text-slate-100 transition-transform duration-300 ${activeDropdown === 'user' ? 'rotate-180' : ''}`} />
                                 </button>
 
                                 {activeDropdown === 'user' && (
-                                    <div className={`absolute top-full right-0 mt-2 ${darkMode ? 'bg-gray-900/95 border-purple-700/50' : 'bg-white/95 border-purple-300/50'} shadow-2xl rounded-xl border-2 z-50 backdrop-blur-xl overflow-hidden min-w-[200px]`}>
-                                        <div className={`px-4 py-3 ${darkMode ? 'border-b border-purple-700/30' : 'border-b border-purple-200'}`}>
-                                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} truncate`}>
+                                    <div className={`absolute top-full right-0 mt-2 ${darkMode ? 'bg-slate-950/96 border-slate-800/90' : 'bg-slate-900/96 border-slate-700/90'} shadow-2xl rounded-xl border z-50 backdrop-blur-xl overflow-hidden min-w-[200px]`}>
+                                        <div className={`px-4 py-3 ${darkMode ? 'border-b border-slate-800/80' : 'border-b border-slate-700/80'}`}>
+                                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-white'} truncate`}>
                                                 {user.displayName || 'User'}
                                             </p>
-                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} truncate`}>
+                                            <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-400'} truncate`}>
                                                 {user.email}
                                             </p>
                                         </div>
@@ -358,7 +364,7 @@ const Header = ({
                                                 setActiveDropdown(null);
                                                 onDeleteAccount && onDeleteAccount();
                                             }}
-                                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all ${darkMode ? 'text-gray-400 hover:bg-red-900/10 hover:text-red-400' : 'text-gray-600 hover:bg-red-50 hover:text-red-600'}`}
+                                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all ${darkMode ? 'text-slate-400 hover:bg-red-500/10 hover:text-red-300' : 'text-slate-300 hover:bg-red-500/10 hover:text-red-300'}`}
                                         >
                                             <Trash2 className="w-4 h-4" />
                                             Delete Account
@@ -368,7 +374,7 @@ const Header = ({
                                                 setActiveDropdown(null);
                                                 onLogout && onLogout();
                                             }}
-                                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all ${darkMode ? 'text-red-400 hover:bg-red-900/30' : 'text-red-600 hover:bg-red-50'}`}
+                                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all ${darkMode ? 'text-red-400 hover:bg-red-500/10' : 'text-red-300 hover:bg-red-500/10'}`}
                                         >
                                             <LogOut className="w-4 h-4" />
                                             Log out
@@ -387,7 +393,7 @@ const Header = ({
                     {/* Backdrop to close search when clicking outside */}
                     <div className="fixed inset-0 bg-black/5 z-[55] backdrop-blur-[2px]" onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}></div>
 
-                    <div className={`absolute top-full left-0 right-0 z-[60] ${darkMode ? 'bg-slate-900 border-purple-800' : 'bg-white border-purple-100'} border-b shadow-2xl overflow-hidden transition-all duration-300`}>
+                    <div className={`absolute top-full left-0 right-0 z-[60] ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-900 border-slate-800'} border-b shadow-2xl overflow-hidden transition-all duration-300`}>
                         <div className="max-w-4xl mx-auto px-4 py-4">
                             {/* Search Input Area */}
                             <div className="flex items-center space-x-3">
@@ -398,13 +404,13 @@ const Header = ({
                                         placeholder="Search for tools (e.g. JPG to PNG)..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className={`w-full py-2.5 px-4 pr-10 rounded-xl text-sm font-medium focus:outline-none border transition-all ${darkMode ? 'bg-gray-800 border-gray-700 text-white focus:border-purple-500' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-purple-600'}`}
+                                        className={`w-full py-2.5 px-4 pr-10 rounded-xl text-sm font-medium focus:outline-none border transition-all ${darkMode ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-400' : 'bg-slate-950/60 border-slate-800 text-white focus:border-cyan-400'}`}
                                     />
                                     <Search className={`absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                 </div>
                                 <button
                                     onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
-                                    className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'} transition-all`}
+                                    className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-900 text-slate-400' : 'hover:bg-slate-800 text-slate-400'} transition-all`}
                                 >
                                     <ArrowLeft className="w-5 h-5 rotate-[180deg]" />
                                 </button>
@@ -423,13 +429,13 @@ const Header = ({
                                                         setIsSearchOpen(false);
                                                         setSearchQuery('');
                                                     }}
-                                                    className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between group ${darkMode ? 'bg-gray-800/40 border-gray-700 hover:border-purple-500 text-white' : 'bg-white border-gray-100 hover:border-purple-600 text-gray-900'} shadow-sm`}
+                                                    className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between group ${darkMode ? 'bg-slate-900/70 border-slate-800 hover:border-cyan-400 text-white' : 'bg-slate-900/70 border-slate-800 hover:border-cyan-400 text-white'} shadow-sm`}
                                                 >
                                                     <div className="flex-1 min-w-0">
-                                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter mb-1 inline-block ${darkMode ? 'bg-purple-900/50 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>{tool.category}</span>
-                                                        <h3 className="font-bold text-xs truncate group-hover:text-purple-600 transition-colors uppercase">{tool.name}</h3>
+                                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter mb-1 inline-block ${darkMode ? 'bg-cyan-500/10 text-cyan-300' : 'bg-cyan-500/10 text-cyan-300'}`}>{tool.category}</span>
+                                                        <h3 className="font-bold text-xs truncate group-hover:text-cyan-300 transition-colors uppercase">{tool.name}</h3>
                                                     </div>
-                                                    <ChevronDown className="w-3 h-3 text-gray-300 rotate-[-90deg] group-hover:text-purple-600 transition-all ml-2" />
+                                                    <ChevronDown className="w-3 h-3 text-slate-400 rotate-[-90deg] group-hover:text-cyan-300 transition-all ml-2" />
                                                 </button>
                                             ))}
                                         </div>

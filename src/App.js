@@ -1141,6 +1141,8 @@ const App = () => {
   }
 
   // User is logged in, show main app
+  const isCropWorkspace = activeConverter?.to === 'crop';
+
   return (
     <div className={`app-shell min-h-screen flex flex-col transition-all duration-500`}>
       {!isEditing && (
@@ -1188,7 +1190,7 @@ const App = () => {
         </div>
       )}
 
-      <main className={!isEditing ? "flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full" : "w-screen h-screen"}>
+      <main className={isEditing ? "w-screen h-screen" : isCropWorkspace ? "w-full min-h-screen overflow-x-hidden" : "flex-grow max-w-6xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 w-full"}>
         <Suspense fallback={<AppShellFallback label="Loading toolkit..." />}>
           <ConverterUI
             converters={converters}

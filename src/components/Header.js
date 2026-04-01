@@ -126,11 +126,11 @@ const Header = ({
                 <div className={`absolute -bottom-24 right-0 w-72 h-72 ${darkMode ? 'bg-blue-500/16' : 'bg-teal-500/10'} rounded-full blur-3xl`}></div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-                <div className="flex justify-between items-center h-16 sm:h-18">
+            <div className="w-full px-3 sm:px-4 lg:px-6 xl:px-8 relative">
+                <div className="flex items-center justify-between gap-3 h-16 sm:h-18 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-4">
                     {/* Logo */}
                     <div
-                        className="flex items-center cursor-pointer group"
+                        className="flex min-w-0 items-center gap-3 cursor-pointer group md:justify-self-start"
                         onClick={() => {
                             handleSetActiveConverter(null);
                             setSelectedFile(null);
@@ -146,18 +146,18 @@ const Header = ({
 
                             <Sparkles className="w-3 h-3 text-cyan-300 absolute -top-0.5 -right-0.5 animate-pulse" />
                         </div>
-                        <div className="flex flex-col">
-                            <span className={`text-lg sm:text-[1.4rem] font-bold transition-all duration-300 tracking-tight leading-tight ${darkMode ? 'text-white group-hover:text-cyan-300' : 'text-white group-hover:text-cyan-200'}`}>
+                        <div className="flex min-w-0 flex-col">
+                            <span className={`truncate text-lg sm:text-[1.4rem] font-bold transition-all duration-300 tracking-tight leading-tight ${darkMode ? 'text-white group-hover:text-cyan-300' : 'text-white group-hover:text-cyan-200'}`}>
                                 Pro Image Toolkit
                             </span>
-                            <span className={`text-[9px] sm:text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-300'} font-semibold tracking-[0.24em] uppercase`}>
+                            <span className={`hidden truncate text-[9px] sm:text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-300'} font-semibold tracking-[0.24em] uppercase lg:block`}>
                                 CONVERT | EDIT | OPTIMIZE
                             </span>
                         </div>
                     </div>
 
                     {/* Desktop Navigation */}
-                    <nav className="hidden md:flex space-x-1 lg:space-x-2">
+                    <nav className="hidden min-w-0 items-center justify-self-center md:flex md:gap-1 lg:gap-1.5">
                         {Object.entries(converters).map(([category, items]) => {
                             const displayName = category;
                             const categoryMainTools = mainTools[category] || [];
@@ -170,7 +170,7 @@ const Header = ({
                                     ref={(el) => (dropdownRefs.current[category] = el)}
                                 >
                                     <button
-                                        className={`${darkMode ? 'text-slate-200 hover:text-cyan-200 hover:bg-white/8' : 'text-slate-100 hover:text-white hover:bg-white/14'} px-3 lg:px-4 py-2.5 text-xs lg:text-sm font-semibold flex items-center gap-1.5 transition-all duration-300 rounded-xl backdrop-blur-sm group relative overflow-hidden`}
+                                        className={`${darkMode ? 'text-slate-200 hover:text-cyan-200 hover:bg-white/8' : 'text-slate-100 hover:text-white hover:bg-white/14'} px-2.5 lg:px-3.5 py-2.5 text-xs lg:text-sm font-semibold flex items-center gap-1.5 transition-all duration-300 rounded-xl backdrop-blur-sm group relative overflow-hidden whitespace-nowrap`}
                                     >
                                         <span className="relative z-10 flex items-center gap-1.5">
                                             <span className="hidden lg:inline">{displayName}</span>
@@ -308,7 +308,7 @@ const Header = ({
                     </nav>
 
                     {/* Dark Mode Toggle & Badge */}
-                    <div className="flex items-center space-x-2 sm:space-x-3">
+                    <div className="flex flex-shrink-0 items-center space-x-2 sm:space-x-3 md:justify-self-end">
                         <button
                             onClick={() => setIsSearchOpen(true)}
                             className={`p-2.5 sm:p-3 rounded-xl ${darkMode ? 'bg-slate-900/75 hover:bg-slate-800/80 border-slate-800/90' : 'bg-white/12 hover:bg-white/18 border-slate-700/78'} transition-all duration-300 hover:scale-110 transform backdrop-blur-md shadow-xl border group relative overflow-hidden`}

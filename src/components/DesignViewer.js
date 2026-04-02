@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     ChevronLeft, ChevronRight, Share2,
     Maximize2, ZoomIn, ZoomOut,
-    X, Check, Copy
+    X, Check, Copy, Play, Pause
 } from 'lucide-react';
 import FirebaseSyncService from '../services/FirebaseSyncService';
 import SlideRenderer from './SlideRenderer';
@@ -18,9 +18,15 @@ const DesignViewer = ({ designId, user }) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showSharePopup, setShowSharePopup] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [isAutoplay, setIsAutoplay] = useState(false);
+    const [isAutoplayPaused, setIsAutoplayPaused] = useState(false);
+    const [autoplayProgress, setAutoplayProgress] = useState(0);
 
     const containerRef = useRef(null);
     const canvasAreaRef = useRef(null);
+    const autoplayTimerRef = useRef(null);
+    const autoplayProgressRef = useRef(null);
+    const AUTOPLAY_INTERVAL = 5000; // 5 seconds per page
 
     // -- Load Design --
     useEffect(() => {
@@ -80,18 +86,42 @@ const DesignViewer = ({ designId, user }) => {
     }, [updateScale, pages, isLoading]);
 
     // -- Navigation --
-    const goNext = () => setCurrentPageIndex(prev => Math.min(prev + 1, pages.length - 1));
-    const goPrev = () => setCurrentPageIndex(prev => Math.max(prev - 1, 0));
+    const goToPage = useCallback((index) => {
+        if (index >= 0 && index < pages.length) {
+            setCurrentPageIndex(index);
+            setAutoplayProgress(0);
+        }
+    }, [pages.length]);
+
+    const goNext = useCallback(() => {
+        if (currentPageIndex < pages.length - 1) {
+            goToPage(currentPageIndex + 1);
+        } else if (isAutoplay) {
+            // Loop back to first page in autoplay
+            goToPage(0);
+        }
+    }, [currentPageIndex, pages.length, goToPage, isAutoplay]);
+
+    const goPrev = useCallback(() => {
+        if (currentPageIndex > 0) {
+            goToPage(currentPageIndex - 1);
+        }
+    }, [currentPageIndex, goToPage]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.key === 'ArrowRight' || e.key === ' ') goNext();
-            else if (e.key === 'ArrowLeft') goPrev();
-            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                goNext();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                goPrev();
+            } else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'p' || e.key === 'P') setIsAutoplay(prev => !prev);
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [pages.length]);
+    }, [pages.length, goNext, goPrev]);
 
     // -- Fullscreen --
     const toggleFullscreen = () => {
@@ -113,6 +143,32 @@ const DesignViewer = ({ designId, user }) => {
         document.addEventListener('fullscreenchange', handleFsChange);
         return () => document.removeEventListener('fullscreenchange', handleFsChange);
     }, [updateScale]);
+
+    // -- Autoplay Logic --
+    useEffect(() => {
+        if (!isAutoplay || isAutoplayPaused) {
+            if (autoplayTimerRef.current) clearTimeout(autoplayTimerRef.current);
+            if (autoplayProgressRef.current) clearInterval(autoplayProgressRef.current);
+            return;
+        }
+
+        const progressStep = 50; // update progress every 50ms
+        let elapsed = 0;
+
+        autoplayProgressRef.current = setInterval(() => {
+            elapsed += progressStep;
+            setAutoplayProgress((elapsed / AUTOPLAY_INTERVAL) * 100);
+        }, progressStep);
+
+        autoplayTimerRef.current = setTimeout(() => {
+            goNext();
+        }, AUTOPLAY_INTERVAL);
+
+        return () => {
+            if (autoplayTimerRef.current) clearTimeout(autoplayTimerRef.current);
+            if (autoplayProgressRef.current) clearInterval(autoplayProgressRef.current);
+        };
+    }, [isAutoplay, currentPageIndex, isAutoplayPaused, goNext]);
 
     // -- Share --
     const handleCopyLink = () => {
@@ -198,6 +254,16 @@ const DesignViewer = ({ designId, user }) => {
                     />
                 </div>
 
+                {/* Progress bar (Autoplay) */}
+                {isAutoplay && (
+                    <div className="dv-autoplay-progress">
+                        <div
+                            className="dv-autoplay-bar"
+                            style={{ width: `${autoplayProgress}%` }}
+                        />
+                    </div>
+                )}
+
                 {/* Side Navigation Buttons (Floating) */}
                 {pages.length > 1 && (
                     <>
@@ -245,7 +311,33 @@ const DesignViewer = ({ designId, user }) => {
                 </div>
 
                 <div className="dv-footer-right">
-                    <button className="dv-fs-btn" onClick={toggleFullscreen}>
+                    {/* Autoplay Controls */}
+                    <div className="dv-autoplay-controls">
+                        {isAutoplay && (
+                            <button
+                                className="dv-autoplay-pause-btn"
+                                onClick={() => setIsAutoplayPaused(!isAutoplayPaused)}
+                                title={isAutoplayPaused ? "Resume Autoplay" : "Pause Autoplay"}
+                            >
+                                {isAutoplayPaused ? <Play size={16} /> : <Pause size={16} />}
+                            </button>
+                        )}
+                        <button
+                            className={`dv-autoplay-toggle-btn ${isAutoplay ? 'active' : ''}`}
+                            onClick={() => {
+                                setIsAutoplay(!isAutoplay);
+                                if (!isAutoplay) setIsAutoplayPaused(false);
+                            }}
+                            title="Autoplay"
+                        >
+                            <Play size={18} />
+                            <span className="dv-btn-text">Autoplay</span>
+                        </button>
+                    </div>
+
+                    <div className="dv-divider-v" />
+
+                    <button className="dv-fs-btn" onClick={toggleFullscreen} title="Full Screen">
                         <Maximize2 size={18} />
                     </button>
                 </div>
@@ -569,20 +661,89 @@ const styles = `
         color: #1e293b !important;
     }
 
-    .dv-fs-btn {
+    .dv-fs-btn:hover { background: #e2e8f0; color: #1e293b; }
+
+    /* ── Autoplay UI ── */
+    .dv-autoplay-progress {
+        position: absolute;
+        bottom: 0px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: rgba(0,0,0,0.05);
+        z-index: 20;
+    }
+    .dv-autoplay-bar {
+        height: 100%;
+        background: #6C47FF;
+        transition: width 0.05s linear;
+    }
+
+    .dv-autoplay-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
         background: #f1f5f9;
-        border: 1px solid #e2e8f0;
-        color: #475569;
-        width: 34px;
-        height: 34px;
+        padding: 2px;
         border-radius: 9px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .dv-autoplay-toggle-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border: none;
+        background: transparent;
+        color: #475569;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        border-radius: 7px;
+        transition: all 0.2s;
+    }
+    .dv-autoplay-toggle-btn.active {
+        background: #6C47FF;
+        color: #fff;
+    }
+    .dv-autoplay-toggle-btn:hover:not(.active) {
+        background: #e2e8f0;
+    }
+
+    .dv-autoplay-pause-btn {
+        width: 28px;
+        height: 28px;
         display: flex;
         align-items: center;
         justify-content: center;
+        border: none;
+        background: transparent;
+        color: #475569;
         cursor: pointer;
+        border-radius: 7px;
         transition: all 0.2s;
     }
-    .dv-fs-btn:hover { background: #e2e8f0; color: #1e293b; }
+    .dv-autoplay-pause-btn:hover {
+        background: #e2e8f0;
+    }
+
+    .dv-divider-v {
+        width: 1px;
+        height: 20px;
+        background: #e2e8f0;
+        margin: 0 4px;
+    }
+
+    .dv-btn-text {
+        display: inline-block;
+    }
+
+    @media (max-width: 600px) {
+        .dv-btn-text { display: none; }
+    }
 `;
 
 export default DesignViewer;

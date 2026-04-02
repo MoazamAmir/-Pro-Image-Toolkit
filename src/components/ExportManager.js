@@ -1235,10 +1235,10 @@ const ExportManager = ({
     ──────────────────────────────── */
     const renderPresentView = () => {
         const modes = [
-            { id: 'fullscreen', label: 'Full screen', desc: 'Present at your own pace', icon: Maximize },
+            // { id: 'fullscreen', label: 'Full screen', desc: 'Present at your own pace', icon: Maximize },
             { id: 'presenter', label: 'Presenter', desc: 'View with speaker notes', icon: MonitorPlay },
             { id: 'present_and_record', label: 'Record', desc: 'Record while presenting', icon: VideoIcon },
-            { id: 'autoplay', label: 'Autoplay', desc: 'Auto-advance slides', icon: Play },
+            // { id: 'autoplay', label: 'Autoplay', desc: 'Auto-advance slides', icon: Play },
         ];
         const activeModeDesc = modes.find(m => m.id === presentMode)?.desc;
         return (
@@ -1278,8 +1278,8 @@ const ExportManager = ({
                     </div>
                     <BrandButton onClick={async () => {
                         onClose();
-                        if (presentMode === 'present_and_record') { 
-                            onStartRecordingStudio?.(); 
+                        if (presentMode === 'present_and_record') {
+                            onStartRecordingStudio?.();
                             return;
                         }
 
@@ -1291,7 +1291,7 @@ const ExportManager = ({
                                 onDesignIdGenerated?.(did);
                             } catch { alert('Failed to save design. Please try again.'); return; }
                         }
-                        
+
                         // Open in a new Pop-up Window for a "Canva-like" experience
                         const width = 1200;
                         const height = 800;

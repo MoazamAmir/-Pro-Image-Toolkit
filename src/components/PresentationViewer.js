@@ -4,6 +4,7 @@ import {
     X, ChevronLeft, ChevronRight, Maximize2, Minimize2,
     Search, Share2, Monitor, MoreHorizontal, Pause, Play
 } from 'lucide-react';
+import SlideRenderer from './SlideRenderer';
 
 const PresentationViewer = ({
     pages,
@@ -166,15 +167,22 @@ const PresentationViewer = ({
     };
 
     const currentPage = pages[currentPageIndex];
-    const currentImageSrc = currentPage ? previewImages[currentPage.id] : null;
 
     return createPortal(
         <div className="pv-viewer">
             {/* Main Stage */}
             <div className="pv-stage" onClick={handleStageClick}>
                 <div className="pv-canvas-wrapper" style={{ transform: `scale(${zoom})` }}>
-                    {currentImageSrc ? (
-                        <img src={currentImageSrc} alt={`Page ${currentPageIndex + 1}`} className="pv-canvas-img" draggable={false} />
+                    {currentPage ? (
+                        <div className="pv-canvas-slide-container overflow-hidden rounded-[18px] border border-slate-800/50 shadow-2xl">
+                            <SlideRenderer
+                                page={currentPage}
+                                canvasSize={canvasSize}
+                                adjustments={adjustments}
+                                darkMode={darkMode}
+                                className="pv-canvas-slide"
+                            />
+                        </div>
                     ) : (
                         <div className="pv-loading">
                             <div className="pv-spinner" />
@@ -314,20 +322,13 @@ const PresentationViewer = ({
                     transition: transform 0.2s ease;
                 }
 
-                .pv-canvas-img {
+                .pv-canvas-img, .pv-canvas-slide-container {
                     max-width: 100%;
                     max-height: calc(100vh - 120px);
                     object-fit: contain;
                     border-radius: 18px;
                     border: 1px solid rgba(148, 163, 184, 0.16);
                     box-shadow: 0 28px 90px rgba(2, 8, 23, 0.68);
-                }
-
-                .pv-loading {
-                    width: 400px;
-                    height: 300px;
-                    display: flex;
-                    align-items: center;
                     justify-content: center;
                 }
                 .pv-spinner {

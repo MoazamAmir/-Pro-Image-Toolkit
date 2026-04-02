@@ -4069,11 +4069,25 @@ const ImageEditor = ({
                         {!isViewOnly && (
                             <>
                                 <button
+                                    onClick={() => setShowPresentationViewer(true)}
+                                    className={`hidden sm:flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl text-xs font-bold transition-all duration-200 hover:scale-105 ${darkMode ? 'bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-800' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}`}
+                                    title="View Design"
+                                >
+                                    <span>View Design</span>
+                                </button>
+                                <button
                                     onClick={handleDownload}
                                     className={`hidden sm:flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl text-xs font-bold transition-all duration-200 hover:scale-105 ${darkMode ? 'bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-800' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}`}
                                 >
                                     <Download className="w-4 h-4" />
                                     <span className="hidden xs:inline">Export</span>
+                                </button>
+                                <button
+                                    onClick={() => setShowPresentationViewer(true)}
+                                    className={`sm:hidden px-3 py-2 rounded-2xl text-[10px] font-bold transition-all duration-200 hover:scale-105 ${darkMode ? 'bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-800' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'}`}
+                                    title="View Design"
+                                >
+                                    View
                                 </button>
                                 <button
                                     onClick={handleDownload}

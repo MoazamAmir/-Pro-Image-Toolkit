@@ -42,6 +42,7 @@ const PresentAndRecordStudio = ({
     const [previewImgSrc, setPreviewImgSrc] = useState(null);
 
     const previewCanvasRef = useRef(null);
+    const recordingStartTime = useRef(null);
     const cameraVideoRef = useRef(null);
 
     const currentPageIndex = pages.findIndex(p => p.id === activePageId);
@@ -68,11 +69,12 @@ const PresentAndRecordStudio = ({
     }, [selectedCamera, startCameraPreview]);
 
     // Render design to canvas
-    const renderDesignToCanvas = useCallback(async (canvas) => {
+    const renderDesignToCanvas = useCallback(async (canvas, frameTime = 0) => {
         if (!canvas || !renderFinalCanvas) return;
         try {
             const renderedCanvas = await renderFinalCanvas(layers, adjustments, {
-                scale: 1, transparent: false, useOriginalResolution: false
+                scale: 1, transparent: false, useOriginalResolution: false,
+                frameTime: frameTime // Support animation and video frames
             });
             if (renderedCanvas && canvas) {
                 const ctx = canvas.getContext('2d');
@@ -91,9 +93,41 @@ const PresentAndRecordStudio = ({
         if (previewCanvasRef.current) renderDesignToCanvas(previewCanvasRef.current);
     }, [renderDesignToCanvas, layers, adjustments]);
 
+    // Continuous render loop during recording phase to keep captureStream active
+    useEffect(() => {
+        let animationFrame;
+        let lastTime = 0;
+        const fps = 30;
+        const interval = 1000 / fps;
+
+        const loop = async (timestamp) => {
+            if (phase === 'recording' && previewCanvasRef.current) {
+                if (!recordingStartTime.current) recordingStartTime.current = timestamp;
+                const elapsed = (timestamp - recordingStartTime.current) / 1000;
+
+                if (timestamp - lastTime >= interval) {
+                    await renderDesignToCanvas(previewCanvasRef.current, elapsed);
+                    lastTime = timestamp;
+                }
+            } else if (phase !== 'recording') {
+                recordingStartTime.current = null;
+            }
+            animationFrame = requestAnimationFrame(loop);
+        };
+
+        if (phase === 'recording') {
+            animationFrame = requestAnimationFrame(loop);
+        }
+
+        return () => {
+            if (animationFrame) cancelAnimationFrame(animationFrame);
+        };
+    }, [phase, renderDesignToCanvas]);
+
+
     const handleStartRecording = async () => {
         // Step 1: Prepare streams (acquires permissions immediately)
-        const success = await prepareRecording();
+        const success = await prepareRecording(previewCanvasRef.current);
         if (success) {
             // Step 2: Set phase to countdown for UI
             setPhase('countdown');

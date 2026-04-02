@@ -136,20 +136,29 @@ const useRecording = (user = null) => {
         }, 1000);
     }, []);
 
-    const prepareRecording = useCallback(async () => {
+    const prepareRecording = useCallback(async (canvasElement = null) => {
         try {
             setError(null);
             stopAudioMonitor();
 
-            // 1. Capture Full Screen
-            const displayStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { cursor: "always", displaySurface: "browser" },
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                preferCurrentTab: true
-            }).catch(err => {
-                console.error('getDisplayMedia error:', err);
-                return null;
-            });
+            // 1. Capture Full Screen OR specific canvas
+            let displayStream = null;
+            
+            if (canvasElement && canvasElement.captureStream) {
+                console.log('[Recorder] Capturing from provided canvas element');
+                // Create a stream from the canvas at 30 FPS
+                displayStream = canvasElement.captureStream(30);
+            } else {
+                console.log('[Recorder] Falling back to getDisplayMedia (Screen Capture)');
+                displayStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always", displaySurface: "browser" },
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                    preferCurrentTab: true
+                }).catch(err => {
+                    console.error('getDisplayMedia error:', err);
+                    return null;
+                });
+            }
 
             if (!displayStream) return false;
             displayStreamRef.current = displayStream;
@@ -244,10 +253,18 @@ const useRecording = (user = null) => {
         try {
             chunksRef.current = [];
             setElapsedTime(0);
-            const supportedTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+            const supportedTypes = [
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp8,opus',
+                'video/webm'
+            ];
             const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
 
-            const recorder = new MediaRecorder(combinedStreamRef.current, { mimeType, videoBitsPerSecond: 2500000 });
+            // Increase bitRate to 8Mbps for high quality canvas recording
+            const recorder = new MediaRecorder(combinedStreamRef.current, { 
+                mimeType, 
+                videoBitsPerSecond: 8000000 
+            });
             mediaRecorderRef.current = recorder;
 
             recorder.ondataavailable = (e) => {
@@ -307,8 +324,8 @@ const useRecording = (user = null) => {
         }
     }, []);
 
-    const startRecording = useCallback(async () => {
-        const ok = await prepareRecording();
+    const startRecording = useCallback(async (canvasElement = null) => {
+        const ok = await prepareRecording(canvasElement);
         if (ok) executeRecording();
     }, [prepareRecording, executeRecording]);
 

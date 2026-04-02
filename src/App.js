@@ -56,6 +56,7 @@ const ConverterUI = lazy(() => import('./components/ConverterUI'));
 const PresenterWindow = lazy(() => import('./components/PresenterWindow'));
 const AudienceViewer = lazy(() => import('./components/AudienceViewer'));
 const LandingPage = lazy(() => import('./components/LandingPage/LandingPage'));
+const DesignViewer = lazy(() => import('./components/DesignViewer'));
 
 const AppShellFallback = ({ label = 'Loading workspace...' }) => (
   <div style={{
@@ -1137,12 +1138,24 @@ const App = () => {
   const isCropWorkspace = activeConverter?.to === 'crop';
 
   // standalone Presenter/View if on specific routes
-  const isFullscreenView = location.pathname.startsWith('/presenter/') || location.pathname.startsWith('/view/');
-  if (isFullscreenView && designId) {
+  const isPresenterRoute = location.pathname.startsWith('/presenter/');
+  const isViewRoute = location.pathname.startsWith('/view/');
+
+  if (isPresenterRoute && designId) {
     return (
       <div className="fixed inset-0 z-[200] bg-slate-950 w-screen h-screen overflow-hidden">
         <Suspense fallback={<AppShellFallback label="Loading presentation..." />}>
           <PresenterWindow designId={designId} user={user} darkMode={darkMode} />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (isViewRoute && designId) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-slate-950 w-screen h-screen overflow-hidden">
+        <Suspense fallback={<AppShellFallback label="Opening design..." />}>
+          <DesignViewer designId={designId} user={user} />
         </Suspense>
       </div>
     );

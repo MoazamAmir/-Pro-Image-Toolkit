@@ -76,11 +76,7 @@ const SlideRenderer = ({
                 maxHeight: '100%',
                 position: 'relative',
                 containerType: 'size',
-                background: '#fff',
-                overflow: 'hidden',
-                borderRadius: '18px',
-                border: '1px solid rgba(148,163,184,0.16)',
-                boxShadow: '0 26px 90px rgba(2,8,23,0.28)',
+                overflow: 'visible',
                 ...style
             }}
         >
@@ -108,9 +104,11 @@ const SlideRenderer = ({
                             transform: `translate3d(calc(${layer.x}cqw - 50%), calc(${layer.y}cqh - 50%), 0) rotate(${layer.rotation || 0}deg) scaleX(${layer.flipX ? -1 : 1}) scaleY(${layer.flipY ? -1 : 1})`,
                             zIndex: layer.id === 'background-layer' ? 0 : (index + 1),
                             opacity: layer.opacity !== undefined ? layer.opacity / 100 : 1,
-                            display: layer.isHidden ? 'none' : 'block',
+                            display: layer.isHidden ? 'none' : (layer.type === 'text' ? 'flex' : 'block'),
                             visibility: layer.isHidden ? 'hidden' : 'visible',
-                            position: 'absolute'
+                            position: 'absolute',
+                            alignItems: 'center',
+                            justifyContent: layer.textAlign || 'center'
                         }}
                     >
                         {/* ========== FRAME LAYER ========== */}
@@ -193,7 +191,10 @@ const SlideRenderer = ({
                                     WebkitTextStroke: layer.stroke ? '1px black' : 'unset',
                                     color: layer.color === 'none' ? 'transparent' : layer.color,
                                     whiteSpace: 'nowrap',
-                                    textShadow: darkMode ? '0 1px 2px rgba(0,0,0,0.6)' : 'none'
+                                    textShadow: darkMode ? '0 1px 2px rgba(0,0,0,0.6)' : 'none',
+                                    textAlign: layer.textAlign || 'center',
+                                    width: '100%',
+                                    lineHeight: layer.lineHeight || 1.2
                                 }}
                             >
                                 {layer.content}

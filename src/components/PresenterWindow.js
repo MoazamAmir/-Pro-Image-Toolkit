@@ -14,7 +14,7 @@ import SlideRenderer from './SlideRenderer';
 // import firebaseVoiceService from '../services/FirebaseVoiceService';
 import agoraVoiceService from '../services/AgoraVoiceService';
 
-const PresenterWindow = ({ designId, user }) => {
+const PresenterWindow = ({ designId, user, darkMode = true }) => {
     // Design state
     const [pages, setPages] = useState([]);
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -187,6 +187,29 @@ const PresenterWindow = ({ designId, user }) => {
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [timerRunning]);
 
+    const [scale, setScale] = useState(1);
+
+    // -- Responsive Scaling logic --
+    const updateScale = useCallback(() => {
+        if (!canvasRef.current || !canvasSize.width || !canvasSize.height) return;
+
+        const containerWidth = window.innerWidth - (activeTab === 'notes' ? 320 : 0) - 80; // Subtract sidebar and padding
+        const containerHeight = window.innerHeight - 240; // Subtract top/bottom bars
+
+        const scaleX = containerWidth / canvasSize.width;
+        const scaleY = containerHeight / canvasSize.height;
+
+        // Use the smaller scale to fit whole canvas
+        const newScale = Math.min(scaleX, scaleY, 1.2); // Cap at 1.2x to avoid over-pixelation
+        setScale(newScale);
+    }, [canvasSize, activeTab]);
+
+    useEffect(() => {
+        updateScale();
+        window.addEventListener('resize', updateScale);
+        return () => window.removeEventListener('resize', updateScale);
+    }, [updateScale, pages, isLoading]); // Re-run when pages load
+
     const formattedTimer = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
 
     // Render page previews from layer data
@@ -198,7 +221,7 @@ const PresenterWindow = ({ designId, user }) => {
             const imageLayer = pageLayers.find(l => l.shapeType === 'image' && l.content);
             const src = imageLayer?.content || bgLayer?.content || null;
 
-            if (src && typeof src === 'string' && src.startsWith('http')) {
+            if (src && typeof src === 'string') {
                 setPreviewImages(prev => ({ ...prev, [page.id]: src }));
             } else if (bgLayer && bgLayer.color) {
                 // If it's just a background color, store the color
@@ -305,10 +328,10 @@ const PresenterWindow = ({ designId, user }) => {
 
             // Initialize Firebase WebRTC voice (COMMENTED OUT)
             // await firebaseVoiceService.startHost(sessionId);
-            
+
             // Initialize Agora Voice
             await agoraVoiceService.startHost(sessionId);
-            
+
             // If mic was already toggled "on" before starting session, publish it now
             if (isMicOn) {
                 console.log('[Presenter] Mic was already on, publishing now...');
@@ -352,10 +375,10 @@ const PresenterWindow = ({ designId, user }) => {
     const endLiveSession = async () => {
         // Stop Firebase voice (COMMENTED OUT)
         // await firebaseVoiceService.stop();
-        
+
         // Stop Agora voice
         await agoraVoiceService.stop();
-        
+
         setIsMicOn(false);
 
         if (liveSession?.id) {
@@ -545,10 +568,10 @@ const PresenterWindow = ({ designId, user }) => {
         } else {
             // Stop publishing (Agora)
             await agoraVoiceService.toggleMic(false);
-            
+
             // Stop publishing (Firebase - COMMENTED OUT)
             // await firebaseVoiceService.toggleMic(false);
-            
+
             setIsMicOn(false);
             if (liveSession?.id) {
                 await LiveSessionService.updateMicStatus(liveSession.id, false);
@@ -569,7 +592,7 @@ const PresenterWindow = ({ designId, user }) => {
                 // but if they click it later, toggleMic handles it
                 await agoraVoiceService.toggleMic(true, selectedMicId);
             }
-            
+
             setIsMicOn(true);
             if (liveSession?.id) {
                 await LiveSessionService.updateMicStatus(liveSession.id, true);
@@ -835,11 +858,11 @@ const PresenterWindow = ({ designId, user }) => {
                                         ))}
                                     </select>
                                 </div>
-                                
+
                                 <div className="pw-system-audio-toggle">
                                     <label className="pw-toggle-label">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={includeSystemAudio}
                                             onChange={(e) => setIncludeSystemAudio(e.target.checked)}
                                         />
@@ -868,16 +891,16 @@ const PresenterWindow = ({ designId, user }) => {
                             </button>
                         )}
                         <div
-                            className="pw-slide-frame"
+                            className="pw-slide-frame shadow-2xl"
                             ref={canvasRef}
                             style={{
                                 width: `${canvasSize.width}px`,
                                 height: `${canvasSize.height}px`,
-                                maxWidth: '100%',
-                                maxHeight: 'calc(100vh - 220px)',
-                                objectFit: 'contain',
                                 position: 'relative',
                                 containerType: 'size',
+                                transform: `scale(${scale})`,
+                                transformOrigin: 'center',
+                                transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                 ...(activeTool === 'laser' ? { cursor: 'none' } : activeTool === 'draw' ? { cursor: 'crosshair' } : {})
                             }}
                             onMouseMove={handleMouseMove}
@@ -890,6 +913,7 @@ const PresenterWindow = ({ designId, user }) => {
                                 page={pages[currentPageIndex]}
                                 canvasSize={canvasSize}
                                 adjustments={adjustments}
+                                darkMode={darkMode}
                                 overlays={
                                     <>
                                         {/* Drawings Layer Overlay */}

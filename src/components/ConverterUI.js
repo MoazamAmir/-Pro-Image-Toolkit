@@ -279,7 +279,8 @@ const ConverterUI = ({
     setIsEditing,
     isViewOnly,
     initialDesignId,
-    user
+    user,
+    authInitializing
 }) => {
     // State for live preview
 
@@ -1240,6 +1241,7 @@ const ConverterUI = ({
                                     isViewOnly={isViewOnly}
                                     initialDesignId={initialDesignId}
                                     user={user}
+                                    authInitializing={authInitializing}
                                 />
                             </Suspense>
                         )}

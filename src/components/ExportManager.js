@@ -1278,18 +1278,26 @@ const ExportManager = ({
                     </div>
                     <BrandButton onClick={async () => {
                         onClose();
-                        if (presentMode === 'present_and_record') { onStartRecordingStudio?.(); }
-                        else if (presentMode === 'presenter') {
-                            let did = designId;
-                            if (!did) {
-                                try {
-                                    const s = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now(), lastUpdatedBy: localInstanceId };
-                                    did = await FirebaseSyncService.createDesign(s, user?.uid);
-                                    onDesignIdGenerated?.(did);
-                                } catch { alert('Failed to save design. Please try again.'); return; }
-                            }
-                            window.open(`/presenter/${did}`, '_blank', 'width=1200,height=800,menubar=no,toolbar=no');
-                        } else { onStartPresentation?.(presentMode); }
+                        if (presentMode === 'present_and_record') { 
+                            onStartRecordingStudio?.(); 
+                            return;
+                        }
+
+                        let did = designId;
+                        if (!did) {
+                            try {
+                                const s = { pages: pages.map(p => p.id === activePageId ? { ...p, layers } : p), activePageId, canvasSize, adjustments, lastModified: Date.now(), lastUpdatedBy: localInstanceId };
+                                did = await FirebaseSyncService.createDesign(s, user?.uid);
+                                onDesignIdGenerated?.(did);
+                            } catch { alert('Failed to save design. Please try again.'); return; }
+                        }
+                        
+                        // Open in a new Pop-up Window for a "Canva-like" experience
+                        const width = 1200;
+                        const height = 800;
+                        const left = (window.screen.width / 2) - (width / 2);
+                        const top = (window.screen.height / 2) - (height / 2);
+                        window.open(`/presenter/${did}?mode=${presentMode}`, 'PresenterWindow', `width=${width},height=${height},top=${top},left=${left},menubar=no,toolbar=no,location=no,status=no,resizable=yes`);
                     }}>
                         <Presentation className="w-4 h-4" />
                         Enter presentation

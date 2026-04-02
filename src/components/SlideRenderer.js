@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as LucideIcons from 'lucide-react';
+import lottie from 'lottie-web';
 
 /**
  * SlideRenderer - A shared component to render design pages/slides faithfully.
@@ -11,8 +12,41 @@ const SlideRenderer = ({
     adjustments,
     className = '',
     style = {},
-    overlays = null
+    overlays = null,
+    darkMode = true
 }) => {
+    // Internal Lottie component to handle individual animations
+    const LottiePlayer = ({ url, width, height }) => {
+        const containerRef = useRef(null);
+        const animRef = useRef(null);
+
+        useEffect(() => {
+            if (!containerRef.current || !url) return;
+
+            // Clear previous animation if any
+            if (animRef.current) {
+                animRef.current.destroy();
+            }
+
+            try {
+                animRef.current = lottie.loadAnimation({
+                    container: containerRef.current,
+                    renderer: 'svg',
+                    loop: true,
+                    autoplay: true,
+                    path: url
+                });
+            } catch (err) {
+                console.error('[SlideRenderer] Lottie load error:', err);
+            }
+
+            return () => {
+                if (animRef.current) animRef.current.destroy();
+            };
+        }, [url]);
+
+        return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+    };
     if (!page) {
         return (
             <div className={`sr-empty ${className}`} style={{
@@ -159,6 +193,7 @@ const SlideRenderer = ({
                                     WebkitTextStroke: layer.stroke ? '1px black' : 'unset',
                                     color: layer.color === 'none' ? 'transparent' : layer.color,
                                     whiteSpace: 'nowrap',
+                                    textShadow: darkMode ? '0 1px 2px rgba(0,0,0,0.6)' : 'none'
                                 }}
                             >
                                 {layer.content}
@@ -206,18 +241,54 @@ const SlideRenderer = ({
 
                             /* ========== LOTTIE / GIF / SHAPE / IMAGE ========== */
                         ) : (
-                            <div className="w-full h-full flex items-center justify-center overflow-hidden">
-                                {layer.type === 'lottie' || layer.type === 'gif' ? (
+                            <div className={`w-full h-full flex items-center justify-center ${layer.shapeType === 'video' ? '' : 'overflow-hidden'}`}>
+                                {layer.type === 'lottie' ? (
+                                    <LottiePlayer url={layer.content} width={layer.width} height={layer.height} />
+                                ) : layer.type === 'gif' ? (
                                     <img src={layer.content} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} draggable={false} />
                                 ) : layer.shapeType === 'icon' ? (
                                     (() => {
                                         const IconCmp = LucideIcons[layer.content] || LucideIcons.HelpCircle;
                                         return <IconCmp style={{ width: '100%', height: '100%', color: layer.color }} />;
                                     })()
+                                ) : layer.shapeType === 'video' ? (
+                                    <video
+                                        src={layer.content}
+                                        autoPlay
+                                        muted
+                                        loop
+                                        playsInline
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover',
+                                            transform: `scale(${layer.contentScale || 1}) translate(${(layer.contentX || 0) / (layer.width || 1) * 100}%, ${(layer.contentY || 0) / (layer.height || 1) * 100}%)`
+                                        }}
+                                    />
+                                ) : layer.shapeType?.startsWith('line') ? (
+                                    <div style={{
+                                        width: '100%',
+                                        height: '0px',
+                                        borderTopWidth: `${Math.max(2, layer.height * 0.1)}px`,
+                                        borderTopStyle: layer.shapeType === 'line-dashed' ? 'dashed' : layer.shapeType === 'line-dotted' ? 'dotted' : 'solid',
+                                        borderTopColor: layer.color
+                                    }} />
+                                ) : layer.shapeType === 'arrow' ? (
+                                    <div className="relative w-full flex items-center">
+                                        <div style={{ height: `${Math.max(2, layer.height * 0.1)}px`, background: layer.color, flex: 1 }} />
+                                        <div style={{
+                                            width: 0,
+                                            height: 0,
+                                            borderTop: `${Math.max(8, layer.height * 0.4)}px solid transparent`,
+                                            borderBottom: `${Math.max(8, layer.height * 0.4)}px solid transparent`,
+                                            borderLeft: `${Math.max(12, layer.height * 0.6)}px solid ${layer.color}`
+                                        }} />
+                                    </div>
                                 ) : layer.shapeType === 'image' ? (
                                     <img
                                         src={layer.content}
                                         alt=""
+                                        className={`${layer.animationClass || ''} ${layer.animationClass?.startsWith('reveal-') ? `reveal-style-${layer.animationStyle || 'seep'}` : ''}`.trim()}
                                         style={{
                                             width: '100%', height: '100%', objectFit: 'cover',
                                             transform: layer.id !== 'background-layer' ? `scale(${layer.contentScale || 1}) translate(${(layer.contentX || 0) / (layer.width || 1) * 100}%, ${(layer.contentY || 0) / (layer.height || 1) * 100}%)` : undefined,
@@ -227,10 +298,34 @@ const SlideRenderer = ({
                                         }}
                                     />
                                 ) : (
-                                    <div style={{
-                                        width: '100%', height: '100%', background: layer.color,
-                                        borderRadius: layer.shapeType === 'circle' ? '50%' : layer.shapeType === 'square-rounded' ? '20%' : '0'
-                                    }} />
+                                    <div
+                                        className={`${layer.animationClass || ''} ${layer.animationClass?.startsWith('reveal-') ? `reveal-style-${layer.animationStyle || 'seep'}` : ''}`.trim()}
+                                        style={{
+                                            width: '100%', height: '100%', background: layer.color,
+                                            borderRadius: layer.shapeType === 'circle' ? '50%' : layer.shapeType === 'square-rounded' ? '20%' : '0',
+                                            clipPath: layer.shapeType === 'triangle' ? 'polygon(50% 0%, 0% 100%, 100% 100%)' :
+                                                layer.shapeType === 'pentagon' ? 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' :
+                                                    layer.shapeType === 'hexagon' ? 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' :
+                                                        layer.shapeType === 'octagon' ? 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)' :
+                                                            layer.shapeType === 'star-5' ? 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' : 'none',
+                                            transform: layer.shapeType === 'parallelogram' ? 'skewX(-20deg)' : 'none',
+                                            width: layer.shapeType === 'parallelogram' ? '80%' : '100%',
+                                            marginLeft: layer.shapeType === 'parallelogram' ? '10%' : '0'
+                                        }}
+                                    >
+                                        {/* Support for text within shapes in Presenter */}
+                                        {layer.content && ['square', 'circle', 'square-rounded', 'triangle', 'star-5', 'pentagon', 'hexagon', 'octagon', 'parallelogram'].includes(layer.shapeType) && (
+                                            <div className="w-full h-full flex items-center justify-center p-2 text-center pointer-events-none" style={{
+                                                color: darkMode ? '#ffffff' : '#000000',
+                                                fontSize: `${Math.min(layer.width, layer.height) * 0.15}px`,
+                                                fontWeight: 'bold',
+                                                lineHeight: '1.2',
+                                                transform: layer.shapeType === 'parallelogram' ? 'skewX(20deg)' : 'none'
+                                            }}>
+                                                {layer.content}
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -254,6 +349,38 @@ const SlideRenderer = ({
                 .items-center { align-items: center; }
                 .justify-center { justify-content: center; }
                 .relative { position: relative; }
+                .text-center { text-align: center; }
+                .p-2 { padding: 0.5rem; }
+                
+                /* Animations ported from ImageEditorCore */
+                @keyframes reveal-seep {
+                    from { clip-path: inset(0 100% 0 0); opacity: 0; transform: translateX(-20px); }
+                    to { clip-path: inset(0 0 0 0); opacity: 1; transform: translateX(0); }
+                }
+                .reveal-style-seep { animation: reveal-seep 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+                
+                @keyframes reveal-rise {
+                    from { clip-path: inset(100% 0 0 0); opacity: 0; transform: translateY(20px); }
+                    to { clip-path: inset(0 0 0 0); opacity: 1; transform: translateY(0); }
+                }
+                .reveal-style-rise { animation: reveal-rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+                @keyframes reveal-zoom {
+                    from { opacity: 0; transform: scale(0.8); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                .reveal-style-zoom { animation: reveal-zoom 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+                .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                
+                .animate-bounce-in { animation: bounceIn 0.8s cubic-bezier(0.36, 0, 0.66, -0.56) forwards; }
+                @keyframes bounceIn {
+                    0% { opacity: 0; transform: scale(0.3); }
+                    50% { opacity: 1; transform: scale(1.05); }
+                    70% { transform: scale(0.9); }
+                    100% { transform: scale(1); }
+                }
             `}</style>
         </div>
     );

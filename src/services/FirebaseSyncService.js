@@ -84,16 +84,13 @@ class FirebaseSyncService {
      * Listen for real-time changes to a design
      * @param {string} designId 
      * @param {Function} callback 
+     * @returns {Function} - Unsubscribe function
      */
     initSync(designId, callback) {
         if (!designId) return null;
 
-        if (this.unsubscribe) {
-            this.unsubscribe();
-        }
-
         const docRef = doc(db, 'designs', designId);
-        this.unsubscribe = onSnapshot(docRef, (doc) => {
+        const unsubscribe = onSnapshot(docRef, (doc) => {
             if (doc.exists()) {
                 callback(doc.data());
             }
@@ -101,13 +98,12 @@ class FirebaseSyncService {
             console.error('Firestore Subscribe Error:', error);
         });
 
-        return this.unsubscribe;
+        return unsubscribe;
     }
 
-    stopSync() {
-        if (this.unsubscribe) {
-            this.unsubscribe();
-            this.unsubscribe = null;
+    stopSync(unsub) {
+        if (unsub && typeof unsub === 'function') {
+            unsub();
         }
     }
 

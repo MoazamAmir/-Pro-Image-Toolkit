@@ -127,7 +127,7 @@ const App = () => {
   const location = useLocation();
   const isPublicViewRoute = location.pathname.startsWith('/view/') && Boolean(designId);
   const isLiveAudienceRoute = location.pathname.startsWith('/live/') && Boolean(sessionCode);
-  const requiresAuth = !isPublicViewRoute && !isLiveAudienceRoute && !location.pathname.startsWith('/edit/');
+  const requiresAuth = !isPublicViewRoute && !isLiveAudienceRoute && !location.pathname.startsWith('/edit/') && !location.pathname.startsWith('/presenter/');
   const [activeConverter, setActiveConverter] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [convertedFile, setConvertedFile] = useState(null);
@@ -288,16 +288,16 @@ const App = () => {
     setIsDeletingAccount(true);
     try {
       console.log('>>> Commencing full account deletion and data cleanup...');
-      
+
       // 1. Cleanup Firestore data
       await firebaseSyncService.deleteAllUserData(user.uid);
-      
+
       // 2. Cleanup local recordings
       await localRecordingsService.clearAllRecordings();
-      
+
       // 3. Delete Firebase Auth account
       const result = await deleteUserAccount();
-      
+
       if (result.error) {
         setError(result.error);
         setIsDeletingAccount(false);
@@ -954,7 +954,7 @@ const App = () => {
         if (to === 'docx') {
           if (from === 'txt') return await convertTXTToDOCX(sourceFile);
           if (from === 'png') return await convertPNGToDOCX(sourceFile);
-          if (from === 'pdf') return await convertPDFToWORD(sourceFile);
+          if (from === 'pdf') return await convertPDFToWORD(sourceFile, setConversionProgress);
           throw new Error(`Conversion ${from.toUpperCase()} -> DOCX is not supported yet. Try TXT, PNG, or PDF as source.`);
         }
 
@@ -1131,17 +1131,22 @@ const App = () => {
     );
   }
 
-  // Presenter Window route (standalone)
-  if (location.pathname.startsWith('/presenter/') && designId) {
-    return (
-      <Suspense fallback={<AppShellFallback label="Opening presenter mode..." />}>
-        <PresenterWindow designId={designId} user={user} />
-      </Suspense>
-    );
-  }
+  // Presenter Window route (moved to overlay for persistence)
 
   // User is logged in, show main app
   const isCropWorkspace = activeConverter?.to === 'crop';
+
+  // standalone Presenter/View if on specific routes
+  const isFullscreenView = location.pathname.startsWith('/presenter/') || location.pathname.startsWith('/view/');
+  if (isFullscreenView && designId) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-slate-950 w-screen h-screen overflow-hidden">
+        <Suspense fallback={<AppShellFallback label="Loading presentation..." />}>
+          <PresenterWindow designId={designId} user={user} darkMode={darkMode} />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
     <div className={`app-shell min-h-screen flex flex-col transition-all duration-500`}>
@@ -1163,9 +1168,9 @@ const App = () => {
           />
         </Suspense>
       )}
-      
+
       {/* Account Deletion Confirmation */}
-      <DeleteAccountModal 
+      <DeleteAccountModal
         isOpen={deleteAccountModalOpen}
         onClose={() => setDeleteAccountModalOpen(false)}
         onDeleteConfirm={handleDeleteAccount}
@@ -1180,7 +1185,7 @@ const App = () => {
             <div className="flex-grow">
               <p className="text-sm font-semibold">{error}</p>
             </div>
-            <button 
+            <button
               onClick={() => setError(null)}
               className={`p-1 rounded-full ${darkMode ? 'hover:bg-red-800' : 'hover:bg-red-100'}`}
             >
@@ -1292,6 +1297,7 @@ const App = () => {
             selectedDownloadType={selectedDownloadType}
             setSelectedDownloadType={setSelectedDownloadType}
             user={user || (isPublicViewRoute ? { displayName: 'Guest Viewer', uid: null } : null)}
+            authInitializing={authInitializing}
           />
         </Suspense>
       </main>

@@ -141,7 +141,8 @@ const ImageEditor = ({
     darkMode,
     isViewOnly = false,
     initialDesignId = null,
-    user
+    user,
+    authInitializing
 }) => {
     const [activeTab, setActiveTab] = useState('text');
     const [imageSrc, setImageSrc] = useState(null);
@@ -226,6 +227,7 @@ const ImageEditor = ({
     const localInstanceId = useRef(Math.random().toString(36).substr(2, 9)).current;
     const sessionUnsubscribe = useRef(null);
     const presenceUnsubscribe = useRef(null);
+    const syncUnsubscribe = useRef(null);
     const [collaborators, setCollaborators] = useState([]);
     const userColor = useRef(`#${Math.floor(Math.random() * 16777215).toString(16)}`).current;
     const lastPresenceUpdate = useRef(0);
@@ -290,25 +292,34 @@ const ImageEditor = ({
                 return;
             }
 
-            // Important: Reset everything when switching designs
+            // Important: Reset everything ONLY when switching to a DIFFERENT existing design
+            // If we are generating an ID for the first time for CURRENT work, do NOT clear layers
             if (initialDesignId && initialDesignId !== designId) {
-                setDesignId(initialDesignId);
-                hasLoadedInitialData.current = false;
-                // Clear existing state to prevent flash or accidental overwrite
-                setLayers([]);
-                setPages([{ id: 1, layers: [] }]);
-                setActivePageId(1);
-                setAdjustments({
-                    brightness: 100, contrast: 100, saturation: 100, blur: 0,
-                    grayscale: 0, sepia: 0, hue: 0, invert: 0
-                });
+                const isNewFirstSave = !designId && layers.length > 0;
+                
+                if (!isNewFirstSave) {
+                    setDesignId(initialDesignId);
+                    hasLoadedInitialData.current = false;
+                    // Clear existing state to prevent flash or accidental overwrite
+                    setLayers([]);
+                    setPages([{ id: 1, layers: [] }]);
+                    setActivePageId(1);
+                    setAdjustments({
+                        brightness: 100, contrast: 100, saturation: 100, blur: 0,
+                        grayscale: 0, sepia: 0, hue: 0, invert: 0
+                    });
+                } else {
+                    // Just update the ID, keep the data
+                    setDesignId(initialDesignId);
+                    hasLoadedInitialData.current = true; // We already have the current data
+                }
             }
 
             setIsSyncing(true);
 
             try {
                 // Initialize sync with callback for remote updates
-                await FirebaseSyncService.initSync(activeDesignId, (remoteData) => {
+                syncUnsubscribe.current = FirebaseSyncService.initSync(activeDesignId, (remoteData) => {
 
 
                     // Permission check
@@ -316,8 +327,24 @@ const ImageEditor = ({
                     const designAccessLevel = remoteData.accessLevel || 'private';
                     const currentUserId = user?.uid;
 
+                    // If we are still initializing auth, don't set permission to false yet
+                    // Wait for the user object to be populated
                     const isUserOwner = currentUserId && designOwnerId === currentUserId;
                     const hasAccess = designAccessLevel === 'public' || isUserOwner;
+
+                    // If we are still initializing auth, don't set permission to false yet
+                    // But don't return early in a way that kills the UI
+                    if (authInitializing && !currentUserId && !designId) {
+                        return;
+                    }
+
+                    console.log('[FirebaseSync] 🔐 Permission check:', { 
+                        isUserOwner, 
+                        hasAccess, 
+                        designAccessLevel, 
+                        currentUserId, 
+                        designOwnerId 
+                    });
 
                     setIsOwner(isUserOwner);
                     setAccessLevelState(designAccessLevel);
@@ -430,7 +457,10 @@ const ImageEditor = ({
 
         return () => {
             console.log('[FirebaseSync] 🛑 Cleanup: Stopping sync listeners');
-            FirebaseSyncService.stopSync();
+            if (syncUnsubscribe.current) {
+                FirebaseSyncService.stopSync(syncUnsubscribe.current);
+                syncUnsubscribe.current = null;
+            }
             if (sessionUnsubscribe.current) {
                 sessionUnsubscribe.current();
                 sessionUnsubscribe.current = null;
@@ -443,7 +473,7 @@ const ImageEditor = ({
                 FirebaseSyncService.clearPresence(designId, user.uid);
             }
         };
-    }, [initialDesignId, designId, isViewOnly]); // Added designId and isViewOnly to ensure sync starts when project is first shared
+    }, [initialDesignId, designId, isViewOnly, user]); // Added user dependency to ensure permissions re-evaluate on login
 
     // Broadcast changes to Firebase (throttled)
     useEffect(() => {
@@ -491,13 +521,50 @@ const ImageEditor = ({
     }, [designId, isViewOnly]);
 
 
-    // Load recently used animations on mount
+    // Load recently used animations and LOCAL DATA on mount
     useEffect(() => {
-        const loaded = loadRecentlyUsedAnimations();
-        if (loaded && loaded.length > 0) {
-            setRecentlyUsedAnimations(loaded);
+        const loadedAnims = loadRecentlyUsedAnimations();
+        if (loadedAnims && loadedAnims.length > 0) {
+            setRecentlyUsedAnimations(loadedAnims);
+        }
+
+        // LOAD FROM LOCAL STORAGE FALLBACK (only if no designId or sync hasn't happened)
+        if (!initialDesignId && !designId) {
+            const cached = localStorage.getItem(`editor_last_work`);
+            if (cached) {
+                try {
+                    const data = JSON.parse(cached);
+                    if (data.layers && data.layers.length > 0) {
+                        setLayers(data.layers);
+                        if (data.pages) setPages(data.pages);
+                        if (data.canvasSize) setCanvasSize(data.canvasSize);
+                        hasLoadedInitialData.current = true;
+                        console.log('[Persistence] 📁 Loaded last work from local cache.');
+                    }
+                } catch (e) {
+                    console.error('[Persistence] Failed to load local cache:', e);
+                }
+            }
         }
     }, []);
+
+    // Save to Local Storage for Persistence
+    useEffect(() => {
+        if (!hasLoadedInitialData.current || isViewOnly) return;
+        
+        const saveTimeout = setTimeout(() => {
+            const dataToSave = {
+                layers,
+                pages,
+                canvasSize,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(`editor_last_work`, JSON.stringify(dataToSave));
+            console.log('[Persistence] 💾 Saved current work to local cache.');
+        }, 2000); // Throttled to every 2 seconds
+
+        return () => clearTimeout(saveTimeout);
+    }, [layers, pages, canvasSize, isViewOnly]);
 
     // Fetch user projects when Projects tab is opened
     useEffect(() => {

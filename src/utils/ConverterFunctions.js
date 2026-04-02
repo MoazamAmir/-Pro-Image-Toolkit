@@ -196,30 +196,100 @@ export const convertPDFToXLSX = async (file) => {
     }
 };
 
-export const convertPDFToWORD = async (file) => {
+export const convertPDFToWORD = async (file, onProgress) => {
     try {
-        const textResult = await convertPDFToText(file);
-        const text = textResult.text;
+        if (onProgress) onProgress(10);
 
-        const lines = text.split('\n');
-        const paragraphs = lines.map(line => new Paragraph({
-            children: [new TextRun(line)],
-        }));
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
+        if (onProgress) onProgress(20);
+
+        const paragraphs = [];
+
+        // Process each page of the PDF
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            if (onProgress) onProgress(Math.round(20 + (pageNum / pdf.numPages) * 60));
+
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2 });
+
+            // Create canvas to render PDF page as image
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            // Render the PDF page
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            // Convert canvas to PNG data URL
+            const imgDataUrl = canvas.toDataURL('image/png');
+
+            // Fetch the image data as ArrayBuffer
+            const response = await fetch(imgDataUrl);
+            const imgArrayBuffer = await response.arrayBuffer();
+
+            // Add page number heading
+            if (pageNum > 1) {
+                paragraphs.push(new Paragraph({ children: [] })); // Empty paragraph for spacing
+            }
+
+            paragraphs.push(new Paragraph({
+                children: [
+                    new TextRun({
+                        text: `--- Page ${pageNum} ---`,
+                        bold: true,
+                        size: 24,
+                        color: '666666',
+                    }),
+                ],
+                spacing: { before: 200, after: 200 },
+            }));
+
+            // Add the rendered page as an image in the Word document
+            paragraphs.push(new Paragraph({
+                children: [
+                    new ImageRun({
+                        data: new Uint8Array(imgArrayBuffer),
+                        transformation: {
+                            width: viewport.width / 3.78, // Convert pixels to points (1 point = 1/72 inch = 1/3.78 cm)
+                            height: viewport.height / 3.78,
+                        },
+                    }),
+                ],
+                spacing: { before: 100, after: 100 },
+            }));
+        }
+
+        if (onProgress) onProgress(90);
+
+        // Create the Word document with all paragraphs
         const doc = new Document({
             sections: [{
-                properties: {},
+                properties: {
+                    page: {
+                        size: {
+                            orientation: 'portrait',
+                        },
+                    },
+                },
                 children: paragraphs,
             }],
         });
 
+        if (onProgress) onProgress(95);
+
         const blob = await Packer.toBlob(doc);
+
+        if (onProgress) onProgress(100);
+
         return {
             url: URL.createObjectURL(blob),
             name: 'converted-from-pdf.docx',
             blob: blob,
             type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            note: 'Text extracted from PDF'
+            note: `Converted ${pdf.numPages} page(s) from PDF with full content preserved`
         };
     } catch (error) {
         throw new Error('PDF to Word conversion failed: ' + error.message);
@@ -913,7 +983,7 @@ export const extractThumbnail = (file, time = 1) => {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
         const videoUrl = URL.createObjectURL(file);
-        
+
         video.src = videoUrl;
         video.muted = true;
         video.playsInline = true;
@@ -946,7 +1016,7 @@ export const extractThumbnail = (file, time = 1) => {
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
+
                 canvas.toBlob((blob) => {
                     cleanup();
                     if (blob) {
